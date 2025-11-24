@@ -1,0 +1,24 @@
+name = "pgl"
+version = "0.1.0"
+description = "Postgres driver written in gleam"
+
+repository = { type = "github", user = "stndrs", repo = "pgl" }
+
+internal_modules = [
+  "pgl/internal/*",
+  "pgl/internal"
+]
+
+[dependencies]
+gleam_stdlib = ">= 0.60.0 and < 2.0.0"
+gleam_crypto = ">= 1.5.0 and < 2.0.0"
+gleam_erlang = ">= 1.0.0 and < 2.0.0"
+gleam_otp = ">= 1.0.0 and < 2.0.0"
+gleam_time = ">= 1.2.0 and < 2.0.0"
+exception = ">= 2.1.0 and < 3.0.0"
+db_pool = { git = "git@github.com:stndrs/db_pool.git", ref = "main" }
+
+[dev-dependencies]
+gleeunit = "~> 1.0"
+birdie = ">= 1.4.1 and < 2.0.0"
+global_value = ">= 1.0.0 and < 2.0.0"

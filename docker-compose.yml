@@ -1,0 +1,37 @@
+version: "3.1"
+
+services:
+  db:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: gleam_pgl_test
+    ports:
+      - 5432:5432
+    command: >
+      -c log_statement=all
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 1s
+      timeout: 5s
+      retries: 10
+
+  db_with_ssl:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: gleam_pgl_test
+    ports:
+      - 5433:5432
+    volumes:
+      - ./scripts/start-postgres-ssl.sh:/start-postgres-ssl.sh:ro
+    entrypoint: ["/bin/bash", "/start-postgres-ssl.sh"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 1s
+      timeout: 5s
+      retries: 10

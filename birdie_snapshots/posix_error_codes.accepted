@@ -1,0 +1,7 @@
+---
+version: 1.4.1
+title: posix error codes
+file: ./test/pgl/error_test.gleam
+test_name: posix_error_to_string_test
+---
+closed, timeout, eaddrinuse, eaddrnotavail, eafnosupport, ealready, econnaborted, econnrefused, econnreset, edestaddrreq, ehostdown, ehostunreach, einprogress, eisconn, emsgsize, enetdown, enetunreach, enopkg, enoprotoopt, enotconn, enotty, enotsock, eproto, eprotonosupport, eprototype, esocktnosupport, etimedout, ewouldblock, exbadport, exbadseq, nxdomain, eacces, eagain, ebadf, ebadmsg, ebusy, edeadlk, edeadlock, edquot, eexist, efault, efbig, eftype, eintr, einval, eio, eisdir, eloop, emfile, emlink, emultihop, enametoolong, enfile, enobufs, enodev, enolck, enolink, enoent, enomem, enospc, enosr, enostr, enosys, enotblk, enotdir, enotsup, enxio, eopnotsupp, eoverflow, eperm, epipe, erange, erofs, espipe, esrch, estale, etxtbsy, exdev
