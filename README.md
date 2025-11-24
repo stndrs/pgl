@@ -4,28 +4,11 @@
 
 This package implements the PostgreSQL wire protocol.
 
-### Done
-
-- [x] Common PG type encoding/decoding
-- [x] Binary protocol
-- [x] Extended query flow
-- [x] Type cache
-- [x] Query cache
-
-### In progress
-
-- [ ] Pipelining
-
-### Todo
-
-- [ ] More PG types
-- [ ] Logging
-
 ### Inspired by
 
-[pgo]: https://github.com/erleans/pgo
-[pog]: https://github.com/lpil/pog
-[postgrex]: https://github.com/elixir-ecto/postgrex
+- [pgo](https://github.com/erleans/pgo)
+- [pog](https://github.com/lpil/pog)
+- [postgrex](https://github.com/elixir-ecto/postgrex)
 
 ```gleam
 import pgl
