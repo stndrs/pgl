@@ -23,11 +23,13 @@ pub fn main() {
 
   let assert Ok(_) = pgl.start(db)
 
-  use conn <- pgl.with_connection(db)
-
   let assert Ok(queried) =
-    "SELECT * FROM users WHERE id=$1"
-    |> pgl.query([pgl.int(1000)], conn)
+    {
+      use conn <- pgl.with_connection(db)
+
+      "SELECT * FROM users WHERE id=$1"
+      |> pgl.query([pgl.int(1000)], conn)
+    }
 
   pgl.shutdown(db)
 }
