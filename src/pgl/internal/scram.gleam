@@ -271,7 +271,7 @@ fn bin_xor(b1: BitArray, b2: BitArray) -> BitArray {
 @external(erlang, "crypto", "exor")
 fn crypto_exor(b1: BitArray, b2: BitArray) -> BitArray
 
-@external(erlang, "erlang", "unique_integer")
+@external(erlang, "pgl_ffi", "unique_int")
 fn unique_int() -> Int
 
 @external(erlang, "erlang", "binary_to_integer")
