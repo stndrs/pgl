@@ -6,9 +6,11 @@ This package implements the PostgreSQL wire protocol.
 
 ### Inspired by
 
-- [pgo](https://github.com/erleans/pgo)
-- [pog](https://github.com/lpil/pog)
-- [postgrex](https://github.com/elixir-ecto/postgrex)
+[pgo](https://github.com/erleans/pgo)
+
+[pog](https://github.com/lpil/pog)
+
+[postgrex](https://github.com/elixir-ecto/postgrex)
 
 ```gleam
 import pgl
