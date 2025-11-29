@@ -7,10 +7,10 @@ import gleam/order
 import gleam/result
 import gleam/string
 import gleam/time/calendar
-import gleam/time/duration
 import gleam/time/timestamp
 import gleeunit
 import global_value
+import pg/value
 import pgl
 import pgl/config
 import pgl/internal
@@ -314,9 +314,9 @@ pub fn pipeline_multiple_query_test() {
     ])
     |> returning(["name", "active", "nicknames"])
 
-  let params1 = [pgl.Text("Margaret"), pgl.Bool(True)]
+  let params1 = [value.Text("Margaret"), value.Bool(True)]
 
-  let params2 = [pgl.Text("Richard"), pgl.Bool(False)]
+  let params2 = [value.Text("Richard"), value.Bool(False)]
 
   let assert Ok(rows) =
     [pgl.Query(insert1, params1), pgl.Query(insert2, params2)]
@@ -334,7 +334,7 @@ pub fn pipeline_multiple_different_queries_test() {
     ])
     |> returning(["name", "active", "nicknames"])
 
-  let params1 = [pgl.Text("Margaret"), pgl.Bool(True)]
+  let params1 = [value.Text("Margaret"), value.Bool(True)]
 
   let assert Ok(rows) =
     [pgl.Query(insert1, params1), pgl.Query("SELECT 1", [])]
@@ -351,91 +351,6 @@ fn insert_into_users(values: List(String)) -> String {
 
 fn returning(sql: String, columns: List(String)) -> String {
   sql <> " RETURNING " <> string.join(columns, ", ")
-}
-
-pub fn null_to_string_test() {
-  let assert "NULL" = pgl.null |> pgl.value_to_string
-}
-
-pub fn bool_to_string_test() {
-  let assert "TRUE" = pgl.bool(True) |> pgl.value_to_string
-  let assert "FALSE" = pgl.bool(False) |> pgl.value_to_string
-}
-
-pub fn int_to_string_test() {
-  let assert "42" = pgl.int(42) |> pgl.value_to_string
-  let assert "0" = pgl.int(0) |> pgl.value_to_string
-  let assert "-123" = pgl.int(-123) |> pgl.value_to_string
-}
-
-pub fn float_to_string_test() {
-  let assert "3.14" = pgl.float(3.14) |> pgl.value_to_string
-  let assert "0.0" = pgl.float(0.0) |> pgl.value_to_string
-  let assert "-2.5" = pgl.float(-2.5) |> pgl.value_to_string
-}
-
-pub fn text_to_string_test() {
-  let assert "'hello'" = pgl.text("hello") |> pgl.value_to_string
-  let assert "''" = pgl.text("") |> pgl.value_to_string
-  let assert "'It\\'s working'" =
-    pgl.text("It's working") |> pgl.value_to_string
-  let assert "'Say \\'hello\\''" =
-    pgl.text("Say 'hello'") |> pgl.value_to_string
-}
-
-pub fn bytea_to_string_test() {
-  let assert "'\\x48656C6C6F'" =
-    pgl.bytea(<<"Hello":utf8>>) |> pgl.value_to_string
-  let assert "'\\x'" = pgl.bytea(<<>>) |> pgl.value_to_string
-  let assert "'\\xDEADBEEF'" =
-    pgl.bytea(<<0xDE, 0xAD, 0xBE, 0xEF>>) |> pgl.value_to_string
-}
-
-pub fn time_to_string_test() {
-  let assert "'14:30:45'" =
-    pgl.time(calendar.TimeOfDay(14, 30, 45, 0)) |> pgl.value_to_string
-  let assert "'00:00:00'" =
-    pgl.time(calendar.TimeOfDay(0, 0, 0, 0)) |> pgl.value_to_string
-  let assert "'23:59:59.123'" =
-    pgl.time(calendar.TimeOfDay(23, 59, 59, 123_456_000)) |> pgl.value_to_string
-  let assert "'09:05:03'" =
-    pgl.time(calendar.TimeOfDay(9, 5, 3, 0)) |> pgl.value_to_string
-  let assert "'09:05:03.400'" =
-    pgl.time(calendar.TimeOfDay(9, 5, 3, 400_000_000)) |> pgl.value_to_string
-  let assert "'09:05:03.012'" =
-    pgl.time(calendar.TimeOfDay(9, 5, 3, 12_000_000)) |> pgl.value_to_string
-  let assert "'09:05:03.007'" =
-    pgl.time(calendar.TimeOfDay(9, 5, 3, 7_000_000)) |> pgl.value_to_string
-}
-
-pub fn date_to_string_test() {
-  let assert "'2025-01-15'" =
-    pgl.date(calendar.Date(2025, calendar.January, 15)) |> pgl.value_to_string
-  let assert "'1990-02-09'" =
-    pgl.date(calendar.Date(1990, calendar.February, 9)) |> pgl.value_to_string
-  let assert "'2000-12-31'" =
-    pgl.date(calendar.Date(2000, calendar.December, 31)) |> pgl.value_to_string
-}
-
-pub fn timestamp_to_string_test() {
-  let assert Ok(ts) = timestamp.parse_rfc3339("2025-01-15T14:30:45Z")
-  let assert "'2025-01-15T14:30:45Z'" = pgl.timestamp(ts) |> pgl.value_to_string
-
-  let assert Ok(ts2) = timestamp.parse_rfc3339("2000-12-31T23:59:59.123456789Z")
-  let assert "'2000-12-31T23:59:59.123456789Z'" =
-    pgl.timestamp(ts2) |> pgl.value_to_string
-}
-
-pub fn interval_to_string_test() {
-  let assert "'PT1H30M'" =
-    pgl.interval(duration.hours(1) |> duration.add(duration.minutes(30)))
-    |> pgl.value_to_string
-
-  let assert "'PT0S'" = pgl.interval(duration.seconds(0)) |> pgl.value_to_string
-
-  let assert "'PT5M30S'" =
-    pgl.interval(duration.minutes(5) |> duration.add(duration.seconds(30)))
-    |> pgl.value_to_string
 }
 
 pub fn rows_as_maps_test() {
@@ -491,7 +406,11 @@ pub fn selecting_rows_test() {
   let assert 1 = count
 
   let assert Ok(returned) =
-    pgl.query("SELECT * FROM users WHERE name = $1", [pgl.Text("James")], conn)
+    pgl.query(
+      "SELECT * FROM users WHERE name = $1",
+      [value.Text("James")],
+      conn,
+    )
 
   let assert 1 = returned.count
 
@@ -521,9 +440,9 @@ pub fn varchar_encoding_test() {
 
   let sql = "SELECT $1::VARCHAR, $2::VARCHAR, $3::VARCHAR"
   let params = [
-    pgl.Text("howdy"),
-    pgl.Text(""),
-    pgl.Text("postgres"),
+    value.Text("howdy"),
+    value.Text(""),
+    value.Text("postgres"),
   ]
 
   let assert Ok(result) = pgl.query(sql, params, conn)
@@ -545,7 +464,7 @@ pub fn null_encoding_test() {
   use conn <- start_default()
 
   let sql = "SELECT $1::TEXT, $1 IS NULL, $2::INT"
-  let params = [pgl.Null, pgl.Int(42)]
+  let params = [value.null, value.int(42)]
 
   let assert Ok(result) = pgl.query(sql, params, conn)
 
@@ -595,7 +514,7 @@ pub fn mixed_types_with_encoding_test() {
     ])
     |> returning(["name", "active", "nicknames"])
 
-  let params = [pgl.Text("Margaret"), pgl.Bool(True)]
+  let params = [value.Text("Margaret"), value.Bool(True)]
 
   let assert Ok(result) = pgl.query(sql, params, conn)
 
@@ -716,10 +635,10 @@ pub fn insert_with_values_test() {
     "INSERT INTO users (name, nicknames, birthday, created_at) VALUES ($1, $2, $3, $4)"
 
   let values = [
-    pgl.text("Richard"),
-    pgl.array(["Dick", "Robin", "Nightwing"], of: pgl.text),
-    pgl.date(calendar.Date(2011, calendar.March, 20)),
-    pgl.timestamp(timestamp.system_time()),
+    value.text("Richard"),
+    value.array(["Dick", "Robin", "Nightwing"], of: value.text),
+    value.date(calendar.Date(2011, calendar.March, 20)),
+    value.timestamp(timestamp.system_time()),
   ]
 
   let assert Ok(_) = pgl.query(sql, values, conn)
@@ -789,7 +708,7 @@ pub fn transaction_error_test() {
 
   let assert Ok(_queried) =
     "INSERT INTO tx_test (id, name) VALUES ($1, $2) RETURNING *"
-    |> pgl.query([pgl.int(1), pgl.text("Before")], conn)
+    |> pgl.query([value.int(1), value.text("Before")], conn)
 
   let assert Ok(queried) =
     "SELECT COUNT(*) FROM tx_test"
@@ -802,10 +721,10 @@ pub fn transaction_error_test() {
 
     let assert Ok(_queried) =
       "INSERT INTO tx_test (id, name) VALUES ($1, $2) RETURNING *"
-      |> pgl.query([pgl.int(2), pgl.text("Transaction")], tx)
+      |> pgl.query([value.int(2), value.text("Transaction")], tx)
 
     "INSERT INTO tx_test (id, name) VALUES ($1, $2) RETURNING *"
-    |> pgl.query([pgl.int(1), pgl.text("Duplicate")], tx)
+    |> pgl.query([value.int(1), value.text("Duplicate")], tx)
   }
 
   let assert "23505" = code

@@ -1,10 +1,8 @@
 import db/pool
 import exception
-import gleam/bit_array
 import gleam/dict.{type Dict}
 import gleam/dynamic.{type Dynamic}
 import gleam/erlang/process.{type Pid}
-import gleam/float
 import gleam/int
 import gleam/list
 import gleam/option.{type Option, None, Some}
@@ -12,11 +10,8 @@ import gleam/otp/actor
 import gleam/otp/static_supervisor.{type Supervisor} as supervisor
 import gleam/otp/supervision
 import gleam/result
-import gleam/string
-import gleam/time/calendar
-import gleam/time/duration.{type Duration}
-import gleam/time/timestamp.{type Timestamp}
 import pg/types
+import pg/value.{type Value}
 import pgl/config.{type Config}
 import pgl/internal
 import pgl/internal/decode
@@ -25,121 +20,6 @@ import pgl/internal/protocol
 import pgl/internal/query_cache.{type QueryCache}
 import pgl/internal/socket.{type Socket}
 import pgl/internal/type_cache.{type TypeCache}
-
-pub type Value {
-  Null
-  Bool(Bool)
-  Int(Int)
-  Float(Float)
-  Text(String)
-  Bytea(BitArray)
-  Time(calendar.TimeOfDay)
-  Date(calendar.Date)
-  Timestamp(timestamp.Timestamp)
-  Interval(duration.Duration)
-  Array(List(Value))
-}
-
-pub fn value_to_string(val: Value) -> String {
-  case val {
-    Null -> "NULL"
-    Bool(val) -> bool_to_string(val)
-    Int(val) -> int.to_string(val)
-    Float(val) -> float.to_string(val)
-    Text(val) -> text_to_string(val)
-    Bytea(val) -> bytea_to_string(val)
-    Time(val) -> time_to_string(val)
-    Date(val) -> date_to_string(val)
-    Timestamp(val) -> timestamp_to_string(val)
-    Interval(val) -> duration_to_string(val)
-    Array(vals) -> array_to_string(vals)
-  }
-}
-
-fn text_to_string(val: String) -> String {
-  let val = string.replace(in: val, each: "'", with: "\\'")
-
-  single_quote(val)
-}
-
-// https://www.postgresql.org/docs/current/arrays.html#ARRAYS-INPUT
-fn array_to_string(val: List(Value)) -> String {
-  let elems = case val {
-    [] -> ""
-    [val] -> value_to_string(val)
-    vals -> {
-      vals
-      |> list.map(value_to_string)
-      |> string.join(", ")
-    }
-  }
-
-  "ARRAY[" <> elems <> "]"
-}
-
-// https://www.postgresql.org/docs/current/datatype-boolean.html#DATATYPE-BOOLEAN
-fn bool_to_string(val: Bool) -> String {
-  case val {
-    True -> "TRUE"
-    False -> "FALSE"
-  }
-}
-
-// https://www.postgresql.org/docs/current/datatype-binary.html#DATATYPE-BINARY-BYTEA-HEX-FORMAT
-fn bytea_to_string(val: BitArray) -> String {
-  let val = "\\x" <> bit_array.base16_encode(val)
-
-  single_quote(val)
-}
-
-fn date_to_string(date: calendar.Date) -> String {
-  let year = int.to_string(date.year)
-  let month = calendar.month_to_int(date.month) |> pad_zero
-  let day = pad_zero(date.day)
-
-  let date = year <> "-" <> month <> "-" <> day
-
-  single_quote(date)
-}
-
-fn time_to_string(tod: calendar.TimeOfDay) -> String {
-  let hours = pad_zero(tod.hours)
-  let minutes = pad_zero(tod.minutes)
-  let seconds = pad_zero(tod.seconds)
-  let milliseconds = tod.nanoseconds / 1_000_000
-
-  let msecs = case milliseconds < 100 {
-    True if milliseconds == 0 -> ""
-    True if milliseconds < 10 -> ".00" <> int.to_string(milliseconds)
-    True -> ".0" <> int.to_string(milliseconds)
-    False -> "." <> int.to_string(milliseconds)
-  }
-
-  let time = hours <> ":" <> minutes <> ":" <> seconds <> msecs
-
-  single_quote(time)
-}
-
-fn timestamp_to_string(ts: Timestamp) -> String {
-  timestamp.to_rfc3339(ts, calendar.utc_offset)
-  |> single_quote
-}
-
-fn duration_to_string(dur: Duration) -> String {
-  duration.to_iso8601_string(dur)
-  |> single_quote
-}
-
-fn single_quote(val: String) -> String {
-  "'" <> val <> "'"
-}
-
-fn pad_zero(n: Int) -> String {
-  case n < 10 {
-    True -> "0" <> int.to_string(n)
-    False -> int.to_string(n)
-  }
-}
 
 pub type PglError {
   PglError(message: String)
@@ -176,59 +56,6 @@ pub type TransactionError(error) {
   NotInTransaction(message: String)
   FailedTransaction(message: String, cause: PglError)
   TransactionError
-}
-
-// ---------- Values ---------- //
-
-pub const null = Null
-
-pub fn bool(val: Bool) -> Value {
-  Bool(val)
-}
-
-pub fn int(val: Int) -> Value {
-  Int(val)
-}
-
-pub fn float(val: Float) -> Value {
-  Float(val)
-}
-
-pub fn text(val: String) -> Value {
-  Text(val)
-}
-
-pub fn bytea(val: BitArray) -> Value {
-  Bytea(val)
-}
-
-pub fn time(val: calendar.TimeOfDay) -> Value {
-  Time(val)
-}
-
-pub fn date(val: calendar.Date) -> Value {
-  Date(val)
-}
-
-pub fn timestamp(ts: Timestamp) -> Value {
-  Timestamp(ts)
-}
-
-pub fn interval(val: Duration) -> Value {
-  Interval(val)
-}
-
-pub fn array(vals: List(a), of kind: fn(a) -> Value) -> Value {
-  vals
-  |> list.map(kind)
-  |> Array
-}
-
-pub fn nullable(inner_type: fn(a) -> Value, value: Option(a)) -> Value {
-  case value {
-    Some(term) -> inner_type(term)
-    None -> Null
-  }
 }
 
 // ---------- Pool ---------- //
@@ -446,17 +273,17 @@ fn encode_from_cache(
 
 fn type_encoder(value: Value, info: types.TypeInfo) {
   case value {
-    Null -> types.encode(value, info, with: types.null)
-    Bool(val) -> types.encode(val, info, with: types.bool)
-    Int(val) -> types.encode(val, info, with: types.int)
-    Float(val) -> types.encode(val, info, with: types.float)
-    Text(val) -> types.encode(val, info, with: types.text)
-    Bytea(val) -> types.encode(val, info, with: types.raw)
-    Time(val) -> types.encode(val, info, with: types.time)
-    Date(val) -> types.encode(val, info, with: types.date)
-    Timestamp(ts) -> types.encode(ts, info, with: types.timestamp)
-    Interval(val) -> types.encode(val, info, with: types.interval)
-    Array(val) ->
+    value.Null -> types.encode(value, info, with: types.null)
+    value.Bool(val) -> types.encode(val, info, with: types.bool)
+    value.Int(val) -> types.encode(val, info, with: types.int)
+    value.Float(val) -> types.encode(val, info, with: types.float)
+    value.Text(val) -> types.encode(val, info, with: types.text)
+    value.Bytea(val) -> types.encode(val, info, with: types.raw)
+    value.Time(val) -> types.encode(val, info, with: types.time)
+    value.Date(val) -> types.encode(val, info, with: types.date)
+    value.Timestamp(ts) -> types.encode(ts, info, with: types.timestamp)
+    value.Interval(val) -> types.encode(val, info, with: types.interval)
+    value.Array(val) ->
       types.encode(val, info, with: fn(val, elem_ti) {
         types.array(val, elem_ti, of: type_encoder)
       })
