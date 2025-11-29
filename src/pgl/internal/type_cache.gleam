@@ -8,13 +8,13 @@ import gleam/otp/actor
 import gleam/otp/supervision
 import gleam/result
 import gleam/string
+import pg/types
 import pgl/config.{type Config}
 import pgl/internal
 import pgl/internal/encode
 import pgl/internal/protocol
 import pgl/internal/socket
 import pgl/internal/store.{type Store}
-import pgl/types
 
 pub opaque type TypeCache {
   TypeCache(np: process.Name(Message))
@@ -149,8 +149,8 @@ fn parse_type_infos(
       use elem_type <- result.map(dict.get(oid_to_info, info.elem_oid))
 
       info
-      |> types.set_elem_type(Some(elem_type))
-      |> types.set_comp_types(Some(comp_types))
+      |> types.elem_type(Some(elem_type))
+      |> types.comp_types(Some(comp_types))
     })
     |> result.unwrap(info)
     |> store.insert(oid, _)
@@ -188,15 +188,15 @@ fn parse_type_info(
         use comp_oids <- result.map(parse_comp_oids(comp_oids))
 
         types.info(oid)
-        |> types.set_name(name)
-        |> types.set_typesend(typesend)
-        |> types.set_typereceive(typereceive)
-        |> types.set_typelen(typelen)
-        |> types.set_output(output)
-        |> types.set_input(input)
-        |> types.set_elem_oid(elem_oid)
-        |> types.set_base_oid(base_oid)
-        |> types.set_comp_oids(comp_oids)
+        |> types.name(name)
+        |> types.typesend(typesend)
+        |> types.typereceive(typereceive)
+        |> types.typelen(typelen)
+        |> types.output(output)
+        |> types.input(input)
+        |> types.elem_oid(elem_oid)
+        |> types.base_oid(base_oid)
+        |> types.comp_oids(comp_oids)
       }
       |> result.replace_error(internal.TypeCacheError(
         kind: internal.LoadError,

@@ -17,6 +17,7 @@ gleam_otp = ">= 1.0.0 and < 2.0.0"
 gleam_time = ">= 1.2.0 and < 2.0.0"
 exception = ">= 2.1.0 and < 3.0.0"
 db_pool = { git = "https://github.com/stndrs/db_pool.git", ref = "main" }
+pg_types = { git = "https://github.com/stndrs/pg_types.git", ref = "main" }
 
 [dev-dependencies]
 gleeunit = "~> 1.0"

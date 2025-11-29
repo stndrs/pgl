@@ -16,6 +16,7 @@ import gleam/string
 import gleam/time/calendar
 import gleam/time/duration.{type Duration}
 import gleam/time/timestamp.{type Timestamp}
+import pg/types
 import pgl/config.{type Config}
 import pgl/internal
 import pgl/internal/decode
@@ -24,7 +25,6 @@ import pgl/internal/protocol
 import pgl/internal/query_cache.{type QueryCache}
 import pgl/internal/socket.{type Socket}
 import pgl/internal/type_cache.{type TypeCache}
-import pgl/types
 
 pub type Value {
   Null
