@@ -435,7 +435,7 @@ pub fn batch_process(
   extended: Extended(v),
   queries: List(encode.Query(v, t)),
   sock: Socket,
-) -> Result(List(Extended(v)), internal.PglError) {
+) -> Result(Extended(v), internal.PglError) {
   let packet =
     queries
     |> list.map(encode.to_bit_array)
@@ -447,7 +447,11 @@ pub fn batch_process(
   flow
   |> increment_sync
   |> do_pipeline(extended, queries, sock)
-  |> result.map(fn(pl) { pl.acc })
+  |> result.try(fn(pl) {
+    // TODO: collect all Extended data into
+    list.last(pl.acc)
+    |> result.map_error(fn(_) { internal.PglError("No results") })
+  })
 }
 
 fn do_pipeline(

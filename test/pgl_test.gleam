@@ -394,11 +394,9 @@ pub fn pipeline_multiple_query_test() {
 
   let params2 = [value.Text("Richard"), value.Bool(False)]
 
-  let assert Ok(rows) =
+  let assert Ok(_) =
     [pgl.Query(insert1, params1), pgl.Query(insert2, params2)]
     |> pgl.pipeline(conn)
-
-  list.try_map(rows, fn(_rows) { Ok(Nil) })
 }
 
 pub fn pipeline_multiple_different_queries_test() {
@@ -412,11 +410,170 @@ pub fn pipeline_multiple_different_queries_test() {
 
   let params1 = [value.Text("Margaret"), value.Bool(True)]
 
-  let assert Ok(rows) =
+  let assert Ok(_) =
     [pgl.Query(insert1, params1), pgl.Query("SELECT 1", [])]
     |> pgl.pipeline(conn)
+}
 
-  list.try_map(rows, fn(_rows) { Ok(Nil) })
+pub fn pipeline_dependent_queries_test() {
+  let db = global_pool()
+
+  let drop1 = "DROP TABLE IF EXISTS users;"
+  let drop2 = "DROP TABLE IF EXISTS posts;"
+  let drop3 = "DROP TABLE IF EXISTS comments;"
+  let drop4 = "DROP TABLE IF EXISTS tags;"
+
+  let create1 =
+    "CREATE TABLE IF NOT EXISTS users (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(50) NOT NULL
+  );"
+  let create2 =
+    "CREATE TABLE IF NOT EXISTS posts (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    content TEXT NOT NULL
+  );"
+  let create3 =
+    "CREATE TABLE IF NOT EXISTS comments (
+    id SERIAL PRIMARY KEY,
+    post_id INTEGER NOT NULL,
+    content TEXT NOT NULL
+  );"
+  let create4 =
+    "CREATE TABLE IF NOT EXISTS tags (
+    id SERIAL PRIMARY KEY,
+    post_id INTEGER NOT NULL,
+    name VARCHAR(20) NOT NULL
+  );"
+
+  // set up tables
+  let assert Ok(Nil) =
+    pgl.with_connection(db, fn(conn) {
+      let assert Ok(_) = pgl.exec(drop1, conn)
+      let assert Ok(_) = pgl.exec(drop2, conn)
+      let assert Ok(_) = pgl.exec(drop3, conn)
+      let assert Ok(_) = pgl.exec(drop4, conn)
+
+      let assert Ok(_) = pgl.exec(create1, conn)
+      let assert Ok(_) = pgl.exec(create2, conn)
+      let assert Ok(_) = pgl.exec(create3, conn)
+      let assert Ok(_) = pgl.exec(create4, conn)
+
+      Nil
+    })
+
+  use conn <- pgl.with_connection(db)
+
+  // create users
+
+  let create_user_sql = "INSERT INTO users (name) VALUES ($1) RETURNING id"
+
+  let q1 = pgl.Query(create_user_sql, params: [value.text("Jim")])
+  let q2 = pgl.Query(create_user_sql, params: [value.text("Will")])
+  let q3 = pgl.Query(create_user_sql, params: [value.text("Jean-Luc")])
+
+  let assert Ok(queried) = pgl.pipeline([q1, q2, q3], conn)
+
+  let assert Ok(user_ids) =
+    queried.rows
+    |> list.try_map(fn(row) {
+      decode.run(row, {
+        use id <- decode.field(0, decode.int)
+        decode.success(id)
+      })
+    })
+
+  // create posts
+
+  let create_post_sql =
+    "INSERT INTO posts (user_id, title, content) VALUES ($1, $2, $3) RETURNING id"
+
+  let post_queries =
+    list.flat_map(user_ids, fn(user_id) {
+      [
+        pgl.Query(create_post_sql, params: [
+          value.int(user_id),
+          value.text("Unique title 1"),
+          value.text("Unique content"),
+        ]),
+        pgl.Query(create_post_sql, params: [
+          value.int(user_id),
+          value.text("Unique title 2"),
+          value.text("Unique content"),
+        ]),
+        pgl.Query(create_post_sql, params: [
+          value.int(user_id),
+          value.text("Unique title 3"),
+          value.text("Unique content"),
+        ]),
+        pgl.Query(create_post_sql, params: [
+          value.int(user_id),
+          value.text("Unique title 4"),
+          value.text("Unique content"),
+        ]),
+        pgl.Query(create_post_sql, params: [
+          value.int(user_id),
+          value.text("Unique title 5"),
+          value.text("Unique content"),
+        ]),
+      ]
+    })
+
+  let assert Ok(queried) = pgl.pipeline(post_queries, conn)
+
+  let assert Ok(post_ids) =
+    queried.rows
+    |> list.try_map(fn(row) {
+      decode.run(row, {
+        use id <- decode.field(0, decode.int)
+        decode.success(id)
+      })
+    })
+
+  // create comments and tags
+
+  let create_comment_sql =
+    "INSERT INTO comments (post_id, content) VALUES ($1, $2) RETURNING *"
+  let create_tag_sql =
+    "INSERT INTO tags (post_id, name) VALUES ($1, $2) RETURNING *"
+
+  let comment_and_tag_queries =
+    list.flat_map(post_ids, fn(post_id) {
+      [
+        pgl.Query(create_comment_sql, params: [
+          value.int(post_id),
+          value.text("Unique comment 1"),
+        ]),
+        pgl.Query(create_comment_sql, params: [
+          value.int(post_id),
+          value.text("Unique comment 2"),
+        ]),
+        pgl.Query(create_tag_sql, params: [
+          value.int(post_id),
+          value.text("blog"),
+        ]),
+        pgl.Query(create_tag_sql, params: [
+          value.int(post_id),
+          value.text("mid"),
+        ]),
+      ]
+    })
+
+  let assert Ok(queried) = pgl.pipeline(comment_and_tag_queries, conn)
+
+  let assert Ok(_data) =
+    queried.rows
+    |> list.try_map(fn(row) {
+      decode.run(row, {
+        use id <- decode.field(0, decode.int)
+        use post_id <- decode.field(1, decode.int)
+        use text <- decode.field(2, decode.string)
+
+        decode.success(#(id, post_id, text))
+      })
+    })
 }
 
 fn insert_into_users(values: List(String)) -> String {
