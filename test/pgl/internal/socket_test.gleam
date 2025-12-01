@@ -1,10 +1,9 @@
 import gleam/function
-import pgl/config.{type Config}
 import pgl/internal
 import pgl/internal/socket.{type Socket}
 
 pub fn send_test() {
-  let sock = with_mock_socket(config.default, function.identity)
+  let sock = with_mock_socket(socket.default_config, function.identity)
 
   let assert Ok(result) = socket.send(sock, <<"no-op":utf8>>)
   let assert True = result == sock
@@ -12,7 +11,7 @@ pub fn send_test() {
 
 pub fn send_error_test() {
   let sock =
-    with_mock_socket(config.default, fn(sb) {
+    with_mock_socket(socket.default_config, fn(sb) {
       let send = fn(_, _) { send_error() }
 
       socket.set_send(sb, send)
@@ -26,7 +25,7 @@ pub fn send_error_test() {
 
 pub fn receive_test() {
   let sock =
-    with_mock_socket(config.default, fn(sb) {
+    with_mock_socket(socket.default_config, fn(sb) {
       let recv = fn(_, _, _) { Ok(<<"working":utf8>>) }
 
       socket.set_recv(sb, recv)
@@ -37,7 +36,7 @@ pub fn receive_test() {
 
 pub fn receive_error_test() {
   let sock =
-    with_mock_socket(config.default, fn(sb) {
+    with_mock_socket(socket.default_config, fn(sb) {
       let recv = fn(_, _, _) { receive_error() }
 
       socket.set_recv(sb, recv)
@@ -51,13 +50,13 @@ pub fn receive_error_test() {
 
 pub fn shutdown_test() {
   let assert Ok(Nil) =
-    with_mock_socket(config.default, function.identity)
+    with_mock_socket(socket.default_config, function.identity)
     |> socket.shutdown
 }
 
 pub fn shutdown_error_test() {
   let sock =
-    with_mock_socket(config.default, fn(sb) {
+    with_mock_socket(socket.default_config, fn(sb) {
       socket.set_shutdown(sb, fn(_) { shutdown_error() })
     })
 
@@ -76,19 +75,13 @@ pub fn connect_error_test() {
   let assert Error(internal.SocketError(
     kind: internal.ConnectError(code: internal.Timeout),
     message: "Failed to connect",
-  )) = socket.connect(sb, config.default)
+  )) = socket.connect(sb, socket.default_config)
 }
 
 pub fn connect_real_test() {
-  let conf =
-    config.default
-    |> config.set_database("gleam_pgl_test")
-    |> config.set_username("postgres")
-    |> config.set_password("postgres")
-
   let assert Ok(sock) =
     socket.tcp
-    |> socket.connect(conf)
+    |> socket.connect(socket.default_config)
 
   let assert Ok(Nil) = socket.shutdown(sock)
 }
@@ -128,7 +121,7 @@ fn shutdown_error() -> Result(Nil, internal.PglError) {
 // Mock socket and port helpers 
 
 pub fn with_mock_socket(
-  conf: Config,
+  conf: socket.Config,
   next: fn(socket.SocketBuilder) -> socket.SocketBuilder,
 ) -> Socket {
   let assert Ok(sock) =

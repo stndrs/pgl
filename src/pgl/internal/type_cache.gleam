@@ -9,7 +9,6 @@ import gleam/otp/supervision
 import gleam/result
 import gleam/string
 import pg/types
-import pgl/config.{type Config}
 import pgl/internal
 import pgl/internal/encode
 import pgl/internal/protocol
@@ -21,7 +20,10 @@ pub opaque type TypeCache {
 }
 
 pub opaque type Message {
-  Load(client: process.Subject(Result(Nil, internal.PglError)), config: Config)
+  Load(
+    client: process.Subject(Result(Nil, internal.PglError)),
+    config: protocol.Config,
+  )
   Lookup(
     client: process.Subject(Result(List(types.TypeInfo), internal.PglError)),
     oids: List(Int),
@@ -57,14 +59,17 @@ pub fn supervised(tc: TypeCache) -> supervision.ChildSpecification(Nil) {
   |> supervision.restart(supervision.Transient)
 }
 
-pub fn load(tc: TypeCache, config: Config) -> Result(Nil, internal.PglError) {
+pub fn load(
+  tc: TypeCache,
+  config: protocol.Config,
+) -> Result(Nil, internal.PglError) {
   process.named_subject(tc.np) |> actor.call(1000, Load(_, config))
 }
 
 pub fn lookup(
   tc: TypeCache,
   oids: List(Int),
-  config: Config,
+  config: protocol.Config,
 ) -> Result(List(types.TypeInfo), internal.PglError) {
   use <- result.lazy_or(do_lookup(tc, oids))
   use _ <- result.try(load(tc, config))
@@ -96,7 +101,7 @@ fn handle_message(
 
 fn handle_load(
   store: Store(Int, types.TypeInfo),
-  config: Config,
+  config: protocol.Config,
   client: process.Subject(Result(Nil, internal.PglError)),
 ) -> actor.Next(Store(Int, types.TypeInfo), a) {
   {

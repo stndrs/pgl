@@ -1,6 +1,8 @@
 import gleam/dict.{type Dict}
 import gleam/result
 
+pub const default_port = 5432
+
 // ---------- Messages ---------- //
 
 pub const header_size = 5

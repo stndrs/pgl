@@ -1,12 +1,12 @@
 import gleam/list
-import pgl/config
+import pgl/internal/protocol
 import pgl/internal/type_cache.{type TypeCache}
 
 fn conf() {
-  config.default
-  |> config.set_database("gleam_pgl_test")
-  |> config.set_username("postgres")
-  |> config.set_password("postgres")
+  protocol.default_config
+  |> protocol.database("gleam_pgl_test")
+  |> protocol.username("postgres")
+  |> protocol.password("postgres")
 }
 
 pub fn load_test() {

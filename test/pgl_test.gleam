@@ -12,7 +12,6 @@ import gleeunit
 import global_value
 import pg/value
 import pgl
-import pgl/config
 import pgl/internal
 
 pub fn main() {
@@ -22,17 +21,17 @@ pub fn main() {
 pub fn parse_url_test() {
   let assert Ok(conf) =
     "postgres://postgres:supersecretpassword@localhost:5433/gleam_pgl_test"
-    |> config.from_url
+    |> pgl.from_url
 
   let assert True =
-    config.Config(
-      ..config.default,
+    pgl.Config(
+      ..pgl.default,
       host: "localhost",
       port: 5433,
       database: "gleam_pgl_test",
       user: "postgres",
       password: "supersecretpassword",
-      ssl: config.SslDisabled,
+      ssl: pgl.SslDisabled,
     )
     == conf
 }
@@ -40,11 +39,11 @@ pub fn parse_url_test() {
 pub fn parse_url_alternative_schema_test() {
   let assert Ok(conf) =
     "postgresql://postgres:supersecretpassword@localhost:5433/gleam_pgl_test"
-    |> config.from_url
+    |> pgl.from_url
 
   let assert True =
-    config.Config(
-      ..config.default,
+    pgl.Config(
+      ..pgl.default,
       host: "localhost",
       port: 5433,
       database: "gleam_pgl_test",
@@ -56,30 +55,27 @@ pub fn parse_url_alternative_schema_test() {
 
 pub fn parse_url_invalid_protocol_test() {
   let assert Error(Nil) =
-    config.from_url(
-      "mysql://u:supersecretpassword@localhost:5432/gleam_pgl_test",
-    )
+    pgl.from_url("mysql://u:supersecretpassword@localhost:5432/gleam_pgl_test")
 }
 
 pub fn parse_url_invalid_path_test() {
-  let assert Error(Nil) =
-    config.from_url("postgres://user:pass@db:5432/some/path")
+  let assert Error(Nil) = pgl.from_url("postgres://user:pass@db:5432/some/path")
 }
 
 pub fn parse_url_ssl_mode_require_test() {
   let assert Ok(conf) =
     "postgres://user:pass@localhost:5432/gleam_pgl_test?sslmode=require"
-    |> config.from_url
+    |> pgl.from_url
 
   let assert True =
-    config.Config(
-      ..config.default,
+    pgl.Config(
+      ..pgl.default,
       host: "localhost",
       port: 5432,
       database: "gleam_pgl_test",
       user: "user",
       password: "pass",
-      ssl: config.SslUnverified,
+      ssl: pgl.SslUnverified,
     )
     == conf
 }
@@ -87,36 +83,120 @@ pub fn parse_url_ssl_mode_require_test() {
 pub fn parse_url_ssl_mode_verify_test() {
   let assert Ok(conf) =
     "postgres://user:pass@localhost:5432/gleam_pgl_test?sslmode=verify-ca"
-    |> config.from_url
+    |> pgl.from_url
 
   let assert True =
-    config.Config(
-      ..config.default,
+    pgl.Config(
+      ..pgl.default,
       host: "localhost",
       port: 5432,
       database: "gleam_pgl_test",
       user: "user",
       password: "pass",
-      ssl: config.SslVerified,
+      ssl: pgl.SslVerified,
     )
     == conf
 
   let assert Ok(conf) =
     "postgres://user:pass@localhost:5432/gleam_pgl_test?sslmode=verify-full"
-    |> config.from_url
+    |> pgl.from_url
 
   let assert True =
-    config.Config(
-      ..config.default,
+    pgl.Config(
+      ..pgl.default,
       host: "localhost",
       port: 5432,
       database: "gleam_pgl_test",
       user: "user",
       password: "pass",
-      ssl: config.SslVerified,
+      ssl: pgl.SslVerified,
     )
     == conf
 }
+
+// Config tests
+
+pub fn database_test() {
+  let conf = pgl.default
+  let result = pgl.database(conf, "test_db")
+
+  let assert "test_db" = result.database
+  let assert True = result.host == conf.host
+  let assert True = result.port == conf.port
+}
+
+pub fn host_test() {
+  let conf = pgl.default
+  let result = pgl.host(conf, "192.168.1.1")
+
+  let assert "192.168.1.1" = result.host
+  let assert True = result.database == conf.database
+  let assert True = result.port == conf.port
+}
+
+pub fn port_test() {
+  let conf = pgl.default
+  let result = pgl.port(conf, 3306)
+
+  let assert 3306 = result.port
+  let assert True = result.host == conf.host
+  let assert True = result.database == conf.database
+}
+
+pub fn username_test() {
+  let conf = pgl.default
+  let result = pgl.username(conf, "admin")
+
+  let assert "admin" = result.user
+  let assert True = result.host == conf.host
+  let assert True = result.password == conf.password
+}
+
+pub fn password_test() {
+  let conf = pgl.default
+  let result = pgl.password(conf, "secret123")
+
+  let assert "secret123" = result.password
+  let assert True = result.user == conf.user
+  let assert True = result.host == conf.host
+}
+
+pub fn ping_timeout_test() {
+  let conf = pgl.default
+  let result = pgl.ping_timeout(conf, 2000)
+
+  let assert 2000 = result.ping_timeout
+  let assert True = result.timeout == conf.timeout
+}
+
+pub fn ssl_test() {
+  let conf = pgl.default
+  let result = pgl.ssl(conf, pgl.SslVerified)
+
+  let assert pgl.SslVerified = result.ssl
+  let assert True = result.host == conf.host
+  let assert True = result.port == conf.port
+}
+
+pub fn default_values_test() {
+  let conf = pgl.default
+
+  let assert "127.0.0.1" = conf.host
+  let assert 5432 = conf.port
+  let assert "" = conf.user
+  let assert "" = conf.password
+  let assert "" = conf.database
+  let assert 5000 = conf.timeout
+  let assert 1000 = conf.ping_timeout
+  let assert 5000 = conf.recv_timeout
+  let assert pgl.SslDisabled = conf.ssl
+}
+
+pub fn default_port_constant_test() {
+  let assert 5432 = pgl.default_port
+}
+
+// Database tests
 
 const drop_table_sql = "DROP TABLE IF EXISTS users;"
 
@@ -135,7 +215,7 @@ fn global_pool() -> pgl.Db {
 
   let assert Ok(conf) =
     "postgres://postgres:postgres@127.0.0.1/gleam_pgl_test"
-    |> config.from_url
+    |> pgl.from_url
 
   let db = pgl.new(conf)
 
@@ -149,7 +229,7 @@ fn global_pool_ssl() -> pgl.Db {
 
   let assert Ok(conf) =
     "postgres://postgres:postgres@127.0.0.1:5433/gleam_pgl_test?sslmode=require"
-    |> config.from_url
+    |> pgl.from_url
 
   let db = pgl.new(conf)
 
@@ -163,9 +243,9 @@ fn global_pool_rows_as_maps() -> pgl.Db {
 
   let assert Ok(conf) =
     "postgres://postgres:postgres@127.0.0.1/gleam_pgl_test"
-    |> config.from_url
+    |> pgl.from_url
 
-  let conf = config.set_rows_as_maps(conf, True)
+  let conf = pgl.rows_as_maps(conf, True)
 
   let db = pgl.new(conf)
 

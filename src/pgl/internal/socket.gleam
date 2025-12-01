@@ -1,8 +1,29 @@
 import gleam/dict.{type Dict}
 import gleam/erlang/charlist.{type Charlist}
 import gleam/result
-import pgl/config.{type Config}
 import pgl/internal
+
+pub type Config {
+  Config(host: String, port: Int, timeout: Int)
+}
+
+pub const default_config = Config(
+  host: "127.0.0.1",
+  port: internal.default_port,
+  timeout: 1000,
+)
+
+pub fn host(conf: Config, host: String) -> Config {
+  Config(..conf, host:)
+}
+
+pub fn port(conf: Config, port: Int) -> Config {
+  Config(..conf, port:)
+}
+
+pub fn timeout(conf: Config, timeout: Int) -> Config {
+  Config(..conf, timeout:)
+}
 
 pub type Connect =
   fn(Config) -> Result(Sock, internal.PglError)
@@ -114,7 +135,7 @@ pub fn send(
 /// of bytes to read. `receive`'s timeout is determined by the value set in the `Config`
 /// configured when the Socket was first created with `socket.new`.
 pub fn receive(sock: Socket, length: Int) -> Result(BitArray, internal.PglError) {
-  sock.recv(sock.conn, length, sock.conf.recv_timeout)
+  sock.recv(sock.conn, length, sock.conf.timeout)
 }
 
 /// Calls the Socket's `shutdown` function. This will disconnect the Socket's connection if

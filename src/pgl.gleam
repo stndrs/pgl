@@ -10,9 +10,10 @@ import gleam/otp/actor
 import gleam/otp/static_supervisor.{type Supervisor} as supervisor
 import gleam/otp/supervision
 import gleam/result
+import gleam/string
+import gleam/uri.{type Uri}
 import pg/types
 import pg/value.{type Value}
-import pgl/config.{type Config}
 import pgl/internal
 import pgl/internal/decode
 import pgl/internal/encode
@@ -20,6 +21,194 @@ import pgl/internal/protocol
 import pgl/internal/query_cache.{type QueryCache}
 import pgl/internal/socket.{type Socket}
 import pgl/internal/type_cache.{type TypeCache}
+
+// ---------- Config ---------- //
+
+pub type Config {
+  Config(
+    application: String,
+    host: String,
+    port: Int,
+    user: String,
+    password: String,
+    database: String,
+    timeout: Int,
+    ping_timeout: Int,
+    recv_timeout: Int,
+    ssl: Ssl,
+    rows_as_maps: Bool,
+    // pool config
+    connect_timeout: Int,
+    pool_size: Int,
+  )
+}
+
+fn to_protocol_config(conf: Config) -> protocol.Config {
+  let socket_config =
+    socket.default_config
+    |> socket.host(conf.host)
+    |> socket.port(conf.port)
+    |> socket.timeout(conf.recv_timeout)
+
+  protocol.default_config
+  |> protocol.application(conf.application)
+  |> protocol.username(conf.user)
+  |> protocol.password(conf.password)
+  |> protocol.database(conf.database)
+  |> protocol.socket_config(socket_config)
+}
+
+pub const default_port = 5432
+
+pub const default = Config(
+  application: "",
+  host: "127.0.0.1",
+  port: default_port,
+  user: "",
+  password: "",
+  database: "",
+  timeout: 5000,
+  ping_timeout: 1000,
+  recv_timeout: 5000,
+  ssl: SslDisabled,
+  rows_as_maps: False,
+  connect_timeout: 500,
+  pool_size: 1,
+)
+
+pub type Ssl {
+  SslDisabled
+  SslVerified
+  SslUnverified
+}
+
+pub fn application(conf: Config, application: String) -> Config {
+  Config(..conf, application:)
+}
+
+pub fn host(conf: Config, host: String) -> Config {
+  Config(..conf, host:)
+}
+
+pub fn port(conf: Config, port: Int) -> Config {
+  Config(..conf, port:)
+}
+
+pub fn username(conf: Config, user: String) -> Config {
+  Config(..conf, user:)
+}
+
+pub fn password(conf: Config, password: String) -> Config {
+  Config(..conf, password:)
+}
+
+pub fn database(conf: Config, database: String) -> Config {
+  Config(..conf, database:)
+}
+
+pub fn timeout(conf: Config, timeout: Int) -> Config {
+  Config(..conf, timeout:)
+}
+
+pub fn ping_timeout(conf: Config, ping_timeout: Int) -> Config {
+  Config(..conf, ping_timeout:)
+}
+
+pub fn recv_timeout(conf: Config, recv_timeout: Int) -> Config {
+  Config(..conf, recv_timeout:)
+}
+
+pub fn ssl(conf: Config, ssl: Ssl) -> Config {
+  Config(..conf, ssl:)
+}
+
+pub fn rows_as_maps(conf: Config, rows_as_maps: Bool) -> Config {
+  Config(..conf, rows_as_maps:)
+}
+
+pub fn pool_size(conf: Config, pool_size: Int) -> Config {
+  Config(..conf, pool_size:)
+}
+
+pub fn from_url(url: String) -> Result(Config, Nil) {
+  use uri <- result.try(uri.parse(url))
+  use conf <- result.try(options_from_uri(uri))
+  use conf <- result.try(apply_user_info(conf, uri))
+  use conf <- result.try(apply_host(conf, uri))
+  use conf <- result.try(apply_port(conf, uri))
+  use conf <- result.try(apply_database(conf, uri))
+
+  apply_ssl_mode(conf, uri)
+}
+
+fn options_from_uri(uri: Uri) -> Result(Config, Nil) {
+  use scheme <- try_option(uri.scheme)
+
+  case scheme {
+    "postgres" | "postgresql" -> Ok(default)
+    _ -> Error(Nil)
+  }
+}
+
+fn apply_user_info(conf: Config, uri: Uri) -> Result(Config, Nil) {
+  use user_info <- try_option(uri.userinfo)
+
+  case string.split(user_info, ":") {
+    [user] -> Ok(username(conf, user))
+    [user, pass] -> {
+      conf
+      |> username(user)
+      |> password(pass)
+      |> Ok
+    }
+    _ -> Error(Nil)
+  }
+}
+
+fn apply_host(conf: Config, uri: Uri) -> Result(Config, Nil) {
+  use h <- try_option(uri.host)
+
+  Ok(host(conf, h))
+}
+
+fn apply_port(conf: Config, uri: Uri) -> Result(Config, Nil) {
+  case uri.port {
+    Some(p) -> port(conf, p)
+    None -> conf
+  }
+  |> Ok
+}
+
+fn apply_database(conf: Config, uri: Uri) -> Result(Config, Nil) {
+  case string.split(uri.path, "/") {
+    ["", db] -> Ok(database(conf, db))
+    _ -> Error(Nil)
+  }
+}
+
+fn apply_ssl_mode(conf: Config, uri: Uri) -> Result(Config, Nil) {
+  case uri.query {
+    None -> Ok(SslDisabled)
+    Some(query) -> {
+      use query <- result.try(uri.parse_query(query))
+      use sslmode <- result.try(list.key_find(query, "sslmode"))
+
+      case sslmode {
+        "require" -> Ok(SslUnverified)
+        "verify-ca" | "verify-full" -> Ok(SslVerified)
+        "disable" -> Ok(SslDisabled)
+        _ -> Error(Nil)
+      }
+    }
+  }
+  |> result.map(ssl(conf, _))
+}
+
+fn try_option(maybe: Option(a), next: fn(a) -> Result(b, Nil)) -> Result(b, Nil) {
+  maybe
+  |> option.to_result(Nil)
+  |> result.try(next)
+}
 
 pub type PglError {
   PglError(message: String)
@@ -171,8 +360,9 @@ fn rows_to_maps(
 
 /// Creates a new connection to the database.
 fn connect(db: Db) -> Result(Connection, String) {
-  socket.tcp
-  |> protocol.auth(db.config)
+  db.config
+  |> to_protocol_config
+  |> protocol.auth(socket.tcp, _)
   |> result.map(Connection(_, None, db.tc, db.qc, db.config))
   |> result.map_error(internal.error_to_string)
 }
@@ -213,9 +403,10 @@ pub fn pipeline(
     queries
     |> list.try_map(fn(query) {
       let Query(sql, params) = query
+      let conf = to_protocol_config(conn.conf)
 
       use oids <- result.try(query_cache.lookup(conn.qc, sql))
-      use info <- result.map(type_cache.lookup(conn.tc, oids, conn.conf))
+      use info <- result.map(type_cache.lookup(conn.tc, oids, conf))
 
       encode.cached(sql, params, info, type_encoder)
     })
@@ -264,8 +455,10 @@ fn encode_from_cache(
   params: List(Value),
   conn: Connection,
 ) -> Result(encode.Query(Value, types.TypeInfo), internal.PglError) {
+  let conf = to_protocol_config(conn.conf)
+
   use oids <- result.try(query_cache.lookup(conn.qc, sql))
-  use info <- result.map(type_cache.lookup(conn.tc, oids, conn.conf))
+  use info <- result.map(type_cache.lookup(conn.tc, oids, conf))
 
   encode.cached(sql, params, info, type_encoder)
   |> encode.with_sync
@@ -297,8 +490,9 @@ fn on_param_description(
   conn: Connection,
 ) -> Result(BitArray, internal.PglError) {
   query_cache.insert(conn.qc, sql, oids)
+  let conf = to_protocol_config(conn.conf)
 
-  use info <- result.map(type_cache.lookup(conn.tc, oids, conn.conf))
+  use info <- result.map(type_cache.lookup(conn.tc, oids, conf))
 
   encode.cached(sql, params, info, type_encoder)
   |> encode.with_sync
@@ -310,7 +504,8 @@ fn decode_row(
   oids: List(Int),
   conn: Connection,
 ) -> Result(List(Dynamic), internal.PglError) {
-  use type_info <- result.try(type_cache.lookup(conn.tc, oids, conn.conf))
+  let conf = to_protocol_config(conn.conf)
+  use type_info <- result.try(type_cache.lookup(conn.tc, oids, conf))
 
   decode_row_values(values, type_info)
 }

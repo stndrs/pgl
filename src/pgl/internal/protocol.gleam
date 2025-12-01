@@ -2,13 +2,59 @@ import gleam/bit_array
 import gleam/dict.{type Dict}
 import gleam/dynamic.{type Dynamic}
 import gleam/list
+import gleam/option.{type Option, None, Some}
 import gleam/result
-import pgl/config.{type Config}
 import pgl/internal
 import pgl/internal/decode
 import pgl/internal/encode
 import pgl/internal/scram
 import pgl/internal/socket.{type Socket}
+
+// ---------- Config ---------- //
+
+pub type Config {
+  Config(
+    database: String,
+    username: String,
+    password: String,
+    application: String,
+    ssl: Option(Bool),
+    socket_config: socket.Config,
+  )
+}
+
+pub const default_config = Config(
+  database: "",
+  username: "",
+  password: "",
+  application: "",
+  ssl: None,
+  socket_config: socket.default_config,
+)
+
+pub fn application(conf: Config, application: String) -> Config {
+  Config(..conf, application:)
+}
+
+pub fn username(conf: Config, username: String) -> Config {
+  Config(..conf, username:)
+}
+
+pub fn password(conf: Config, password: String) -> Config {
+  Config(..conf, password:)
+}
+
+pub fn database(conf: Config, database: String) -> Config {
+  Config(..conf, database:)
+}
+
+pub fn ssl(conf: Config, ssl: Option(Bool)) -> Config {
+  Config(..conf, ssl:)
+}
+
+pub fn socket_config(conf: Config, socket_config: socket.Config) -> Config {
+  Config(..conf, socket_config:)
+}
 
 // ---------- Auth flow ---------- //
 
@@ -16,7 +62,7 @@ pub fn auth(
   sb: socket.SocketBuilder,
   conf: Config,
 ) -> Result(Socket, internal.PglError) {
-  socket.connect(sb, conf)
+  socket.connect(sb, conf.socket_config)
   |> result.try(ssl_upgrade(_, conf))
   |> result.try(setup(_, conf))
 }
@@ -28,9 +74,8 @@ pub fn ssl_upgrade(
   conf: Config,
 ) -> Result(Socket, internal.PglError) {
   case conf.ssl {
-    config.SslDisabled -> Ok(sock)
-    config.SslVerified -> do_ssl_upgrade(sock, verified: True)
-    config.SslUnverified -> do_ssl_upgrade(sock, verified: False)
+    Some(verified) -> do_ssl_upgrade(sock, verified:)
+    None -> Ok(sock)
   }
 }
 
@@ -41,9 +86,7 @@ fn do_ssl_upgrade(
   socket.send(sock, encode.ssl_request())
   |> result.try(fn(sock) {
     case socket.receive(sock, 1) {
-      Ok(<<"S":utf8>>) -> {
-        socket.ssl_upgrade(sock, verified:)
-      }
+      Ok(<<"S":utf8>>) -> socket.ssl_upgrade(sock, verified:)
       Ok(<<"N":utf8>>) -> Error(socket.ssl_error("SSL refused"))
       Ok(_) -> Error(socket.ssl_error("Failed to upgrade SSL"))
       Error(err) -> Error(err)
@@ -54,7 +97,7 @@ fn do_ssl_upgrade(
 fn setup(sock: Socket, conf: Config) -> Result(Socket, internal.PglError) {
   let message =
     [
-      #("user", conf.user),
+      #("user", conf.username),
       #("database", conf.database),
       #("application_name", conf.application),
     ]
@@ -136,7 +179,7 @@ fn auth_sasl_continue(
 ) -> Result(BitArray, internal.PglError) {
   scram.parse_server_first(server_first, client_nonce)
   |> result.try(fn(sf) {
-    let user = <<conf.user:utf8>>
+    let user = <<conf.username:utf8>>
     let pass = <<conf.password:utf8>>
 
     let #(client_final, server_signature) =
@@ -155,7 +198,7 @@ fn scram_sha_256(
 ) -> Result(BitArray, internal.PglError) {
   let client_nonce = scram.get_nonce(16)
 
-  scram.client_first(<<conf.user:utf8>>, client_nonce)
+  scram.client_first(<<conf.username:utf8>>, client_nonce)
   |> scram.encode_auth_scram_client_first
   |> socket.send(sock, _)
   |> result.replace(client_nonce)

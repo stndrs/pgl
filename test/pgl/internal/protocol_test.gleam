@@ -1,4 +1,4 @@
-import pgl/config
+import gleam/option
 import pgl/internal
 import pgl/internal/encode
 import pgl/internal/protocol
@@ -8,8 +8,8 @@ import pgl/internal/type_cache
 
 pub fn ssl_upgrade_unexpected_receive_test() {
   let conf =
-    config.default
-    |> config.set_ssl(config.SslUnverified)
+    protocol.default_config
+    |> protocol.ssl(option.Some(False))
 
   let sb =
     socket_test.with_mock_socket_builder(fn(sb) {
@@ -24,10 +24,10 @@ pub fn ssl_upgrade_unexpected_receive_test() {
 
 pub fn protocol_test() {
   let conf =
-    config.default
-    |> config.set_database("gleam_pgl_test")
-    |> config.set_username("postgres")
-    |> config.set_password("postgres")
+    protocol.default_config
+    |> protocol.database("gleam_pgl_test")
+    |> protocol.username("postgres")
+    |> protocol.password("postgres")
 
   let assert Ok(sock) =
     socket.tcp
@@ -41,7 +41,7 @@ pub fn protocol_test() {
 pub fn auth_failure_test() {
   let assert Error(internal.PostgresError(err)) =
     socket.tcp
-    |> protocol.auth(config.default)
+    |> protocol.auth(protocol.default_config)
 
   let assert "28000" = err.code
   let assert "invalid_authorization_specification" = err.name
@@ -50,10 +50,10 @@ pub fn auth_failure_test() {
 
 pub fn protocol_bootstrap_test() {
   let conf =
-    config.default
-    |> config.set_database("gleam_pgl_test")
-    |> config.set_username("postgres")
-    |> config.set_password("postgres")
+    protocol.default_config
+    |> protocol.database("gleam_pgl_test")
+    |> protocol.username("postgres")
+    |> protocol.password("postgres")
 
   let assert Ok(sock) =
     socket.tcp
