@@ -477,13 +477,18 @@ pub fn pipeline_dependent_queries_test() {
   let assert Ok(queried) = pgl.pipeline([q1, q2, q3], conn)
 
   let assert Ok(user_ids) =
-    queried.rows
-    |> list.try_map(fn(row) {
-      decode.run(row, {
-        use id <- decode.field(0, decode.int)
-        decode.success(id)
+    queried
+    |> list.try_map(fn(queried) {
+      queried.rows
+      |> list.try_map(fn(row) {
+        decode.run(row, {
+          use id <- decode.field(0, decode.int)
+          decode.success(id)
+        })
       })
     })
+
+  let user_ids = list.flatten(user_ids)
 
   // create posts
 
@@ -524,13 +529,18 @@ pub fn pipeline_dependent_queries_test() {
   let assert Ok(queried) = pgl.pipeline(post_queries, conn)
 
   let assert Ok(post_ids) =
-    queried.rows
-    |> list.try_map(fn(row) {
-      decode.run(row, {
-        use id <- decode.field(0, decode.int)
-        decode.success(id)
+    queried
+    |> list.try_map(fn(queried) {
+      queried.rows
+      |> list.try_map(fn(row) {
+        decode.run(row, {
+          use id <- decode.field(0, decode.int)
+          decode.success(id)
+        })
       })
     })
+
+  let post_ids = list.flatten(post_ids)
 
   // create comments and tags
 
@@ -564,14 +574,17 @@ pub fn pipeline_dependent_queries_test() {
   let assert Ok(queried) = pgl.pipeline(comment_and_tag_queries, conn)
 
   let assert Ok(_data) =
-    queried.rows
-    |> list.try_map(fn(row) {
-      decode.run(row, {
-        use id <- decode.field(0, decode.int)
-        use post_id <- decode.field(1, decode.int)
-        use text <- decode.field(2, decode.string)
+    queried
+    |> list.try_map(fn(queried) {
+      queried.rows
+      |> list.try_map(fn(row) {
+        decode.run(row, {
+          use id <- decode.field(0, decode.int)
+          use post_id <- decode.field(1, decode.int)
+          use text <- decode.field(2, decode.string)
 
-        decode.success(#(id, post_id, text))
+          decode.success(#(id, post_id, text))
+        })
       })
     })
 }

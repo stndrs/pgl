@@ -435,7 +435,7 @@ pub fn batch_process(
   extended: Extended(v),
   queries: List(encode.Query(v, t)),
   sock: Socket,
-) -> Result(Extended(v), internal.PglError) {
+) -> Result(List(Extended(v)), internal.PglError) {
   let packet =
     queries
     |> list.map(encode.to_bit_array)
@@ -447,11 +447,7 @@ pub fn batch_process(
   flow
   |> increment_sync
   |> do_pipeline(extended, queries, sock)
-  |> result.try(fn(pl) {
-    // TODO: collect all Extended data into
-    list.last(pl.acc)
-    |> result.map_error(fn(_) { internal.PglError("No results") })
-  })
+  |> result.map(fn(pl) { pl.acc })
 }
 
 fn do_pipeline(
@@ -468,8 +464,19 @@ fn do_pipeline(
       let ext = Extended(..ext, count:)
       let acc = list.prepend(pl.acc, ext)
 
+      let next_ext =
+        Extended(
+          needs_sync: ext.needs_sync,
+          handle_decode_row: ext.handle_decode_row,
+          handle_param_description: ext.handle_param_description,
+          descriptions: [],
+          fields: [],
+          values: [],
+          count: 0,
+        )
+
       set_acc(pl, acc)
-      |> do_pipeline(ext, queries, sock)
+      |> do_pipeline(next_ext, queries, sock)
     }
     internal.DataRow(values:) -> {
       handle_data_row(values, ext, ext.handle_decode_row)

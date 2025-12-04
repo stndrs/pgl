@@ -397,7 +397,7 @@ pub fn query(
 pub fn pipeline(
   queries: List(Query),
   conn: Connection,
-) -> Result(Queried, internal.PglError) {
+) -> Result(List(Queried), internal.PglError) {
   let messages =
     queries
     |> list.try_map(fn(query) {
@@ -417,7 +417,10 @@ pub fn pipeline(
 
   protocol.pipeline()
   |> protocol.batch_process(ext, messages, conn.sock)
-  |> result.try(to_queried(_, conn.conf))
+  |> result.try(fn(exts) {
+    exts
+    |> list.try_map(to_queried(_, conn.conf))
+  })
 }
 
 /// Perform a query with the given SQL string. This function does not accept
