@@ -1,6 +1,6 @@
 -module(pgl_ffi).
 
--export([coerce/1, binary_match/2, unique_int/0, gen_tcp_connect/2, gen_tcp_send/2, gen_tcp_recv/3, gen_tcp_shutdown/1, ets_new/1, ets_insert/3, ets_lookup/2, ssl_connect/3, ssl_send/2, ssl_recv/3, ssl_shutdown/1, queue_out/1, ets_queue/1, ets_first_lookup/1, ets_queue_lookup/2, ets_queue_insert/3]).
+-export([coerce/1, binary_match/2, unique_int/0, gen_tcp_listen/1, gen_tcp_connect/2, gen_tcp_send/2, gen_tcp_recv/3, gen_tcp_shutdown/1, ets_new/1, ets_insert/3, ets_lookup/2, ssl_connect/3, ssl_send/2, ssl_recv/3, ssl_shutdown/1, queue_out/1, ets_queue/1, ets_first_lookup/1, ets_queue_lookup/2, ets_queue_insert/3]).
 
 %%% SSL connection %%%
 
@@ -50,6 +50,15 @@ gen_tcp_recv(Socket, Size, Timeout) ->
 gen_tcp_send(Socket, Packet) ->
     Sent = gen_tcp:send(Socket, Packet),
     normalise(Sent).
+
+gen_tcp_listen(Port) ->
+  Options = [
+    {ip, {127,0,0,1}},
+    {packet, 0},
+    {active, false},
+    {reuseaddr, true}
+  ],
+  gen_tcp:listen(Port, Options).
 
 %%% Normalise results %%%
 

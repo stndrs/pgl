@@ -3,126 +3,85 @@ import gleam/erlang/charlist.{type Charlist}
 import gleam/result
 import pgl/internal
 
-pub type Config {
-  Config(host: String, port: Int, timeout: Int)
-}
-
-pub const default_config = Config(
-  host: "127.0.0.1",
-  port: internal.default_port,
-  timeout: 1000,
-)
-
-pub fn host(conf: Config, host: String) -> Config {
-  Config(..conf, host:)
-}
-
-pub fn port(conf: Config, port: Int) -> Config {
-  Config(..conf, port:)
-}
-
-pub fn timeout(conf: Config, timeout: Int) -> Config {
-  Config(..conf, timeout:)
-}
-
-pub type Connect =
-  fn(Config) -> Result(Sock, internal.PglError)
-
-pub type Send =
-  fn(Sock, BitArray) -> Result(Nil, internal.PglError)
-
-pub type Receive =
-  fn(Sock, Int, Int) -> Result(BitArray, internal.PglError)
-
-pub type Shutdown =
-  fn(Sock) -> Result(Nil, internal.PglError)
-
-pub opaque type SocketBuilder {
-  SocketBuilder(connect: Connect, send: Send, recv: Receive, shutdown: Shutdown)
-}
-
-pub const tcp: SocketBuilder = SocketBuilder(
-  connect: tcp_connect,
-  send: tcp_send,
-  recv: tcp_recv,
-  shutdown: tcp_shutdown,
-)
-
 pub type Sock
 
 pub opaque type Socket {
   Socket(
     conn: Sock,
-    conf: Config,
+    host: String,
+    timeout: Int,
     parameters: Dict(String, String),
-    send: Send,
-    recv: Receive,
-    shutdown: Shutdown,
+    send: fn(Sock, BitArray) -> Result(Nil, internal.PglError),
+    receive: fn(Sock, Int, Int) -> Result(BitArray, internal.PglError),
+    shutdown: fn(Sock) -> Result(Nil, internal.PglError),
   )
 }
 
-fn set_parameters(sock: Socket, parameters: Dict(String, String)) -> Socket {
+pub fn new(conn: Sock) -> Socket {
+  Socket(
+    conn:,
+    host: "",
+    timeout: 1000,
+    parameters: dict.new(),
+    send: tcp_send,
+    receive: tcp_receive,
+    shutdown: tcp_shutdown,
+  )
+}
+
+pub fn with_send(sock: Socket, send: Sender) -> Socket {
+  Socket(..sock, send:)
+}
+
+pub fn with_receive(sock: Socket, receive: Receiver) -> Socket {
+  Socket(..sock, receive:)
+}
+
+pub fn with_shutdown(sock: Socket, shutdown: Disconnector) -> Socket {
+  Socket(..sock, shutdown:)
+}
+
+pub fn set_parameter(sock: Socket, key: String, value: String) -> Socket {
+  let parameters = dict.insert(sock.parameters, key, value)
+
   Socket(..sock, parameters:)
 }
 
-/// Returns a Socket type
-pub fn new() -> SocketBuilder {
-  SocketBuilder(
-    connect: fn(_) { Error(connect_error(internal.Closed)) },
-    send: fn(_, _) { Error(send_error(internal.Closed)) },
-    recv: fn(_, _, _) { Error(receive_error(internal.Closed)) },
-    shutdown: fn(_) { Error(shutdown_error(internal.Closed)) },
-  )
-}
-
-/// Assign Key/Value pairs to a Socket's parameters Dict.
-pub fn set_parameter(sock: Socket, key: String, value: String) -> Socket {
+/// Assign Key/Value pairs to a Sock's parameters Dict.
+pub fn parameter(sock: Socket, key: String, value: String) -> Socket {
   let parameters = sock.parameters |> dict.insert(key, value)
   Socket(..sock, parameters:)
 }
 
-/// Set the connect function to the Socket. The provided function will be called when
-/// a Socket is passed to `socket.connect`.
-pub fn set_connect(sock: SocketBuilder, connect: Connect) -> SocketBuilder {
-  SocketBuilder(..sock, connect:)
-}
-
-/// Set the send function to the Socket. The provided function will be called when
-/// a Socket is passed to `socket.send`.
-pub fn set_send(sock: SocketBuilder, send: Send) -> SocketBuilder {
-  SocketBuilder(..sock, send:)
-}
-
-/// Set the recv function to the Socket. The provided function will be called when
-/// a Socket is passed to `socket.receive`.
-pub fn set_recv(sock: SocketBuilder, recv: Receive) -> SocketBuilder {
-  SocketBuilder(..sock, recv:)
-}
-
-/// Set the shutdown function to the Socket. The provided function will be called when
-/// a Socket is passed to `socket.shutdown`.
-pub fn set_shutdown(sock: SocketBuilder, shutdown: Shutdown) -> SocketBuilder {
-  SocketBuilder(..sock, shutdown:)
-}
-
-/// Calls the Socket's `connect` function
+/// Calls the Sock's `connect` function
 pub fn connect(
-  sock: SocketBuilder,
-  conf: Config,
+  host: String,
+  port: Int,
+  timeout: Int,
 ) -> Result(Socket, internal.PglError) {
-  use conn <- result.map(sock.connect(conf))
+  use conn <- result.map(tcp_connect(host, port))
 
   Socket(
     conn:,
-    conf:,
+    host:,
+    timeout:,
     parameters: dict.new(),
-    send: sock.send,
-    recv: sock.recv,
-    shutdown: sock.shutdown,
+    send: tcp_send,
+    receive: tcp_receive,
+    shutdown: tcp_shutdown,
   )
 }
 
-/// Calls the Socket's `send` function
+pub type Sender =
+  fn(Sock, BitArray) -> Result(Nil, internal.PglError)
+
+pub type Receiver =
+  fn(Sock, Int, Int) -> Result(BitArray, internal.PglError)
+
+pub type Disconnector =
+  fn(Sock) -> Result(Nil, internal.PglError)
+
+/// Calls the Sock's `send` function
 pub fn send(
   sock: Socket,
   payload: BitArray,
@@ -131,44 +90,44 @@ pub fn send(
   |> result.replace(sock)
 }
 
-/// Calls the Socket's `recv` function. The `length` argument indicates the number
+/// Calls the Sock's `recv` function. The `length` argument indicates the number
 /// of bytes to read. `receive`'s timeout is determined by the value set in the `Config`
-/// configured when the Socket was first created with `socket.new`.
+/// configured when the Sock was first created with `Sock.new`.
 pub fn receive(sock: Socket, length: Int) -> Result(BitArray, internal.PglError) {
-  sock.recv(sock.conn, length, sock.conf.timeout)
+  sock.receive(sock.conn, length, sock.timeout)
 }
 
-/// Calls the Socket's `shutdown` function. This will disconnect the Socket's connection if
-/// it has one. If the Socket doesn't have a connection, this function returns an error. This
+/// Calls the Sock's `shutdown` function. This will disconnect the Sock's connection if
+/// it has one. If the Sock doesn't have a connection, this function returns an error. This
 /// function also returns an error if shutdown fails.
 pub fn shutdown(sock: Socket) -> Result(Nil, internal.PglError) {
   sock.shutdown(sock.conn)
 }
 
-// Default socket functions
+// Default Sock functions
 
-fn tcp_connect(conf: Config) -> Result(Sock, internal.PglError) {
-  charlist.from_string(conf.host)
-  |> tcp_connect_(conf.port)
+fn tcp_connect(host: String, port: Int) -> Result(Sock, internal.PglError) {
+  charlist.from_string(host)
+  |> tcp_connect_(port)
   |> result.map_error(connect_error)
 }
 
-fn tcp_send(port: Sock, payload: BitArray) -> Result(Nil, internal.PglError) {
-  tcp_send_(port, payload)
+fn tcp_send(tcp: Sock, payload: BitArray) -> Result(Nil, internal.PglError) {
+  tcp_send_(tcp, payload)
   |> result.map_error(send_error)
 }
 
-fn tcp_recv(
-  port: Sock,
+fn tcp_receive(
+  tcp: Sock,
   read_bytes_num: Int,
   timeout_milliseconds: Int,
 ) -> Result(BitArray, internal.PglError) {
-  tcp_recv_(port, read_bytes_num, timeout_milliseconds)
+  tcp_recv_(tcp, read_bytes_num, timeout_milliseconds)
   |> result.map_error(receive_error)
 }
 
-fn tcp_shutdown(port: Sock) -> Result(Nil, internal.PglError) {
-  tcp_shutdown_(port)
+fn tcp_shutdown(tcp: Sock) -> Result(Nil, internal.PglError) {
+  tcp_shutdown_(tcp)
   |> result.map_error(shutdown_error)
 }
 
@@ -180,32 +139,33 @@ pub fn ssl_upgrade(
   sock: Socket,
   verified verified: Bool,
 ) -> Result(Socket, internal.PglError) {
-  ssl(sock, verified:)
-  |> connect(sock.conf)
-  |> result.map(set_parameters(_, sock.parameters))
-}
+  use ssl <- result.map(ssl_connect(sock.conn, sock.host, verified))
 
-fn ssl(sock: Socket, verified verified: Bool) -> SocketBuilder {
-  let ssl_connect = fn(conf: Config) {
-    ssl_connect_(sock.conn, conf.host, verified)
-    |> result.map_error(connect_error)
-  }
-
-  SocketBuilder(
-    connect: ssl_connect,
+  Socket(
+    ..sock,
+    conn: ssl,
     send: ssl_send,
-    recv: ssl_recv,
+    receive: ssl_receive,
     shutdown: ssl_shutdown,
   )
 }
 
-fn ssl_send(ssl: b, payload: BitArray) -> Result(Nil, internal.PglError) {
+fn ssl_connect(
+  tcp: Sock,
+  host: String,
+  verified verified: Bool,
+) -> Result(Sock, internal.PglError) {
+  ssl_connect_(tcp, host, verified)
+  |> result.map_error(connect_error)
+}
+
+fn ssl_send(ssl: Sock, payload: BitArray) -> Result(Nil, internal.PglError) {
   ssl_send_(ssl, payload)
   |> result.map_error(send_error)
 }
 
-fn ssl_recv(
-  ssl: b,
+fn ssl_receive(
+  ssl: Sock,
   read_bytes_num: Int,
   timeout_milliseconds: Int,
 ) -> Result(BitArray, internal.PglError) {
@@ -213,7 +173,7 @@ fn ssl_recv(
   |> result.map_error(receive_error)
 }
 
-fn ssl_shutdown(ssl: b) -> Result(Nil, internal.PglError) {
+fn ssl_shutdown(ssl: Sock) -> Result(Nil, internal.PglError) {
   ssl_shutdown_(ssl)
   |> result.map_error(shutdown_error)
 }
@@ -257,35 +217,35 @@ fn tcp_connect_(host: Charlist, port: Int) -> Result(Sock, internal.PosixError)
 
 @external(erlang, "pgl_ffi", "gen_tcp_recv")
 fn tcp_recv_(
-  sock: Sock,
+  tcp: Sock,
   read_bytes_num: Int,
   timeout_milliseconds timeout: Int,
 ) -> Result(BitArray, internal.PosixError)
 
 @external(erlang, "pgl_ffi", "gen_tcp_send")
-fn tcp_send_(sock: Sock, packet: BitArray) -> Result(Nil, internal.PosixError)
+fn tcp_send_(tcp: Sock, packet: BitArray) -> Result(Nil, internal.PosixError)
 
 @external(erlang, "pgl_ffi", "gen_tcp_shutdown")
-fn tcp_shutdown_(sock: Sock) -> Result(Nil, internal.PosixError)
+fn tcp_shutdown_(tcp: Sock) -> Result(Nil, internal.PosixError)
 
 // SSL Connection
 
 @external(erlang, "pgl_ffi", "ssl_connect")
 fn ssl_connect_(
-  sock: a,
+  tcp: Sock,
   host: String,
   verified: Bool,
-) -> Result(b, internal.PosixError)
+) -> Result(Sock, internal.PosixError)
 
 @external(erlang, "pgl_ffi", "ssl_send")
-fn ssl_send_(conn: b, packet: BitArray) -> Result(Nil, internal.PosixError)
+fn ssl_send_(ssl: Sock, packet: BitArray) -> Result(Nil, internal.PosixError)
 
 @external(erlang, "pgl_ffi", "ssl_recv")
 fn ssl_recv_(
-  conn: b,
+  ssl: Sock,
   read_bytes_num: Int,
   timeout_milliseconds timeout: Int,
 ) -> Result(BitArray, internal.PosixError)
 
 @external(erlang, "pgl_ffi", "ssl_shutdown")
-fn ssl_shutdown_(conn: b) -> Result(Nil, internal.PosixError)
+fn ssl_shutdown_(conn: Sock) -> Result(Nil, internal.PosixError)

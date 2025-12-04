@@ -44,26 +44,20 @@ pub type Config {
 }
 
 fn to_protocol_config(conf: Config) -> protocol.Config {
-  let socket_config =
-    socket.default_config
-    |> socket.host(conf.host)
-    |> socket.port(conf.port)
-    |> socket.timeout(conf.recv_timeout)
-
-  protocol.default_config
+  protocol.config
+  |> protocol.host(conf.host)
+  |> protocol.port(conf.port)
+  |> protocol.timeout(conf.recv_timeout)
   |> protocol.application(conf.application)
   |> protocol.username(conf.user)
   |> protocol.password(conf.password)
   |> protocol.database(conf.database)
-  |> protocol.socket_config(socket_config)
 }
-
-pub const default_port = 5432
 
 pub const default = Config(
   application: "",
   host: "127.0.0.1",
-  port: default_port,
+  port: internal.default_port,
   user: "",
   password: "",
   database: "",
@@ -360,10 +354,15 @@ fn rows_to_maps(
 
 /// Creates a new connection to the database.
 fn connect(db: Db) -> Result(Connection, String) {
-  db.config
-  |> to_protocol_config
-  |> protocol.auth(socket.tcp, _)
-  |> result.map(Connection(_, None, db.tc, db.qc, db.config))
+  let conf =
+    db.config
+    |> to_protocol_config
+
+  socket.connect(db.config.host, db.config.port, db.config.recv_timeout)
+  |> result.try(fn(sock) {
+    protocol.auth(sock, conf)
+    |> result.map(Connection(_, None, db.tc, db.qc, db.config))
+  })
   |> result.map_error(internal.error_to_string)
 }
 

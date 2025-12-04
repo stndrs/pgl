@@ -8,30 +8,28 @@ import pgl/internal/type_cache
 
 pub fn ssl_upgrade_unexpected_receive_test() {
   let conf =
-    protocol.default_config
+    protocol.config
     |> protocol.ssl(option.Some(False))
 
-  let sb =
-    socket_test.with_mock_socket_builder(fn(sb) {
-      socket.set_recv(sb, fn(_, _, _) { Ok(<<"X":utf8>>) })
-    })
+  let sock =
+    socket_test.connect_test()
+    |> socket.with_receive(fn(_, _, _) { Ok(<<"X":utf8>>) })
 
   let assert Error(internal.SocketError(
     kind: internal.SslError,
     message: "Failed to upgrade SSL",
-  )) = protocol.auth(sb, conf)
+  )) = protocol.auth(sock, conf)
 }
 
 pub fn protocol_test() {
   let conf =
-    protocol.default_config
+    protocol.config
     |> protocol.database("gleam_pgl_test")
     |> protocol.username("postgres")
     |> protocol.password("postgres")
 
-  let assert Ok(sock) =
-    socket.tcp
-    |> protocol.auth(conf)
+  let assert Ok(sock) = socket.connect(conf.host, conf.port, conf.timeout)
+  let assert Ok(sock) = protocol.auth(sock, conf)
 
   let assert Ok([[<<"1":utf8>>]]) =
     encode.query("SELECT 1")
@@ -39,9 +37,11 @@ pub fn protocol_test() {
 }
 
 pub fn auth_failure_test() {
-  let assert Error(internal.PostgresError(err)) =
-    socket.tcp
-    |> protocol.auth(protocol.default_config)
+  let conf = protocol.config
+
+  let assert Ok(sock) = socket.connect(conf.host, conf.port, conf.timeout)
+
+  let assert Error(internal.PostgresError(err)) = protocol.auth(sock, conf)
 
   let assert "28000" = err.code
   let assert "invalid_authorization_specification" = err.name
@@ -50,14 +50,13 @@ pub fn auth_failure_test() {
 
 pub fn protocol_bootstrap_test() {
   let conf =
-    protocol.default_config
+    protocol.config
     |> protocol.database("gleam_pgl_test")
     |> protocol.username("postgres")
     |> protocol.password("postgres")
 
-  let assert Ok(sock) =
-    socket.tcp
-    |> protocol.auth(conf)
+  let assert Ok(sock) = socket.connect(conf.host, conf.port, conf.timeout)
+  let assert Ok(sock) = protocol.auth(sock, conf)
 
   let assert Ok(_) =
     encode.query(type_cache.bootstrap_sql)

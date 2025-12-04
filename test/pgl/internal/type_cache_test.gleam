@@ -3,7 +3,7 @@ import pgl/internal/protocol
 import pgl/internal/type_cache.{type TypeCache}
 
 fn conf() {
-  protocol.default_config
+  protocol.config
   |> protocol.database("gleam_pgl_test")
   |> protocol.username("postgres")
   |> protocol.password("postgres")

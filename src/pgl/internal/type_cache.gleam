@@ -101,11 +101,13 @@ fn handle_message(
 
 fn handle_load(
   store: Store(Int, types.TypeInfo),
-  config: protocol.Config,
+  conf: protocol.Config,
   client: process.Subject(Result(Nil, internal.PglError)),
 ) -> actor.Next(Store(Int, types.TypeInfo), a) {
   {
-    use sock <- result.try(protocol.auth(socket.tcp, config))
+    use sock <- result.try(socket.connect(conf.host, conf.port, conf.timeout))
+    use sock <- result.try(protocol.auth(sock, conf))
+
     let packet = encode.query(bootstrap_sql)
 
     use rows <- result.try(protocol.simple(packet, sock))

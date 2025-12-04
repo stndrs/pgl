@@ -1,144 +1,64 @@
-import gleam/function
+import gleam/erlang/port.{type Port}
 import pgl/internal
-import pgl/internal/socket.{type Socket}
+import pgl/internal/socket
 
-pub fn send_test() {
-  let sock = with_mock_socket(socket.default_config, function.identity)
-
-  let assert Ok(result) = socket.send(sock, <<"no-op":utf8>>)
-  let assert True = result == sock
-}
-
-pub fn send_error_test() {
-  let sock =
-    with_mock_socket(socket.default_config, fn(sb) {
-      let send = fn(_, _) { send_error() }
-
-      socket.set_send(sb, send)
-    })
-
-  let assert Error(internal.SocketError(
-    kind: internal.SendError(code: internal.Timeout),
-    message: "Failed to send",
-  )) = socket.send(sock, <<"attempt":utf8>>)
-}
-
-pub fn receive_test() {
-  let sock =
-    with_mock_socket(socket.default_config, fn(sb) {
-      let recv = fn(_, _, _) { Ok(<<"working":utf8>>) }
-
-      socket.set_recv(sb, recv)
-    })
-
-  let assert Ok(<<"working":utf8>>) = socket.receive(sock, 0)
-}
-
-pub fn receive_error_test() {
-  let sock =
-    with_mock_socket(socket.default_config, fn(sb) {
-      let recv = fn(_, _, _) { receive_error() }
-
-      socket.set_recv(sb, recv)
-    })
-
-  let assert Error(internal.SocketError(
-    kind: internal.ReceiveError(code: internal.Timeout),
-    message: "Failed to receive",
-  )) = socket.receive(sock, 0)
-}
-
-pub fn shutdown_test() {
-  let assert Ok(Nil) =
-    with_mock_socket(socket.default_config, function.identity)
-    |> socket.shutdown
-}
-
-pub fn shutdown_error_test() {
-  let sock =
-    with_mock_socket(socket.default_config, fn(sb) {
-      socket.set_shutdown(sb, fn(_) { shutdown_error() })
-    })
-
-  let assert Error(internal.SocketError(
-    kind: internal.ShutdownError(code: internal.Closed),
-    message: "Failed to shutdown",
-  )) = socket.shutdown(sock)
-}
-
-pub fn connect_error_test() {
-  let sb =
-    with_mock_socket_builder(fn(sb) {
-      socket.set_connect(sb, fn(_) { connect_error() })
-    })
-
-  let assert Error(internal.SocketError(
-    kind: internal.ConnectError(code: internal.Timeout),
-    message: "Failed to connect",
-  )) = socket.connect(sb, socket.default_config)
-}
-
-pub fn connect_real_test() {
-  let assert Ok(sock) =
-    socket.tcp
-    |> socket.connect(socket.default_config)
-
-  let assert Ok(Nil) = socket.shutdown(sock)
-}
-
-// Error helpers
-
-fn connect_error() -> Result(a, internal.PglError) {
-  internal.SocketError(
-    kind: internal.ConnectError(code: internal.Timeout),
-    message: "Failed to connect",
-  )
-  |> Error
-}
-
-fn send_error() -> Result(Nil, internal.PglError) {
-  internal.SendError(internal.Timeout)
-  |> internal.SocketError("Failed to send")
-  |> Error
-}
-
-fn receive_error() -> Result(BitArray, internal.PglError) {
-  internal.SocketError(
-    kind: internal.ReceiveError(code: internal.Timeout),
-    message: "Failed to receive",
-  )
-  |> Error
-}
-
-fn shutdown_error() -> Result(Nil, internal.PglError) {
-  internal.SocketError(
-    kind: internal.ShutdownError(code: internal.Closed),
-    message: "Failed to shutdown",
-  )
-  |> Error
-}
-
-// Mock socket and port helpers 
-
-pub fn with_mock_socket(
-  conf: socket.Config,
-  next: fn(socket.SocketBuilder) -> socket.SocketBuilder,
-) -> Socket {
-  let assert Ok(sock) =
-    with_mock_socket_builder(next)
-    |> socket.connect(conf)
+pub fn connect_test() {
+  let assert Ok(tcp_port) = tcp_listen(0)
+  let assert Ok(port_num) = inet_port(tcp_port)
+  let assert Ok(sock) = socket.connect("127.0.0.1", port_num, 1000)
 
   sock
 }
 
-pub fn with_mock_socket_builder(next: fn(socket.SocketBuilder) -> t) -> t {
-  socket.new()
-  |> socket.set_connect(fn(_) { Ok(coerce(Nil)) })
-  |> socket.set_send(fn(_, _) { Ok(Nil) })
-  |> socket.set_recv(fn(_, _, _) { Ok(<<"working":utf8>>) })
-  |> socket.set_shutdown(fn(_conn) { Ok(Nil) })
-  |> next
+pub fn connect_error_test() {
+  let assert Error(internal.SocketError(
+    internal.ConnectError(_posix),
+    "Failed to connect",
+  )) = socket.connect("127.0.0.1", 1, 200)
 }
 
-@external(erlang, "pgl_ffi", "coerce")
-fn coerce(a: a) -> b
+pub fn send_test() {
+  let sock = connect_test()
+
+  let assert Ok(_) = socket.send(sock, <<"bits":utf8>>)
+
+  let assert Ok(_) = socket.shutdown(sock)
+}
+
+pub fn send_error_test() {
+  let sock = connect_test()
+
+  let assert Ok(_) = socket.shutdown(sock)
+
+  let assert Error(internal.SocketError(
+    internal.SendError(_posix),
+    "Failed to send",
+  )) = socket.send(sock, <<"bits":utf8>>)
+}
+
+pub fn receive_test() {
+  let sock =
+    connect_test()
+    |> socket.with_receive(fn(_, _, _) { Ok(<<"bits":utf8>>) })
+
+  let assert Ok(<<"bits":utf8>>) = socket.receive(sock, 0)
+
+  let assert Ok(_) = socket.shutdown(sock)
+}
+
+pub fn receive_error_test() {
+  let assert Ok(tcp_port) = tcp_listen(0)
+  let assert Ok(port_num) = inet_port(tcp_port)
+  let assert Ok(sock) = socket.connect("127.0.0.1", port_num, 50)
+
+  let assert Error(internal.SocketError(
+    internal.ReceiveError(_posix),
+    "Failed to receive",
+  )) = socket.receive(sock, 5)
+}
+
+@external(erlang, "pgl_ffi", "gen_tcp_listen")
+fn tcp_listen(port: Int) -> Result(Port, internal.PosixError)
+
+@external(erlang, "inet", "port")
+fn inet_port(port: Port) -> Result(Int, Nil)

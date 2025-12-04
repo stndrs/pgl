@@ -192,10 +192,6 @@ pub fn default_values_test() {
   let assert pgl.SslDisabled = conf.ssl
 }
 
-pub fn default_port_constant_test() {
-  let assert 5432 = pgl.default_port
-}
-
 // Database tests
 
 const drop_table_sql = "DROP TABLE IF EXISTS users;"

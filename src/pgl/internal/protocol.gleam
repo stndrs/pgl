@@ -14,23 +14,39 @@ import pgl/internal/socket.{type Socket}
 
 pub type Config {
   Config(
+    host: String,
+    port: Int,
+    timeout: Int,
     database: String,
     username: String,
     password: String,
     application: String,
     ssl: Option(Bool),
-    socket_config: socket.Config,
   )
 }
 
-pub const default_config = Config(
+pub const config = Config(
+  host: "127.0.0.1",
+  port: internal.default_port,
+  timeout: 1000,
   database: "",
   username: "",
   password: "",
   application: "",
   ssl: None,
-  socket_config: socket.default_config,
 )
+
+pub fn host(conf: Config, host: String) -> Config {
+  Config(..conf, host:)
+}
+
+pub fn port(conf: Config, port: Int) -> Config {
+  Config(..conf, port:)
+}
+
+pub fn timeout(conf: Config, timeout: Int) -> Config {
+  Config(..conf, timeout:)
+}
 
 pub fn application(conf: Config, application: String) -> Config {
   Config(..conf, application:)
@@ -52,19 +68,12 @@ pub fn ssl(conf: Config, ssl: Option(Bool)) -> Config {
   Config(..conf, ssl:)
 }
 
-pub fn socket_config(conf: Config, socket_config: socket.Config) -> Config {
-  Config(..conf, socket_config:)
-}
-
 // ---------- Auth flow ---------- //
 
-pub fn auth(
-  sb: socket.SocketBuilder,
-  conf: Config,
-) -> Result(Socket, internal.PglError) {
-  socket.connect(sb, conf.socket_config)
-  |> result.try(ssl_upgrade(_, conf))
-  |> result.try(setup(_, conf))
+pub fn auth(sock: Socket, conf: Config) -> Result(Socket, internal.PglError) {
+  use sock <- result.try(ssl_upgrade(sock, conf))
+
+  setup(sock, conf)
 }
 
 // SSL functions
