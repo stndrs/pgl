@@ -14,12 +14,12 @@ This package implements the PostgreSQL wire protocol.
 
 ```gleam
 import pgl
-import pgl/config
+import pg/value
 
 pub fn main() {
   let assert Ok(conf) =
     "postgres://user:pass@db:5432/pgl_db"
-    |> config.from_url
+    |> pgl.from_url
 
   let db = pgl.new(conf)
 
@@ -30,7 +30,7 @@ pub fn main() {
       use conn <- pgl.with_connection(db)
 
       "SELECT * FROM users WHERE id=$1"
-      |> pgl.query([pgl.int(1000)], conn)
+      |> pgl.query([value.int(1000)], conn)
     }
 
   pgl.shutdown(db)
