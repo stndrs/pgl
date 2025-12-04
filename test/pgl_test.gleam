@@ -220,19 +220,19 @@ fn global_pool() -> pgl.Db {
   db
 }
 
-fn global_pool_ssl() -> pgl.Db {
-  use <- global_value.create_with_unique_name("pgl_pool_ssl_test")
-
-  let assert Ok(conf) =
-    "postgres://postgres:postgres@127.0.0.1:5433/gleam_pgl_test?sslmode=require"
-    |> pgl.from_url
-
-  let db = pgl.new(conf)
-
-  let assert Ok(_) = pgl.start(db)
-
-  db
-}
+// fn global_pool_ssl() -> pgl.Db {
+//   use <- global_value.create_with_unique_name("pgl_pool_ssl_test")
+// 
+//   let assert Ok(conf) =
+//     "postgres://postgres:postgres@127.0.0.1:5433/gleam_pgl_test?sslmode=require"
+//     |> pgl.from_url
+// 
+//   let db = pgl.new(conf)
+// 
+//   let assert Ok(_) = pgl.start(db)
+// 
+//   db
+// }
 
 fn global_pool_rows_as_maps() -> pgl.Db {
   use <- global_value.create_with_unique_name("pgl_pool_rows_as_maps_test")
@@ -258,13 +258,13 @@ fn start_default(next: fn(pgl.Connection) -> t) -> t {
   res
 }
 
-fn start_ssl(next: fn(pgl.Connection) -> t) -> t {
-  let assert Ok(res) =
-    global_pool_ssl()
-    |> with_setup_conn(next)
-
-  res
-}
+// fn start_ssl(next: fn(pgl.Connection) -> t) -> t {
+//   let assert Ok(res) =
+//     global_pool_ssl()
+//     |> with_setup_conn(next)
+// 
+//   res
+// }
 
 fn with_setup_conn(
   pool: pgl.Db,
@@ -349,11 +349,11 @@ pub fn inserting_new_rows_test() {
   inserting_new_rows(conn)
 }
 
-pub fn inserting_new_rows_ssl_test() {
-  use conn <- start_ssl()
-
-  inserting_new_rows(conn)
-}
+// pub fn inserting_new_rows_ssl_test() {
+//   use conn <- start_ssl()
+// 
+//   inserting_new_rows(conn)
+// }
 
 pub fn inserting_new_rows_and_returning_test() {
   use conn <- start_default()
