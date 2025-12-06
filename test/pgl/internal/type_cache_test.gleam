@@ -10,11 +10,9 @@ fn conf() {
 }
 
 pub fn load_test() {
-  let conf = conf()
-
   use tc <- with_type_cache()
 
-  let assert Ok(_) = type_cache.load(tc, conf)
+  let assert Ok(_) = type_cache.load(tc, conf())
 }
 
 pub fn lookup_test() {

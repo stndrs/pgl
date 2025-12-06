@@ -12,18 +12,15 @@ import pg/types
 import pgl/internal
 import pgl/internal/encode
 import pgl/internal/protocol
-import pgl/internal/socket
+import pgl/internal/socket.{type Socket}
 import pgl/internal/store.{type Store}
 
 pub opaque type TypeCache {
-  TypeCache(np: process.Name(Message))
+  TypeCache(np: process.Name(Message), host: String, port: Int)
 }
 
 pub opaque type Message {
-  Load(
-    client: process.Subject(Result(Nil, internal.PglError)),
-    config: protocol.Config,
-  )
+  Load(client: process.Subject(Result(Nil, internal.PglError)), sock: Socket)
   Lookup(
     client: process.Subject(Result(List(types.TypeInfo), internal.PglError)),
     oids: List(Int),
@@ -34,7 +31,17 @@ pub opaque type Message {
 const name = "pgl_type_cache"
 
 pub fn new() -> TypeCache {
-  process.new_name(name) |> TypeCache
+  let np = process.new_name(name)
+
+  TypeCache(np:, host: internal.default_host, port: internal.default_port)
+}
+
+pub fn host(tc: TypeCache, host: String) -> TypeCache {
+  TypeCache(..tc, host:)
+}
+
+pub fn port(tc: TypeCache, port: Int) -> TypeCache {
+  TypeCache(..tc, port:)
 }
 
 const table_name = "pgl_type_cache_table"
@@ -61,9 +68,16 @@ pub fn supervised(tc: TypeCache) -> supervision.ChildSpecification(Nil) {
 
 pub fn load(
   tc: TypeCache,
-  config: protocol.Config,
+  conf: protocol.Config,
 ) -> Result(Nil, internal.PglError) {
-  process.named_subject(tc.np) |> actor.call(1000, Load(_, config))
+  use sock <- result.try(socket.connect(tc.host, tc.port))
+  use sock <- result.try(protocol.auth(sock, conf))
+
+  let res = process.named_subject(tc.np) |> actor.call(1000, Load(_, sock))
+
+  let _ = socket.shutdown(sock)
+
+  res
 }
 
 pub fn lookup(
@@ -93,7 +107,7 @@ fn handle_message(
   message: Message,
 ) -> actor.Next(Store(Int, types.TypeInfo), a) {
   case message {
-    Load(client, config) -> handle_load(store, config, client)
+    Load(client, sock) -> handle_load(store, sock, client)
     Lookup(client, oids) -> handle_lookup(store, oids, client)
     Shutdown -> actor.stop()
   }
@@ -101,18 +115,13 @@ fn handle_message(
 
 fn handle_load(
   store: Store(Int, types.TypeInfo),
-  conf: protocol.Config,
+  sock: Socket,
   client: process.Subject(Result(Nil, internal.PglError)),
 ) -> actor.Next(Store(Int, types.TypeInfo), a) {
   {
-    use sock <- result.try(socket.connect(conf.host, conf.port, conf.timeout))
-    use sock <- result.try(protocol.auth(sock, conf))
-
     let packet = encode.query(bootstrap_sql)
 
     use rows <- result.try(protocol.simple(packet, sock))
-
-    let _ = socket.shutdown(sock)
 
     use infos <- result.map(list.try_map(rows, parse_type_info))
 

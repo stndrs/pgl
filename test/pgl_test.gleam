@@ -29,7 +29,7 @@ pub fn parse_url_test() {
       host: "localhost",
       port: 5433,
       database: "gleam_pgl_test",
-      user: "postgres",
+      username: "postgres",
       password: "supersecretpassword",
       ssl: pgl.SslDisabled,
     )
@@ -47,7 +47,7 @@ pub fn parse_url_alternative_schema_test() {
       host: "localhost",
       port: 5433,
       database: "gleam_pgl_test",
-      user: "postgres",
+      username: "postgres",
       password: "supersecretpassword",
     )
     == conf
@@ -59,12 +59,13 @@ pub fn parse_url_invalid_protocol_test() {
 }
 
 pub fn parse_url_invalid_path_test() {
-  let assert Error(Nil) = pgl.from_url("postgres://user:pass@db:5432/some/path")
+  let assert Error(Nil) =
+    pgl.from_url("postgres://username:pass@db:5432/some/path")
 }
 
 pub fn parse_url_ssl_mode_require_test() {
   let assert Ok(conf) =
-    "postgres://user:pass@localhost:5432/gleam_pgl_test?sslmode=require"
+    "postgres://username:pass@localhost:5432/gleam_pgl_test?sslmode=require"
     |> pgl.from_url
 
   let assert True =
@@ -73,7 +74,7 @@ pub fn parse_url_ssl_mode_require_test() {
       host: "localhost",
       port: 5432,
       database: "gleam_pgl_test",
-      user: "user",
+      username: "username",
       password: "pass",
       ssl: pgl.SslUnverified,
     )
@@ -82,7 +83,7 @@ pub fn parse_url_ssl_mode_require_test() {
 
 pub fn parse_url_ssl_mode_verify_test() {
   let assert Ok(conf) =
-    "postgres://user:pass@localhost:5432/gleam_pgl_test?sslmode=verify-ca"
+    "postgres://username:pass@localhost:5432/gleam_pgl_test?sslmode=verify-ca"
     |> pgl.from_url
 
   let assert True =
@@ -91,14 +92,14 @@ pub fn parse_url_ssl_mode_verify_test() {
       host: "localhost",
       port: 5432,
       database: "gleam_pgl_test",
-      user: "user",
+      username: "username",
       password: "pass",
       ssl: pgl.SslVerified,
     )
     == conf
 
   let assert Ok(conf) =
-    "postgres://user:pass@localhost:5432/gleam_pgl_test?sslmode=verify-full"
+    "postgres://username:pass@localhost:5432/gleam_pgl_test?sslmode=verify-full"
     |> pgl.from_url
 
   let assert True =
@@ -107,7 +108,7 @@ pub fn parse_url_ssl_mode_verify_test() {
       host: "localhost",
       port: 5432,
       database: "gleam_pgl_test",
-      user: "user",
+      username: "username",
       password: "pass",
       ssl: pgl.SslVerified,
     )
@@ -147,7 +148,7 @@ pub fn username_test() {
   let conf = pgl.default
   let result = pgl.username(conf, "admin")
 
-  let assert "admin" = result.user
+  let assert "admin" = result.username
   let assert True = result.host == conf.host
   let assert True = result.password == conf.password
 }
@@ -157,16 +158,8 @@ pub fn password_test() {
   let result = pgl.password(conf, "secret123")
 
   let assert "secret123" = result.password
-  let assert True = result.user == conf.user
+  let assert True = result.username == conf.username
   let assert True = result.host == conf.host
-}
-
-pub fn ping_timeout_test() {
-  let conf = pgl.default
-  let result = pgl.ping_timeout(conf, 2000)
-
-  let assert 2000 = result.ping_timeout
-  let assert True = result.timeout == conf.timeout
 }
 
 pub fn ssl_test() {
@@ -183,12 +176,10 @@ pub fn default_values_test() {
 
   let assert "127.0.0.1" = conf.host
   let assert 5432 = conf.port
-  let assert "" = conf.user
+  let assert "" = conf.username
   let assert "" = conf.password
   let assert "" = conf.database
-  let assert 5000 = conf.timeout
-  let assert 1000 = conf.ping_timeout
-  let assert 5000 = conf.recv_timeout
+  let assert 500 = conf.connect_timeout
   let assert pgl.SslDisabled = conf.ssl
 }
 

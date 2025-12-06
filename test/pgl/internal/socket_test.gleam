@@ -5,7 +5,7 @@ import pgl/internal/socket
 pub fn connect_test() {
   let assert Ok(tcp_port) = tcp_listen(0)
   let assert Ok(port_num) = inet_port(tcp_port)
-  let assert Ok(sock) = socket.connect("127.0.0.1", port_num, 1000)
+  let assert Ok(sock) = socket.connect("127.0.0.1", port_num)
 
   sock
 }
@@ -14,7 +14,7 @@ pub fn connect_error_test() {
   let assert Error(internal.SocketError(
     internal.ConnectError(_posix),
     "Failed to connect",
-  )) = socket.connect("127.0.0.1", 1, 200)
+  )) = socket.connect("127.0.0.1", 1)
 }
 
 pub fn send_test() {
@@ -47,9 +47,14 @@ pub fn receive_test() {
 }
 
 pub fn receive_error_test() {
-  let assert Ok(tcp_port) = tcp_listen(0)
-  let assert Ok(port_num) = inet_port(tcp_port)
-  let assert Ok(sock) = socket.connect("127.0.0.1", port_num, 50)
+  let sock =
+    connect_test()
+    |> socket.with_receive(fn(_, _, _) {
+      Error(internal.SocketError(
+        internal.ReceiveError(internal.Econnrefused),
+        "Failed to receive",
+      ))
+    })
 
   let assert Error(internal.SocketError(
     internal.ReceiveError(_posix),

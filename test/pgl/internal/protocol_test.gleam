@@ -2,7 +2,7 @@ import gleam/option
 import pgl/internal
 import pgl/internal/encode
 import pgl/internal/protocol
-import pgl/internal/socket
+import pgl/internal/socket.{type Socket}
 import pgl/internal/socket_test
 import pgl/internal/type_cache
 
@@ -28,7 +28,7 @@ pub fn protocol_test() {
     |> protocol.username("postgres")
     |> protocol.password("postgres")
 
-  let assert Ok(sock) = socket.connect(conf.host, conf.port, conf.timeout)
+  let sock = connect()
   let assert Ok(sock) = protocol.auth(sock, conf)
 
   let assert Ok([[<<"1":utf8>>]]) =
@@ -39,7 +39,7 @@ pub fn protocol_test() {
 pub fn auth_failure_test() {
   let conf = protocol.config
 
-  let assert Ok(sock) = socket.connect(conf.host, conf.port, conf.timeout)
+  let sock = connect()
 
   let assert Error(internal.PostgresError(err)) = protocol.auth(sock, conf)
 
@@ -55,10 +55,17 @@ pub fn protocol_bootstrap_test() {
     |> protocol.username("postgres")
     |> protocol.password("postgres")
 
-  let assert Ok(sock) = socket.connect(conf.host, conf.port, conf.timeout)
+  let sock = connect()
   let assert Ok(sock) = protocol.auth(sock, conf)
 
   let assert Ok(_) =
     encode.query(type_cache.bootstrap_sql)
     |> protocol.simple(sock)
+}
+
+fn connect() -> Socket {
+  let assert Ok(sock) =
+    socket.connect(internal.default_host, internal.default_port)
+
+  sock
 }

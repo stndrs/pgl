@@ -1,6 +1,8 @@
 import gleam/dict.{type Dict}
 import gleam/result
 
+pub const default_host = "127.0.0.1"
+
 pub const default_port = 5432
 
 // ---------- Messages ---------- //

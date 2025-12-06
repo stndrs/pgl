@@ -9,7 +9,6 @@ pub opaque type Socket {
   Socket(
     conn: Sock,
     host: String,
-    timeout: Int,
     parameters: Dict(String, String),
     send: fn(Sock, BitArray) -> Result(Nil, internal.PglError),
     receive: fn(Sock, Int, Int) -> Result(BitArray, internal.PglError),
@@ -21,7 +20,6 @@ pub fn new(conn: Sock) -> Socket {
   Socket(
     conn:,
     host: "",
-    timeout: 1000,
     parameters: dict.new(),
     send: tcp_send,
     receive: tcp_receive,
@@ -54,17 +52,12 @@ pub fn parameter(sock: Socket, key: String, value: String) -> Socket {
 }
 
 /// Calls the Sock's `connect` function
-pub fn connect(
-  host: String,
-  port: Int,
-  timeout: Int,
-) -> Result(Socket, internal.PglError) {
+pub fn connect(host: String, port: Int) -> Result(Socket, internal.PglError) {
   use conn <- result.map(tcp_connect(host, port))
 
   Socket(
     conn:,
     host:,
-    timeout:,
     parameters: dict.new(),
     send: tcp_send,
     receive: tcp_receive,
@@ -94,7 +87,7 @@ pub fn send(
 /// of bytes to read. `receive`'s timeout is determined by the value set in the `Config`
 /// configured when the Sock was first created with `Sock.new`.
 pub fn receive(sock: Socket, length: Int) -> Result(BitArray, internal.PglError) {
-  sock.receive(sock.conn, length, sock.timeout)
+  sock.receive(sock.conn, length, 1000)
 }
 
 /// Calls the Sock's `shutdown` function. This will disconnect the Sock's connection if

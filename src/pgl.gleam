@@ -29,12 +29,9 @@ pub type Config {
     application: String,
     host: String,
     port: Int,
-    user: String,
+    username: String,
     password: String,
     database: String,
-    timeout: Int,
-    ping_timeout: Int,
-    recv_timeout: Int,
     ssl: Ssl,
     rows_as_maps: Bool,
     // pool config
@@ -45,25 +42,19 @@ pub type Config {
 
 fn to_protocol_config(conf: Config) -> protocol.Config {
   protocol.config
-  |> protocol.host(conf.host)
-  |> protocol.port(conf.port)
-  |> protocol.timeout(conf.recv_timeout)
   |> protocol.application(conf.application)
-  |> protocol.username(conf.user)
+  |> protocol.username(conf.username)
   |> protocol.password(conf.password)
   |> protocol.database(conf.database)
 }
 
 pub const default = Config(
   application: "",
-  host: "127.0.0.1",
+  host: internal.default_host,
   port: internal.default_port,
-  user: "",
+  username: "",
   password: "",
   database: "",
-  timeout: 5000,
-  ping_timeout: 1000,
-  recv_timeout: 5000,
   ssl: SslDisabled,
   rows_as_maps: False,
   connect_timeout: 500,
@@ -88,8 +79,8 @@ pub fn port(conf: Config, port: Int) -> Config {
   Config(..conf, port:)
 }
 
-pub fn username(conf: Config, user: String) -> Config {
-  Config(..conf, user:)
+pub fn username(conf: Config, username: String) -> Config {
+  Config(..conf, username:)
 }
 
 pub fn password(conf: Config, password: String) -> Config {
@@ -98,18 +89,6 @@ pub fn password(conf: Config, password: String) -> Config {
 
 pub fn database(conf: Config, database: String) -> Config {
   Config(..conf, database:)
-}
-
-pub fn timeout(conf: Config, timeout: Int) -> Config {
-  Config(..conf, timeout:)
-}
-
-pub fn ping_timeout(conf: Config, ping_timeout: Int) -> Config {
-  Config(..conf, ping_timeout:)
-}
-
-pub fn recv_timeout(conf: Config, recv_timeout: Int) -> Config {
-  Config(..conf, recv_timeout:)
 }
 
 pub fn ssl(conf: Config, ssl: Ssl) -> Config {
@@ -199,9 +178,10 @@ fn apply_ssl_mode(conf: Config, uri: Uri) -> Result(Config, Nil) {
 }
 
 fn try_option(maybe: Option(a), next: fn(a) -> Result(b, Nil)) -> Result(b, Nil) {
-  maybe
-  |> option.to_result(Nil)
-  |> result.try(next)
+  case maybe {
+    Some(val) -> next(val)
+    None -> Error(Nil)
+  }
 }
 
 pub type PglError {
@@ -248,7 +228,11 @@ pub opaque type Db {
 }
 
 pub fn new(config: Config) -> Db {
-  let tc = type_cache.new()
+  let tc =
+    type_cache.new()
+    |> type_cache.host(config.host)
+    |> type_cache.port(config.port)
+
   let qc = query_cache.new()
   let pool = pool.new()
 
@@ -277,7 +261,6 @@ pub fn start(db: Db) -> actor.StartResult(Supervisor) {
 pub fn supervised(db: Db) -> supervision.ChildSpecification(Supervisor) {
   let pool_supervisor =
     supervision.worker(fn() { start(db) })
-    |> supervision.timeout(db.config.timeout)
     |> supervision.restart(supervision.Transient)
 
   supervisor.new(supervisor.OneForOne)
@@ -298,7 +281,7 @@ pub fn with_connection(db: Db, next: fn(Connection) -> t) -> Result(t, PglError)
 }
 
 pub fn checkout(db: Db, caller: Pid) -> Result(Connection, PglError) {
-  pool.checkout(db.pool, caller, db.config.timeout)
+  pool.checkout(db.pool, caller, 500)
   |> result.map_error(PglError)
 }
 
@@ -307,7 +290,7 @@ pub fn checkin(db: Db, conn: Connection, caller: Pid) -> Nil {
 }
 
 pub fn shutdown(db: Db) -> Result(Nil, PglError) {
-  pool.shutdown(db.pool, db.config.timeout)
+  pool.shutdown(db.pool, 500)
   |> result.map_error(PglError)
 }
 
@@ -325,17 +308,18 @@ pub opaque type Connection {
     savepoint: Option(Int),
     tc: TypeCache,
     qc: QueryCache,
-    conf: Config,
+    conf: protocol.Config,
+    rows_as_maps: Bool,
   )
 }
 
 fn to_queried(
   ext: protocol.Extended(Value),
-  conf: Config,
+  rows_as_maps: Bool,
 ) -> Result(Queried, internal.PglError) {
   let values = list.reverse(ext.values)
 
-  let rows = case conf.rows_as_maps {
+  let rows = case rows_as_maps {
     True -> rows_to_maps(ext.fields, values)
     False -> list.map(values, dynamic.array)
   }
@@ -358,10 +342,17 @@ fn connect(db: Db) -> Result(Connection, String) {
     db.config
     |> to_protocol_config
 
-  socket.connect(db.config.host, db.config.port, db.config.recv_timeout)
+  socket.connect(db.config.host, db.config.port)
   |> result.try(fn(sock) {
     protocol.auth(sock, conf)
-    |> result.map(Connection(_, None, db.tc, db.qc, db.config))
+    |> result.map(Connection(
+      _,
+      None,
+      db.tc,
+      db.qc,
+      conf,
+      db.config.rows_as_maps,
+    ))
   })
   |> result.map_error(internal.error_to_string)
 }
@@ -390,7 +381,7 @@ pub fn query(
   conn: Connection,
 ) -> Result(Queried, PglError) {
   extended_query(sql, params, conn)
-  |> result.try(to_queried(_, conn.conf))
+  |> result.try(to_queried(_, conn.rows_as_maps))
   |> result.map_error(from_internal_error)
 }
 
@@ -402,10 +393,9 @@ pub fn pipeline(
     queries
     |> list.try_map(fn(query) {
       let Query(sql, params) = query
-      let conf = to_protocol_config(conn.conf)
 
       use oids <- result.try(query_cache.lookup(conn.qc, sql))
-      use info <- result.map(type_cache.lookup(conn.tc, oids, conf))
+      use info <- result.map(type_cache.lookup(conn.tc, oids, conn.conf))
 
       encode.cached(sql, params, info, type_encoder)
     })
@@ -419,7 +409,7 @@ pub fn pipeline(
   |> protocol.batch_process(ext, messages, conn.sock)
   |> result.try(fn(exts) {
     exts
-    |> list.try_map(to_queried(_, conn.conf))
+    |> list.try_map(to_queried(_, conn.rows_as_maps))
   })
 }
 
@@ -458,10 +448,8 @@ fn encode_from_cache(
   params: List(Value),
   conn: Connection,
 ) -> Result(encode.Query(Value, types.TypeInfo), internal.PglError) {
-  let conf = to_protocol_config(conn.conf)
-
   use oids <- result.try(query_cache.lookup(conn.qc, sql))
-  use info <- result.map(type_cache.lookup(conn.tc, oids, conf))
+  use info <- result.map(type_cache.lookup(conn.tc, oids, conn.conf))
 
   encode.cached(sql, params, info, type_encoder)
   |> encode.with_sync
@@ -493,9 +481,7 @@ fn on_param_description(
   conn: Connection,
 ) -> Result(BitArray, internal.PglError) {
   query_cache.insert(conn.qc, sql, oids)
-  let conf = to_protocol_config(conn.conf)
-
-  use info <- result.map(type_cache.lookup(conn.tc, oids, conf))
+  use info <- result.map(type_cache.lookup(conn.tc, oids, conn.conf))
 
   encode.cached(sql, params, info, type_encoder)
   |> encode.with_sync
@@ -507,8 +493,7 @@ fn decode_row(
   oids: List(Int),
   conn: Connection,
 ) -> Result(List(Dynamic), internal.PglError) {
-  let conf = to_protocol_config(conn.conf)
-  use type_info <- result.try(type_cache.lookup(conn.tc, oids, conf))
+  use type_info <- result.try(type_cache.lookup(conn.tc, oids, conn.conf))
 
   decode_row_values(values, type_info)
 }
