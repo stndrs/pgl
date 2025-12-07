@@ -222,13 +222,13 @@ pub fn decode_parse_complete_error_test() {
 
 pub fn decode_command_complete_test() {
   [
-    #(<<"SELECT ":utf8, "1":utf8, 0>>, 1, internal.Select(1)),
-    #(<<"INSERT ":utf8, "0 1":utf8, 0>>, 1, internal.Insert(1)),
-    #(<<"UPDATE ":utf8, 1:int, 0>>, 1, internal.Update(1)),
-    #(<<"DELETE ":utf8, 1:int, 0>>, 1, internal.Delete(1)),
-    #(<<"FETCH ":utf8, 1:int, 0>>, 1, internal.Fetch(1)),
-    #(<<"MOVE ":utf8, 1:int, 0>>, 1, internal.Move(1)),
-    #(<<"COPY ":utf8, 1:int, 0>>, 1, internal.Copy(1)),
+    #(<<"SELECT 1":utf8, 0>>, 1, internal.Select(1)),
+    #(<<"INSERT 0 1":utf8, 0>>, 1, internal.Insert(1)),
+    #(<<"UPDATE 1":utf8, 0>>, 1, internal.Update(1)),
+    #(<<"DELETE 1":utf8, 0>>, 1, internal.Delete(1)),
+    #(<<"FETCH 1":utf8, 0>>, 1, internal.Fetch(1)),
+    #(<<"MOVE 1":utf8, 0>>, 1, internal.Move(1)),
+    #(<<"COPY 1":utf8, 0>>, 1, internal.Copy(1)),
     #(<<"BEGIN":utf8, 0>>, 0, internal.Begin),
     #(<<"COMMIT":utf8, 0>>, 0, internal.Commit),
     #(<<"ROLLBACK":utf8, 0>>, 0, internal.Rollback),
@@ -244,11 +244,30 @@ pub fn decode_command_complete_test() {
   })
 }
 
-pub fn decode_command_complete_error_test() {
+pub fn decode_command_complete_invalid_command_test() {
+  let commands = [
+    #(<<"SELECT *":utf8, 0>>, "SELECT"),
+    #(<<"INSERT 0 *":utf8, 0>>, "INSERT"),
+    #(<<"UPDATE *":utf8, 0>>, "UPDATE"),
+    #(<<"DELETE *":utf8, 0>>, "DELETE"),
+    #(<<"FETCH *":utf8, 0>>, "FETCH"),
+    #(<<"MOVE *":utf8, 0>>, "MOVE"),
+    #(<<"COPY *":utf8, 0>>, "COPY"),
+  ]
+
+  use #(invalid_bits, name) <- list.each(commands)
+
+  let assert Error(internal.ProtocolError(internal.DecodingError, msg)) =
+    decode.command_complete(invalid_bits)
+
+  let assert True = "Invalid " <> name <> " row count" == msg
+}
+
+pub fn decode_command_complete_invalid_payload_test() {
   let assert Error(internal.ProtocolError(
     kind: internal.DecodingError,
-    message: "CommandComplete",
-  )) = decode.command_complete(<<1:int-size(32), 0>>)
+    message: "Invalid CommandComplete payload",
+  )) = decode.command_complete(<<0:int-size(1)>>)
 }
 
 pub fn decode_error_and_mention_field_type_test() {

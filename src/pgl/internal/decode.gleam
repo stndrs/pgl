@@ -215,17 +215,17 @@ pub fn notice_response(
 pub fn command_complete(
   payload: BitArray,
 ) -> Result(internal.Message, internal.PglError) {
-  case decode_string(payload) {
-    Ok(#(command_tag, <<>>)) -> {
-      tag(bit_array.from_string(command_tag))
-      |> result.map(fn(command) {
-        let rows = num_rows_from_command(command)
+  let len = bit_array.byte_size(payload) - 1
 
-        internal.CommandComplete(command:, rows:)
-      })
-    }
-    _ -> Error(error("CommandComplete"))
-  }
+  bit_array.slice(payload, at: 0, take: len)
+  |> result.try(bit_array.to_string)
+  |> result.map_error(fn(_) { error("Invalid CommandComplete payload") })
+  |> result.try(to_tag)
+  |> result.map(fn(command) {
+    let rows = num_rows_from_command(command)
+
+    internal.CommandComplete(command:, rows:)
+  })
 }
 
 fn num_rows_from_command(cmd: internal.Command) -> Int {
@@ -244,43 +244,37 @@ fn num_rows_from_command(cmd: internal.Command) -> Int {
   }
 }
 
-fn tag(bits: BitArray) -> Result(internal.Command, internal.PglError) {
-  case bits {
-    <<"SELECT ":utf8, num:bits>> -> {
-      bit_array.to_string(num)
-      |> result.try(int.parse)
-      |> result.unwrap(0)
-      |> internal.Select
-      |> Ok
-    }
-    <<"INSERT ":utf8, rest:bits>> -> {
-      case binary_split(rest, <<" ">>) {
-        [_oid, <<num_rows:bits>>] -> {
-          let num_rows = bits_to_int(num_rows)
-          Ok(internal.Insert(num_rows))
-        }
-        _ -> Error(error("Invalid INSERT tag"))
-      }
-    }
-    <<"UPDATE ", num:int>> -> Ok(internal.Update(num))
-    <<"DELETE ", num:int>> -> Ok(internal.Delete(num))
-    <<"FETCH ", num:int>> -> Ok(internal.Fetch(num))
-    <<"MOVE ", num:int>> -> Ok(internal.Move(num))
-    <<"COPY ", num:int>> -> Ok(internal.Copy(num))
-    <<"BEGIN">> -> Ok(internal.Begin)
-    <<"COMMIT">> -> Ok(internal.Commit)
-    <<"ROLLBACK">> -> Ok(internal.Rollback)
-    other -> {
-      bit_array.to_string(other)
-      |> result.unwrap("")
-      |> internal.Other
-      |> Ok
-    }
+fn to_tag(value: String) -> Result(internal.Command, internal.PglError) {
+  case value {
+    "SELECT " <> num -> parse_num_rows("SELECT", num, into: internal.Select)
+    // https://www.postgresql.org/docs/current/protocol-message-formats.html#PROTOCOL-MESSAGE-FORMATS-COMMANDCOMPLETE
+    //
+    // > For an INSERT command, the tag is INSERT oid rows, where rows is the
+    // > number of rows inserted. oid used to be the object ID of the
+    // > inserted row if rows was 1 and the target table had OIDs, but OIDs
+    // > system columns are not supported anymore; therefore oid is always 0.
+    "INSERT 0 " <> num -> parse_num_rows("INSERT", num, into: internal.Insert)
+    "UPDATE " <> num -> parse_num_rows("UPDATE", num, into: internal.Update)
+    "DELETE " <> num -> parse_num_rows("DELETE", num, into: internal.Delete)
+    "FETCH " <> num -> parse_num_rows("FETCH", num, into: internal.Fetch)
+    "MOVE " <> num -> parse_num_rows("MOVE", num, into: internal.Move)
+    "COPY " <> num -> parse_num_rows("COPY", num, into: internal.Copy)
+    "BEGIN" -> Ok(internal.Begin)
+    "COMMIT" -> Ok(internal.Commit)
+    "ROLLBACK" -> Ok(internal.Rollback)
+    other -> Ok(internal.Other(other))
   }
 }
 
-@external(erlang, "erlang", "binary_to_integer")
-fn bits_to_int(data: BitArray) -> Int
+fn parse_num_rows(
+  name: String,
+  num: String,
+  into command: fn(Int) -> internal.Command,
+) -> Result(internal.Command, internal.PglError) {
+  int.parse(num)
+  |> result.map_error(fn(_) { error("Invalid " <> name <> " row count") })
+  |> result.map(command)
+}
 
 pub fn ready_for_query(
   payload: BitArray,
@@ -337,9 +331,6 @@ fn binary_match(bits: BitArray, pattern: BitArray) -> Option(#(Int, Int))
 
 @external(erlang, "erlang", "split_binary")
 fn split_binary(bits: BitArray, position: Int) -> #(BitArray, BitArray)
-
-@external(erlang, "binary", "split")
-fn binary_split(input: BitArray, pattern: BitArray) -> List(BitArray)
 
 pub fn no_data(payload: BitArray) -> Result(internal.Message, internal.PglError) {
   case payload {
