@@ -1,6 +1,10 @@
 import gleam/dict.{type Dict}
 import gleam/result
 
+pub const protocol_version_major = <<3:int-size(16)>>
+
+pub const protocol_version_minor = <<0:int-size(16)>>
+
 pub const default_host = "127.0.0.1"
 
 pub const default_port = 5432
