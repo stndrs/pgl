@@ -49,12 +49,7 @@ pub fn receive_test() {
 pub fn receive_error_test() {
   let sock =
     connect_test()
-    |> socket.with_receive(fn(_, _, _) {
-      Error(internal.SocketError(
-        internal.ReceiveError(internal.Econnrefused),
-        "Failed to receive",
-      ))
-    })
+    |> socket.with_receive(fn(_, _, _) { Error(internal.Closed) })
 
   let assert Error(internal.SocketError(
     internal.ReceiveError(_posix),

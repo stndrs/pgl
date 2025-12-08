@@ -218,7 +218,6 @@ pub fn server_continue_error(message: String) -> PglError {
 }
 
 pub type SocketError {
-  SocketConfigurationError
   SendError(code: PosixError)
   ReceiveError(code: PosixError)
   ConnectError(code: PosixError)
