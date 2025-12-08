@@ -319,21 +319,32 @@ fn to_queried(
 ) -> Result(Queried, internal.PglError) {
   let values = list.reverse(ext.values)
 
-  let rows = case rows_as_maps {
+  case rows_as_maps {
     True -> rows_to_maps(ext.fields, values)
-    False -> list.map(values, dynamic.array)
+    False -> Ok(list.map(values, dynamic.array))
   }
-
-  Ok(Queried(count: ext.count, fields: ext.fields, rows:))
+  |> result.map(fn(rows) {
+    Queried(count: ext.count, fields: ext.fields, rows:)
+  })
+  |> result.map_error(fn(_) {
+    internal.PglError("Failed to process queried rows")
+  })
 }
 
 fn rows_to_maps(
   fields: List(String),
   values: List(List(Dynamic)),
-) -> List(Dynamic) {
-  use row <- list.map(values)
+) -> Result(List(Dynamic), Nil) {
+  values
+  |> list.try_map(list.strict_zip(fields, _))
+  |> result.map(fn(rows) {
+    list.map(rows, fn(row) {
+      use #(col, val) <- list.map(row)
 
-  lists_zip_(fields, row) |> maps_from_list_
+      #(dynamic.string(col), val)
+    })
+    |> list.map(dynamic.properties)
+  })
 }
 
 /// Creates a new connection to the database.
@@ -655,9 +666,3 @@ fn rollback_savepoint(
 pub type Queried {
   Queried(count: Int, fields: List(String), rows: List(Dynamic))
 }
-
-@external(erlang, "lists", "zip")
-fn lists_zip_(fields: List(String), row: List(Dynamic)) -> Dynamic
-
-@external(erlang, "maps", "from_list")
-fn maps_from_list_(list: Dynamic) -> Dynamic
