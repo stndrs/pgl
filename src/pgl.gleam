@@ -377,6 +377,10 @@ pub fn disconnect(conn: Connection) -> Nil {
 
 // ---------- Query ---------- //
 
+pub type Queried {
+  Queried(count: Int, fields: List(String), rows: List(Dynamic))
+}
+
 pub type Query {
   Query(sql: String, params: List(Value))
 }
@@ -661,8 +665,4 @@ fn rollback_savepoint(
   protocol.simple(packet, conn.sock)
   |> result.replace(conn)
   |> result.replace_error(TransactionError)
-}
-
-pub type Queried {
-  Queried(count: Int, fields: List(String), rows: List(Dynamic))
 }
