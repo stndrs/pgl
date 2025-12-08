@@ -92,7 +92,7 @@ fn setup(sock: Socket, conf: Config) -> Result(Socket, internal.PglError) {
       #("database", conf.database),
       #("application_name", conf.application),
     ]
-    |> scram.encode_startup
+    |> encode.startup
 
   use sock <- result.try(socket.send(sock, message))
 
@@ -177,7 +177,7 @@ fn auth_sasl_continue(
     let #(client_final, server_signature) =
       scram.client_final(sf, client_nonce, user, pass)
 
-    let encoded_client_final = scram.encode_scram_response(client_final)
+    let encoded_client_final = encode.scram_response(client_final)
 
     socket.send(sock, encoded_client_final)
     |> result.replace(server_signature)
@@ -191,7 +191,7 @@ fn scram_sha_256(
   let client_nonce = scram.get_nonce(16)
 
   scram.client_first(<<conf.username:utf8>>, client_nonce)
-  |> scram.encode_auth_scram_client_first
+  |> encode.auth_scram_client_first
   |> socket.send(sock, _)
   |> result.replace(client_nonce)
 }

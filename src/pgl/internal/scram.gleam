@@ -8,67 +8,12 @@ import gleam/string
 import pgl/internal
 import pgl/internal/sasl
 
-// Message encoding
-
-pub fn encode_auth_scram_client_first(client_first: BitArray) -> BitArray {
-  let size = bit_array.byte_size(client_first)
-
-  let initial_response =
-    bytes_tree.from_string("SCRAM-SHA-256")
-    |> bytes_tree.append(<<0>>)
-    |> bytes_tree.append(<<size:int-size(32)>>)
-    |> bytes_tree.append(client_first)
-
-  let sasl_size = bytes_tree.byte_size(initial_response) + 4
-
-  bytes_tree.from_string("p")
-  |> bytes_tree.append(<<sasl_size:int-size(32)>>)
-  |> bytes_tree.append_tree(initial_response)
-  |> bytes_tree.to_bit_array
-}
-
-pub fn encode_scram_response(client_final: BitArray) -> BitArray {
-  let size = bit_array.byte_size(client_final) + 4
-
-  bytes_tree.from_string("p")
-  |> bytes_tree.append(<<size:int-size(32)>>)
-  |> bytes_tree.append(client_final)
-  |> bytes_tree.to_bit_array
-}
-
-pub fn encode_startup(params: List(#(String, String))) -> BitArray {
-  let encoded_params =
-    list.fold(over: params, from: bytes_tree.new(), with: fn(acc, key_val) {
-      acc
-      |> bytes_tree.append_string(key_val.0)
-      |> bytes_tree.append(<<0>>)
-      |> bytes_tree.append_string(key_val.1)
-      |> bytes_tree.append(<<0>>)
-    })
-    |> bytes_tree.to_bit_array
-
-  let packet =
-    bit_array.concat([
-      internal.protocol_version_major,
-      internal.protocol_version_minor,
-      encoded_params,
-      <<0>>,
-    ])
-
-  let size = bit_array.byte_size(packet) + 4
-
-  <<size:int-size(32), packet:bits>>
-}
-
-// ---------- Scram ---------- //
-
 pub type ServerFirst {
   ServerFirst(nonce: BitArray, salt: BitArray, iterations: Int, raw: BitArray)
 }
 
 pub fn client_first(user: BitArray, nonce: BitArray) -> BitArray {
-  [<<"n,,":utf8>>, <<"n=":utf8>>, user, <<",r=":utf8>>, nonce]
-  |> bit_array.concat
+  <<"n,,n=":utf8, user:bits, ",r=":utf8, nonce:bits>>
 }
 
 pub fn get_nonce(num_random_bytes: Int) -> BitArray {
@@ -104,8 +49,8 @@ pub fn client_final(
   let client_key = crypto.hmac(<<"Client Key":utf8>>, sha_256, salted_password)
 
   let auth_message =
-    [<<"n=":utf8>>, username, <<",r=":utf8>>, client_nonce]
-    |> list.fold(bytes_tree.new(), bytes_tree.append)
+    <<"n=":utf8, username:bits, ",r=":utf8, client_nonce:bits>>
+    |> bytes_tree.from_bit_array
     |> bytes_tree.append(<<",":utf8>>)
     |> bytes_tree.append(server_first.raw)
     |> bytes_tree.append(<<",":utf8>>)

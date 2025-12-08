@@ -3,6 +3,61 @@ import gleam/bytes_tree
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/result
+import pgl/internal
+
+// Auth encoding
+
+pub fn auth_scram_client_first(client_first: BitArray) -> BitArray {
+  let size = bit_array.byte_size(client_first)
+
+  let initial_response =
+    bytes_tree.from_string("SCRAM-SHA-256")
+    |> bytes_tree.append(<<0>>)
+    |> bytes_tree.append(<<size:int-size(32)>>)
+    |> bytes_tree.append(client_first)
+
+  let sasl_size = bytes_tree.byte_size(initial_response) + 4
+
+  bytes_tree.from_string("p")
+  |> bytes_tree.append(<<sasl_size:int-size(32)>>)
+  |> bytes_tree.append_tree(initial_response)
+  |> bytes_tree.to_bit_array
+}
+
+pub fn scram_response(client_final: BitArray) -> BitArray {
+  let size = bit_array.byte_size(client_final) + 4
+
+  bytes_tree.from_string("p")
+  |> bytes_tree.append(<<size:int-size(32)>>)
+  |> bytes_tree.append(client_final)
+  |> bytes_tree.to_bit_array
+}
+
+pub fn startup(params: List(#(String, String))) -> BitArray {
+  let encoded_params =
+    list.fold(over: params, from: bytes_tree.new(), with: fn(acc, key_val) {
+      acc
+      |> bytes_tree.append_string(key_val.0)
+      |> bytes_tree.append(<<0>>)
+      |> bytes_tree.append_string(key_val.1)
+      |> bytes_tree.append(<<0>>)
+    })
+    |> bytes_tree.to_bit_array
+
+  let packet =
+    bit_array.concat([
+      internal.protocol_version_major,
+      internal.protocol_version_minor,
+      encoded_params,
+      <<0>>,
+    ])
+
+  let size = bit_array.byte_size(packet) + 4
+
+  <<size:int-size(32), packet:bits>>
+}
+
+//
 
 pub fn bind(
   portal_name: BitArray,
