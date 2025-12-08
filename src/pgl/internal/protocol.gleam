@@ -74,15 +74,22 @@ fn do_ssl_upgrade(
   sock: Socket,
   verified verified: Bool,
 ) -> Result(Socket, internal.PglError) {
-  socket.send(sock, encode.ssl_request())
-  |> result.try(fn(sock) {
-    case socket.receive(sock, 1) {
-      Ok(<<"S":utf8>>) -> socket.ssl_upgrade(sock, verified:)
-      Ok(<<"N":utf8>>) -> Error(socket.ssl_error("SSL refused"))
-      Ok(_) -> Error(socket.ssl_error("Failed to upgrade SSL"))
-      Error(err) -> Error(err)
+  use sock <- result.try(socket.send(sock, encode.ssl_request()))
+
+  case socket.receive(sock, 1) {
+    Ok(<<"S":utf8>>) -> socket.ssl_upgrade(sock, verified:)
+    Ok(<<"N":utf8>>) -> {
+      internal.SslError
+      |> internal.SocketError(message: "SSL Refused")
+      |> Error
     }
-  })
+    Ok(_) -> {
+      internal.SslError
+      |> internal.SocketError(message: "Failed to upgrade SSL")
+      |> Error
+    }
+    Error(err) -> Error(err)
+  }
 }
 
 fn setup(sock: Socket, conf: Config) -> Result(Socket, internal.PglError) {
@@ -137,7 +144,11 @@ fn auth_flow(
       |> auth_flow(conf, <<>>)
     }
     internal.ReadyForQuery(status: _) -> Ok(<<>>)
-    _ -> pgl_error("Unexpected message during auth flow")
+    _ -> {
+      internal.MessageError
+      |> internal.ProtocolError(message: "Unexpected message")
+      |> Error
+    }
   }
 }
 
@@ -147,8 +158,21 @@ fn auth_sasl(
   conf: Config,
 ) -> Result(BitArray, internal.PglError) {
   case methods {
-    ["SCRAM-SHA-256"] -> scram_sha_256(sock, conf)
-    _ -> pgl_error("Authentication method not implemented")
+    ["SCRAM-SHA-256"] -> {
+      let client_nonce = scram.get_nonce(16)
+
+      scram.client_first(<<conf.username:utf8>>, client_nonce)
+      |> encode.auth_scram_client_first
+      |> socket.send(sock, _)
+      |> result.replace(client_nonce)
+    }
+    _ -> {
+      internal.MethodNotSupported
+      |> internal.AuthenticationError(
+        message: "Supported methods: [SCRAM-SHA-256]",
+      )
+      |> Error
+    }
   }
 }
 
@@ -158,10 +182,6 @@ fn handle_error_response(
   internal.from_response_fields(fields)
   |> internal.PostgresError
   |> Error
-}
-
-fn pgl_error(message: String) -> Result(a, internal.PglError) {
-  Error(internal.PglError(message:))
 }
 
 fn auth_sasl_continue(
@@ -183,18 +203,6 @@ fn auth_sasl_continue(
     socket.send(sock, encoded_client_final)
     |> result.replace(server_signature)
   })
-}
-
-fn scram_sha_256(
-  sock: Socket,
-  conf: Config,
-) -> Result(BitArray, internal.PglError) {
-  let client_nonce = scram.get_nonce(16)
-
-  scram.client_first(<<conf.username:utf8>>, client_nonce)
-  |> encode.auth_scram_client_first
-  |> socket.send(sock, _)
-  |> result.replace(client_nonce)
 }
 
 fn auth_sasl_final(
@@ -288,7 +296,6 @@ pub type Extended(v) {
     needs_sync: Bool,
     handle_decode_row: HandleDecodeRow,
     handle_param_description: HandleParamDescription(v),
-    // rows
     descriptions: List(internal.RowDescriptionField),
     fields: List(String),
     values: List(List(Dynamic)),
@@ -330,21 +337,16 @@ pub fn process(
   sock: Socket,
 ) -> Result(Extended(v), internal.PglError) {
   let needs_sync = encode.needs_sync(query)
-
   let packet = encode.to_bit_array(query)
-
-  use sock <- result.try(socket.send(sock, packet))
-
   let flow = Extended(..flow, needs_sync:)
-
   let pl = pipeline()
 
-  do_pipeline(pl, flow, [query], sock)
-  |> result.try(fn(pl) {
-    pl.acc
-    |> list.first
-    |> result.map_error(fn(_) { internal.PglError("missing rows") })
-  })
+  use sock <- result.try(socket.send(sock, packet))
+  use pl <- result.try(do_pipeline(pl, flow, [query], sock))
+
+  pl.acc
+  |> list.first
+  |> result.map_error(fn(_) { internal.PglError("missing rows") })
 }
 
 fn handle_row_description(
@@ -371,21 +373,21 @@ fn handle_data_row(
 }
 
 fn receive_message(sock: Socket) -> Result(internal.Message, internal.PglError) {
-  socket.receive(sock, internal.header_size)
-  |> result.try(fn(data) {
-    case data {
-      <<code:bits-size(8), size:int-size(32)>> -> {
-        case size - 4 {
-          0 -> decode.message(code, <<>>)
-          size1 -> {
-            socket.receive(sock, size1)
-            |> result.try(decode.message(code, _))
-          }
+  use data <- result.try(socket.receive(sock, internal.header_size))
+
+  case data {
+    <<code:bits-size(8), size:int-size(32)>> -> {
+      case size - 4 {
+        0 -> decode.message(code, <<>>)
+        size1 -> {
+          use payload <- result.try(socket.receive(sock, size1))
+
+          decode.message(code, payload)
         }
       }
-      _ -> Error(decode.error("Unexpected data format"))
     }
-  })
+    _ -> Error(decode.error("Unexpected data format"))
+  }
 }
 
 // ---------- Pipeline ---------- //

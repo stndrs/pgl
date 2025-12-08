@@ -189,6 +189,7 @@ pub type AuthenticationError {
   UnsupportedSASLMethod(method: BitArray)
   AuthenticationFailed(cause: PglError)
   SignatureMismatch
+  MethodNotSupported
 }
 
 pub fn authentication_failed(cause: PglError, message: String) -> PglError {

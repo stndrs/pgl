@@ -107,10 +107,6 @@ pub fn shutdown(sock: Socket) -> Result(Nil, internal.PglError) {
 
 // Default Conn functions
 
-pub fn ssl_error(message: String) -> internal.PglError {
-  internal.SocketError(kind: internal.SslError, message:)
-}
-
 pub fn ssl_upgrade(
   sock: Socket,
   verified verified: Bool,
