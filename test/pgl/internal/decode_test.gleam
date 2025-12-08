@@ -13,7 +13,7 @@ pub fn decode_close_complete_test() {
 pub fn decode_close_complete_error_test() {
   let assert Error(internal.ProtocolError(
     kind: internal.DecodingError,
-    message: "CloseComplete",
+    message: "Unexpected payload for CloseComplete",
   )) = decode.close_complete(<<"unexpected":utf8>>)
 }
 
@@ -24,7 +24,7 @@ pub fn decode_empty_query_response_test() {
 pub fn decode_empty_query_response_error_test() {
   let assert Error(internal.ProtocolError(
     kind: internal.DecodingError,
-    message: "EmptyQueryResponse",
+    message: "Unexpected payload for EmptyQueryResponse",
   )) = decode.empty_query_response(<<"unexpected":utf8>>)
 }
 
@@ -35,7 +35,7 @@ pub fn decode_copy_done_test() {
 pub fn decode_copy_done_error_test() {
   let assert Error(internal.ProtocolError(
     kind: internal.DecodingError,
-    message: "CopyDone",
+    message: "Unexpected payload for CopyDone",
   )) = decode.copy_done(<<"unexpected":utf8>>)
 }
 
@@ -46,7 +46,7 @@ pub fn decode_portal_suspended_test() {
 pub fn decode_portal_suspended_error_test() {
   let assert Error(internal.ProtocolError(
     kind: internal.DecodingError,
-    message: "PortalSuspended",
+    message: "Unexpected payload for PortalSuspended",
   )) = decode.portal_suspended(<<"unexpected":utf8>>)
 }
 
@@ -62,7 +62,7 @@ pub fn decode_data_row_test() {
 pub fn decode_data_row_error_test() {
   let assert Error(internal.ProtocolError(
     kind: internal.DecodingError,
-    message: "DataRow",
+    message: "Unexpected payload for DataRow",
   )) = decode.data_row(<<>>)
 }
 
@@ -81,7 +81,7 @@ pub fn decode_backend_key_data_test() {
 pub fn decode_backend_key_data_error_test() {
   let assert Error(internal.ProtocolError(
     kind: internal.DecodingError,
-    message: "BackendKeyData",
+    message: "Unexpected payload for BackendKeyData",
   )) = decode.backend_key_data(<<>>)
 }
 
@@ -132,7 +132,7 @@ pub fn decode_authentication_test() {
 pub fn decode_authentication_error_test() {
   let assert Error(internal.ProtocolError(
     kind: internal.DecodingError,
-    message: "authentication",
+    message: "Unexpected authentication payload",
   )) = decode.authentication(<<-1:int-size(32)>>)
 }
 
@@ -150,7 +150,7 @@ pub fn decode_bind_complete_test() {
 pub fn decode_bind_complete_error_test() {
   let assert Error(internal.ProtocolError(
     kind: internal.DecodingError,
-    message: "BindComplete",
+    message: "Unexpected payload for BindComplete",
   )) = decode.bind_complete(<<"unexpected":utf8>>)
 }
 
@@ -194,7 +194,7 @@ pub fn decode_ready_for_query_test() {
 pub fn decode_ready_for_query_error_test() {
   let assert Error(internal.ProtocolError(
     kind: internal.DecodingError,
-    message: "ReadyForQuery",
+    message: "Unexpected payload for ReadyForQuery",
   )) = decode.ready_for_query(<<"X":utf8>>)
 }
 
@@ -205,7 +205,7 @@ pub fn decode_no_data_test() {
 pub fn decode_no_data_error_test() {
   let assert Error(internal.ProtocolError(
     kind: internal.DecodingError,
-    message: "NoData",
+    message: "Unexpected payload for NoData",
   )) = decode.no_data(<<"X":utf8>>)
 }
 
@@ -216,7 +216,7 @@ pub fn decode_parse_complete_test() {
 pub fn decode_parse_complete_error_test() {
   let assert Error(internal.ProtocolError(
     kind: internal.DecodingError,
-    message: "ParseComplete",
+    message: "Unexpected payload for ParseComplete",
   )) = decode.parse_complete(<<"X":utf8>>)
 }
 
@@ -266,7 +266,7 @@ pub fn decode_command_complete_invalid_command_test() {
 pub fn decode_command_complete_invalid_payload_test() {
   let assert Error(internal.ProtocolError(
     kind: internal.DecodingError,
-    message: "Invalid CommandComplete payload",
+    message: "Unexpected payload for CommandComplete",
   )) = decode.command_complete(<<0:int-size(1)>>)
 }
 

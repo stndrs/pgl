@@ -386,7 +386,11 @@ fn receive_message(sock: Socket) -> Result(internal.Message, internal.PglError) 
         }
       }
     }
-    _ -> Error(decode.error("Unexpected data format"))
+    _ -> {
+      internal.DecodingError
+      |> internal.ProtocolError(message: "Unexpected data received")
+      |> Error
+    }
   }
 }
 

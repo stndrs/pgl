@@ -13,7 +13,6 @@ import gleam/result
 import gleam/string
 import gleam/uri.{type Uri}
 import pgl/internal
-import pgl/internal/decode
 import pgl/internal/encode
 import pgl/internal/protocol
 import pgl/internal/query_cache.{type QueryCache}
@@ -517,7 +516,10 @@ fn decode_row_values(
   infos: List(types.TypeInfo),
 ) -> Result(List(Dynamic), internal.PglError) {
   list.strict_zip(values, infos)
-  |> result.replace_error(decode.error("Mismatched values and infos"))
+  |> result.map_error(fn(_) {
+    internal.DecodingError
+    |> internal.ProtocolError(message: "Mismatched values and infos")
+  })
   |> result.try(fn(vals_infos) {
     list.try_map(vals_infos, fn(val_info) {
       let #(val, info) = val_info

@@ -30,15 +30,15 @@ pub fn message(
     <<"n":utf8>> -> no_data(payload)
     <<"s":utf8>> -> portal_suspended(payload)
     <<"t":utf8>> -> parameter_description(payload)
-    _ ->
-      Error(error(
-        "message type" <> bit_array.to_string(code) |> result.unwrap("unknown"),
-      ))
-  }
-}
+    _ -> {
+      let message =
+        "message type " <> bit_array.to_string(code) |> result.unwrap("unknown")
 
-pub fn error(message: String) -> internal.PglError {
-  internal.ProtocolError(kind: internal.DecodingError, message:)
+      internal.DecodingError
+      |> internal.ProtocolError(message:)
+      |> Error
+    }
+  }
 }
 
 pub fn close_complete(
@@ -46,7 +46,11 @@ pub fn close_complete(
 ) -> Result(internal.Message, internal.PglError) {
   case payload {
     <<>> -> Ok(internal.CloseComplete)
-    _bits -> Error(error("CloseComplete"))
+    _bits -> {
+      internal.DecodingError
+      |> internal.ProtocolError(message: "Unexpected payload for CloseComplete")
+      |> Error
+    }
   }
 }
 
@@ -55,7 +59,13 @@ pub fn empty_query_response(
 ) -> Result(internal.Message, internal.PglError) {
   case payload {
     <<>> -> Ok(internal.EmptyQueryResponse)
-    _bits -> Error(error("EmptyQueryResponse"))
+    _bits -> {
+      internal.DecodingError
+      |> internal.ProtocolError(
+        message: "Unexpected payload for EmptyQueryResponse",
+      )
+      |> Error
+    }
   }
 }
 
@@ -64,7 +74,11 @@ pub fn copy_done(
 ) -> Result(internal.Message, internal.PglError) {
   case payload {
     <<>> -> Ok(internal.CopyDone)
-    _bits -> Error(error("CopyDone"))
+    _bits -> {
+      internal.DecodingError
+      |> internal.ProtocolError(message: "Unexpected payload for CopyDone")
+      |> Error
+    }
   }
 }
 
@@ -73,7 +87,13 @@ pub fn portal_suspended(
 ) -> Result(internal.Message, internal.PglError) {
   case payload {
     <<>> -> Ok(internal.PortalSuspended)
-    _bits -> Error(error("PortalSuspended"))
+    _bits -> {
+      internal.DecodingError
+      |> internal.ProtocolError(
+        message: "Unexpected payload for PortalSuspended",
+      )
+      |> Error
+    }
   }
 }
 
@@ -89,7 +109,11 @@ pub fn data_row(
       data_row_values(rest, columns, [])
       |> result.map(internal.DataRow)
     }
-    _ -> Error(error("DataRow"))
+    _bits -> {
+      internal.DecodingError
+      |> internal.ProtocolError(message: "Unexpected payload for DataRow")
+      |> Error
+    }
   }
 }
 
@@ -109,7 +133,11 @@ fn data_row_values(
         <<value_len:int-size(32), value:bytes-size(value_len), rest:bits>> -> {
           data_row_values(rest, columns - 1, [value, ..acc])
         }
-        _ -> Error(error("Invalid data row"))
+        _bits -> {
+          internal.DecodingError
+          |> internal.ProtocolError(message: "Invalid data row")
+          |> Error
+        }
       }
     }
   }
@@ -121,7 +149,13 @@ pub fn backend_key_data(
   case payload {
     <<proc_id:int-size(32), secret:int-size(32)>> ->
       Ok(internal.BackendKeyData(proc_id:, secret:))
-    _ -> Error(error("BackendKeyData"))
+    _bits -> {
+      internal.DecodingError
+      |> internal.ProtocolError(
+        message: "Unexpected payload for BackendKeyData",
+      )
+      |> Error
+    }
   }
 }
 
@@ -130,11 +164,20 @@ pub fn parameter_status(
 ) -> Result(internal.Message, internal.PglError) {
   payload
   |> bit_array.to_string
-  |> result.map_error(fn(_) { error("ParameterStatus") })
+  |> result.map_error(fn(_) {
+    internal.DecodingError
+    |> internal.ProtocolError(message: "Unexpected payload for ParameterStatus")
+  })
   |> result.try(fn(str) {
     case string.split(str, on: "\u{0000}") {
       [name, value, _] -> Ok(internal.ParameterStatus(name:, value:))
-      _ -> Error(error("ParameterStatus"))
+      _bits -> {
+        internal.DecodingError
+        |> internal.ProtocolError(
+          message: "Unexpected payload for ParameterStatus",
+        )
+        |> Error
+      }
     }
   })
 }
@@ -161,7 +204,11 @@ pub fn authentication(
       Ok(internal.AuthenticationSASLContinue(server_first:))
     <<12:int-size(32), server_final:bits>> ->
       Ok(internal.AuthenticationSASLFinal(server_final:))
-    _ -> Error(error("authentication"))
+    _bits -> {
+      internal.DecodingError
+      |> internal.ProtocolError(message: "Unexpected authentication payload")
+      |> Error
+    }
   }
 }
 
@@ -192,7 +239,11 @@ pub fn bind_complete(
 ) -> Result(internal.Message, internal.PglError) {
   case payload {
     <<>> -> Ok(internal.BindComplete)
-    _ -> Error(error("BindComplete"))
+    _bits -> {
+      internal.DecodingError
+      |> internal.ProtocolError(message: "Unexpected payload for BindComplete")
+      |> Error
+    }
   }
 }
 
@@ -217,7 +268,10 @@ pub fn command_complete(
 
   bit_array.slice(payload, at: 0, take: len)
   |> result.try(bit_array.to_string)
-  |> result.map_error(fn(_) { error("Invalid CommandComplete payload") })
+  |> result.map_error(fn(_) {
+    internal.DecodingError
+    |> internal.ProtocolError(message: "Unexpected payload for CommandComplete")
+  })
   |> result.try(to_tag)
   |> result.map(fn(command) {
     let rows = num_rows_from_command(command)
@@ -270,7 +324,10 @@ fn parse_num_rows(
   into command: fn(Int) -> internal.Command,
 ) -> Result(internal.Command, internal.PglError) {
   int.parse(num)
-  |> result.map_error(fn(_) { error("Invalid " <> name <> " row count") })
+  |> result.map_error(fn(_) {
+    internal.DecodingError
+    |> internal.ProtocolError(message: "Invalid " <> name <> " row count")
+  })
   |> result.map(command)
 }
 
@@ -281,7 +338,11 @@ pub fn ready_for_query(
     <<"I":utf8>> -> Ok(internal.ReadyForQuery(status: internal.Idle))
     <<"T":utf8>> -> Ok(internal.ReadyForQuery(status: internal.Transaction))
     <<"E":utf8>> -> Ok(internal.ReadyForQuery(status: internal.Err))
-    _ -> Error(error("ReadyForQuery"))
+    _bits -> {
+      internal.DecodingError
+      |> internal.ProtocolError(message: "Unexpected payload for ReadyForQuery")
+      |> Error
+    }
   }
 }
 
@@ -315,12 +376,23 @@ fn decode_string(
         #(<<str:bits>>, <<0, rest:bits>>) -> {
           bit_array.to_string(str)
           |> result.map(fn(str1) { #(str1, rest) })
-          |> result.replace_error(error("Faild to parse string"))
+          |> result.map_error(fn(_) {
+            internal.DecodingError
+            |> internal.ProtocolError(message: "Failed to parse binary")
+          })
         }
-        _ -> Error(error("Failed to parse binary"))
+        _bits -> {
+          internal.DecodingError
+          |> internal.ProtocolError(message: "Failed to parse binary")
+          |> Error
+        }
       }
     }
-    None -> Error(error("Not null terminated"))
+    None -> {
+      internal.DecodingError
+      |> internal.ProtocolError(message: "Failed to decode string")
+      |> Error
+    }
   }
 }
 
@@ -333,7 +405,11 @@ fn split_binary(bits: BitArray, position: Int) -> #(BitArray, BitArray)
 pub fn no_data(payload: BitArray) -> Result(internal.Message, internal.PglError) {
   case payload {
     <<>> -> Ok(internal.NoData)
-    _ -> Error(error("NoData"))
+    _bits -> {
+      internal.DecodingError
+      |> internal.ProtocolError(message: "Unexpected payload for NoData")
+      |> Error
+    }
   }
 }
 
@@ -347,7 +423,13 @@ pub fn row_description(
         Error(err) -> Error(err)
       }
     }
-    _ -> Error(error("row description"))
+    _bits -> {
+      internal.DecodingError
+      |> internal.ProtocolError(
+        message: "Unexpected payload for RowDescription",
+      )
+      |> Error
+    }
   }
 }
 
@@ -389,7 +471,13 @@ fn row_description_fields(
               row_description_fields(count - 1, tail, [field, ..acc])
             })
           }
-          _ -> Error(error("Row description fields"))
+          _bits -> {
+            internal.DecodingError
+            |> internal.ProtocolError(
+              message: "Unexpected payload for RowDescriptionField",
+            )
+            |> Error
+          }
         }
       })
     }
@@ -402,7 +490,11 @@ fn decode_format_code(
   case code {
     0 -> Ok(internal.Text)
     1 -> Ok(internal.Binary)
-    _ -> Error(error("format code"))
+    _bits -> {
+      internal.DecodingError
+      |> internal.ProtocolError(message: "Unexpected format code")
+      |> Error
+    }
   }
 }
 
@@ -411,7 +503,11 @@ pub fn parse_complete(
 ) -> Result(internal.Message, internal.PglError) {
   case payload {
     <<>> -> Ok(internal.ParseComplete)
-    _ -> Error(error("ParseComplete"))
+    _bits -> {
+      internal.DecodingError
+      |> internal.ProtocolError(message: "Unexpected payload for ParseComplete")
+      |> Error
+    }
   }
 }
 
@@ -423,10 +519,18 @@ pub fn parameter_description(
       let data_types = parameter_data_types(rest, [])
       case count == list.length(data_types) {
         True -> Ok(internal.ParameterDescription(count:, data_types:))
-        _ -> Error(error("ParameterDescription"))
+        _bits -> {
+          internal.DecodingError
+          |> internal.ProtocolError(message: "ParameterDescription")
+          |> Error
+        }
       }
     }
-    _ -> Error(error("Parameter description"))
+    _bits -> {
+      internal.DecodingError
+      |> internal.ProtocolError(message: "ParameterDescription")
+      |> Error
+    }
   }
 }
 
