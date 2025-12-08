@@ -39,12 +39,6 @@ pub fn with_shutdown(sock: Socket, shutdown: Disconnector) -> Socket {
   Socket(..sock, shutdown:)
 }
 
-pub fn set_parameter(sock: Socket, key: String, value: String) -> Socket {
-  let parameters = dict.insert(sock.parameters, key, value)
-
-  Socket(..sock, parameters:)
-}
-
 /// Assign Key/Value pairs to a Sock's parameters Dict.
 pub fn parameter(sock: Socket, key: String, value: String) -> Socket {
   let parameters = sock.parameters |> dict.insert(key, value)

@@ -132,7 +132,8 @@ fn auth_flow(
     internal.NotificationResponse(_, _, _) -> auth_flow(sock, conf, <<>>)
     internal.NoticeResponse(_) -> auth_flow(sock, conf, <<>>)
     internal.ParameterStatus(name:, value:) -> {
-      socket.set_parameter(sock, name, value)
+      sock
+      |> socket.parameter(name, value)
       |> auth_flow(conf, <<>>)
     }
     internal.ReadyForQuery(status: _) -> Ok(<<>>)
