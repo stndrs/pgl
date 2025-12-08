@@ -76,7 +76,7 @@ fn handle_message(
 ) -> actor.Next(Store(String, List(Int)), Message) {
   case msg {
     Lookup(client, query) -> {
-      store.lookup(query)
+      store.lookup(store, query)
       |> result.replace_error(internal.QueryCacheError(
         kind: internal.NotFoundError,
         message: "SQL query not found in cache",
@@ -86,19 +86,19 @@ fn handle_message(
       actor.continue(store)
     }
     Insert(client, query, description) -> {
-      store.insert(query, description)
+      store.insert(store, query, description)
 
       actor.send(client, Nil)
       actor.continue(store)
     }
     Reset(client) -> {
-      store.delete()
+      store.delete(store)
 
       actor.send(client, Nil)
       actor.continue(store.new(table_name))
     }
     Shutdown -> {
-      store.delete()
+      store.delete(store)
 
       actor.stop()
     }

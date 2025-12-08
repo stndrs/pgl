@@ -138,7 +138,7 @@ fn handle_lookup(
   oids: List(Int),
   client: process.Subject(Result(List(types.TypeInfo), internal.PglError)),
 ) -> actor.Next(Store(Int, types.TypeInfo), a) {
-  list.try_map(oids, store.lookup)
+  list.try_map(oids, store.lookup(store, _))
   |> result.replace_error(internal.TypeCacheError(
     kind: internal.NotFoundError,
     message: "Failed to find type info for OIDs",
@@ -169,7 +169,7 @@ fn parse_type_infos(
       |> types.comp_types(Some(comp_types))
     })
     |> result.unwrap(info)
-    |> store.insert(oid, _)
+    |> store.insert(store, oid, _)
 
     store
   })

@@ -3,48 +3,36 @@ import gleam/erlang/atom.{type Atom}
 import gleam/int
 import gleam/result
 
-pub type Store(a, b) {
-  Store(
-    insert: fn(a, b) -> #(a, b),
-    lookup: fn(a) -> Result(b, StoreError),
-    delete: fn() -> Nil,
-  )
+pub opaque type Store(a, b) {
+  Store(name: Atom)
 }
 
 pub fn new(name: String) -> Store(a, b) {
   let table_name = name <> int.to_string(unique_int())
-  let ets_name = ets_new(table_name)
+  let name = atom.create(table_name) |> ets_new_
 
-  let insert = fn(a, b) { ets_insert(ets_name, a, b) }
-  let lookup = fn(a) { ets_lookup(ets_name, a) }
-  let delete = fn() { ets_delete(ets_name) }
-
-  Store(insert:, lookup:, delete:)
+  Store(name:)
 }
 
-pub type StoreError {
-  StoreError(message: String)
+pub fn insert(store: Store(a, b), key: a, value: b) -> #(a, b) {
+  ets_insert_(store.name, #(key, value))
 }
 
-fn ets_new(name: String) -> Atom {
-  atom.create(name) |> ets_new_
-}
-
-fn ets_insert(name: Atom, key: a, value: b) -> #(a, b) {
-  ets_insert_(name, #(key, value))
-}
-
-fn ets_lookup(name: Atom, key: a) -> Result(b, StoreError) {
-  ets_lookup_(name, key)
+pub fn lookup(store: Store(a, b), key: a) -> Result(b, StoreError) {
+  ets_lookup_(store.name, key)
   |> dict.from_list
   |> dict.get(key)
   |> result.replace_error(StoreError("key not found"))
 }
 
-fn ets_delete(name: Atom) -> Nil {
-  ets_delete_(name)
+pub fn delete(store: Store(a, b)) -> Nil {
+  ets_delete_(store.name)
 
   Nil
+}
+
+pub type StoreError {
+  StoreError(message: String)
 }
 
 @external(erlang, "pgl_ffi", "unique_int")
@@ -60,4 +48,4 @@ fn ets_insert_(name: Atom, key_val: #(a, b)) -> #(a, b)
 fn ets_lookup_(module: Atom, key: a) -> List(#(a, b))
 
 @external(erlang, "ets", "delete")
-fn ets_delete_(module: Atom) -> b
+fn ets_delete_(module: Atom) -> Bool
