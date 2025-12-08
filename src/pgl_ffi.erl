@@ -1,6 +1,21 @@
 -module(pgl_ffi).
 
--export([coerce/1, binary_match/2, unique_int/0, gen_tcp_listen/1, gen_tcp_connect/2, gen_tcp_send/2, gen_tcp_recv/3, gen_tcp_shutdown/1, ets_new/1, ets_insert/3, ets_lookup/2, ssl_connect/3, ssl_send/2, ssl_recv/3, ssl_shutdown/1, queue_out/1, ets_queue/1, ets_first_lookup/1, ets_queue_lookup/2, ets_queue_insert/3]).
+-export([
+  gen_tcp_listen/1,
+  gen_tcp_connect/2,
+  gen_tcp_send/2,
+  gen_tcp_recv/3,
+  gen_tcp_shutdown/1,
+  ssl_connect/3,
+  ssl_send/2,
+  ssl_recv/3,
+  ssl_shutdown/1,
+  ets_new/1,
+  ets_insert/3,
+  ets_lookup/2,
+  binary_match/2,
+  unique_int/0
+]).
 
 %%% SSL connection %%%
 
@@ -67,26 +82,7 @@ normalise({ok, T}) -> {ok, T};
 normalise({error, {timeout, _}}) -> {error, timeout};
 normalise({error, _} = E) -> E.
 
-%%% Queue %%%
-
-queue_out(Q) ->
-  case queue:out(Q) of
-    {{value, Item}, Q1} ->
-      {{some, Item}, Q1};
-    {empty, Q1} ->
-      {none, Q1}
-  end.
-
 %%% ETS %%%
-
-ets_queue(Name) ->
-  ets:new(Name, [protected, ordered_set, {decentralized_counters, true}]).
-
-ets_first_lookup(Table) ->
-  case ets:first_lookup(Table) of
-    '$end_of_table' -> none;
-    {Key, [{_Key, Value}]} -> {some, {Key, Value}}
-  end.
 
 ets_new(Name) ->
   ets:new(Name, [named_table, {read_concurrency, true}]).
@@ -99,23 +95,6 @@ ets_insert(Name, Key, Value) ->
   catch
     error:badarg ->
       {error, nil}
-  end.
-
-ets_queue_insert(Name, Key, Value) ->
-  try
-    ets:insert(Name, {Key, Value}),
-
-    {ok, nil}
-  catch
-    error:badarg ->
-      {error, nil}
-  end.
-
-ets_queue_lookup(Table, Key) ->
-  try ets:lookup(Table, Key) of
-    [{_, Value}] -> {ok, Value};
-    _ -> {error, nil}
-  catch error:badarg -> {error, nil}
   end.
 
 ets_lookup(Name, Key) ->
@@ -137,5 +116,3 @@ binary_match(Binary, Pattern) ->
   end.
 
 unique_int() -> erlang:unique_integer([positive]).
-
-coerce(X) -> X.
