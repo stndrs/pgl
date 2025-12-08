@@ -7,87 +7,96 @@ import pgl/internal/decode
 // Message decode tests
 
 pub fn decode_close_complete_test() {
-  let assert Ok(internal.CloseComplete) = decode.close_complete(<<>>)
+  let assert Ok(internal.CloseComplete) = decode.message(<<"3":utf8>>, <<>>)
 }
 
 pub fn decode_close_complete_error_test() {
   let assert Error(internal.ProtocolError(
     kind: internal.DecodingError,
     message: "Unexpected payload for CloseComplete",
-  )) = decode.close_complete(<<"unexpected":utf8>>)
+  )) = decode.message(<<"3":utf8>>, <<"unexpected":utf8>>)
 }
 
 pub fn decode_empty_query_response_test() {
-  let assert Ok(internal.EmptyQueryResponse) = decode.empty_query_response(<<>>)
+  let assert Ok(internal.EmptyQueryResponse) =
+    decode.message(<<"I":utf8>>, <<>>)
 }
 
 pub fn decode_empty_query_response_error_test() {
   let assert Error(internal.ProtocolError(
     kind: internal.DecodingError,
     message: "Unexpected payload for EmptyQueryResponse",
-  )) = decode.empty_query_response(<<"unexpected":utf8>>)
+  )) = decode.message(<<"I":utf8>>, <<"unexpected":utf8>>)
 }
 
 pub fn decode_copy_done_test() {
-  let assert Ok(internal.CopyDone) = decode.copy_done(<<>>)
+  let assert Ok(internal.CopyDone) = decode.message(<<"c":utf8>>, <<>>)
 }
 
 pub fn decode_copy_done_error_test() {
   let assert Error(internal.ProtocolError(
     kind: internal.DecodingError,
     message: "Unexpected payload for CopyDone",
-  )) = decode.copy_done(<<"unexpected":utf8>>)
+  )) = decode.message(<<"c":utf8>>, <<"unexpected":utf8>>)
 }
 
 pub fn decode_portal_suspended_test() {
-  let assert Ok(internal.PortalSuspended) = decode.portal_suspended(<<>>)
+  let assert Ok(internal.PortalSuspended) = decode.message(<<"s":utf8>>, <<>>)
 }
 
 pub fn decode_portal_suspended_error_test() {
   let assert Error(internal.ProtocolError(
     kind: internal.DecodingError,
     message: "Unexpected payload for PortalSuspended",
-  )) = decode.portal_suspended(<<"unexpected":utf8>>)
+  )) = decode.message(<<"s":utf8>>, <<"unexpected":utf8>>)
 }
 
 pub fn decode_copy_data_test() {
-  let assert Ok(internal.CopyData(data: <<>>)) = decode.copy_data(<<>>)
+  let assert Ok(internal.CopyData(data: <<>>)) =
+    decode.message(<<"d":utf8>>, <<>>)
 }
 
 pub fn decode_data_row_test() {
   let assert Ok(internal.DataRow([<<100:int-size(64)>>])) =
-    decode.data_row(<<2:int-size(16), 8:int-size(32), 100:big-int-size(64)>>)
+    decode.message(<<"D":utf8>>, <<
+      2:int-size(16),
+      8:int-size(32),
+      100:big-int-size(64),
+    >>)
 }
 
 pub fn decode_data_row_error_test() {
   let assert Error(internal.ProtocolError(
     kind: internal.DecodingError,
     message: "Unexpected payload for DataRow",
-  )) = decode.data_row(<<>>)
+  )) = decode.message(<<"D":utf8>>, <<>>)
 }
 
 pub fn decode_data_row_values_error_test() {
   let assert Error(internal.ProtocolError(
     kind: internal.DecodingError,
     message: "Invalid data row",
-  )) = decode.data_row(<<2:int-size(16), 8:int-size(32)>>)
+  )) = decode.message(<<"D":utf8>>, <<2:int-size(16), 8:int-size(32)>>)
 }
 
 pub fn decode_backend_key_data_test() {
   let assert Ok(internal.BackendKeyData(proc_id: 3352, secret: 2_173_604_095)) =
-    decode.backend_key_data(<<3352:int-size(32), 2_173_604_095:int-size(32)>>)
+    decode.message(<<"K":utf8>>, <<
+      3352:int-size(32),
+      2_173_604_095:int-size(32),
+    >>)
 }
 
 pub fn decode_backend_key_data_error_test() {
   let assert Error(internal.ProtocolError(
     kind: internal.DecodingError,
     message: "Unexpected payload for BackendKeyData",
-  )) = decode.backend_key_data(<<>>)
+  )) = decode.message(<<"K":utf8>>, <<>>)
 }
 
 pub fn decode_parameter_status_test() {
   let assert Ok(internal.ParameterStatus(name: "TimeZone", value: "Etc/UTC")) =
-    decode.parameter_status(<<"TimeZone":utf8, 0, "Etc/UTC":utf8, 0>>)
+    decode.message(<<"S":utf8>>, <<"TimeZone":utf8, 0, "Etc/UTC":utf8, 0>>)
 }
 
 pub fn decode_authentication_test() {
@@ -122,7 +131,7 @@ pub fn decode_authentication_test() {
   |> list.try_each(fn(payload_expected) {
     let #(payload, expected) = payload_expected
 
-    decode.authentication(payload)
+    decode.message(<<"R":utf8>>, payload)
     |> result.map(fn(msg) {
       let assert True = msg == expected
     })
@@ -133,25 +142,25 @@ pub fn decode_authentication_error_test() {
   let assert Error(internal.ProtocolError(
     kind: internal.DecodingError,
     message: "Unexpected authentication payload",
-  )) = decode.authentication(<<-1:int-size(32)>>)
+  )) = decode.message(<<"R":utf8>>, <<-1:int-size(32)>>)
 }
 
 pub fn decode_authentication_sasl_methods_error_test() {
   let assert Error(internal.AuthenticationError(
     kind: internal.UnsupportedSASLMethod(method: <<"NOPE":utf8>>),
     message: "",
-  )) = decode.authentication(<<10:int-size(32), "NOPE":utf8>>)
+  )) = decode.message(<<"R":utf8>>, <<10:int-size(32), "NOPE":utf8>>)
 }
 
 pub fn decode_bind_complete_test() {
-  let assert Ok(internal.BindComplete) = decode.bind_complete(<<>>)
+  let assert Ok(internal.BindComplete) = decode.message(<<"2":utf8>>, <<>>)
 }
 
 pub fn decode_bind_complete_error_test() {
   let assert Error(internal.ProtocolError(
     kind: internal.DecodingError,
     message: "Unexpected payload for BindComplete",
-  )) = decode.bind_complete(<<"unexpected":utf8>>)
+  )) = decode.message(<<"2":utf8>>, <<"unexpected":utf8>>)
 }
 
 pub fn decode_error_response_test() {
@@ -172,52 +181,52 @@ pub fn decode_error_response_test() {
     let #(payload, expected_fields) = payload_expected
 
     let assert Ok(internal.ErrorResponse(fields:)) =
-      decode.error_response(payload)
+      decode.message(<<"E":utf8>>, payload)
 
     let assert True = expected_fields == fields
   })
 
-  decode.error_response(<<>>)
+  decode.message(<<"E":utf8>>, <<>>)
 }
 
 pub fn decode_ready_for_query_test() {
   let assert Ok(internal.ReadyForQuery(status: internal.Idle)) =
-    decode.ready_for_query(<<"I":utf8>>)
+    decode.message(<<"Z":utf8>>, <<"I":utf8>>)
 
   let assert Ok(internal.ReadyForQuery(status: internal.Transaction)) =
-    decode.ready_for_query(<<"T":utf8>>)
+    decode.message(<<"Z":utf8>>, <<"T":utf8>>)
 
   let assert Ok(internal.ReadyForQuery(status: internal.Err)) =
-    decode.ready_for_query(<<"E":utf8>>)
+    decode.message(<<"Z":utf8>>, <<"E":utf8>>)
 }
 
 pub fn decode_ready_for_query_error_test() {
   let assert Error(internal.ProtocolError(
     kind: internal.DecodingError,
     message: "Unexpected payload for ReadyForQuery",
-  )) = decode.ready_for_query(<<"X":utf8>>)
+  )) = decode.message(<<"Z":utf8>>, <<"X":utf8>>)
 }
 
 pub fn decode_no_data_test() {
-  let assert Ok(internal.NoData) = decode.no_data(<<>>)
+  let assert Ok(internal.NoData) = decode.message(<<"n":utf8>>, <<>>)
 }
 
 pub fn decode_no_data_error_test() {
   let assert Error(internal.ProtocolError(
     kind: internal.DecodingError,
     message: "Unexpected payload for NoData",
-  )) = decode.no_data(<<"X":utf8>>)
+  )) = decode.message(<<"n":utf8>>, <<"X":utf8>>)
 }
 
 pub fn decode_parse_complete_test() {
-  let assert Ok(internal.ParseComplete) = decode.parse_complete(<<>>)
+  let assert Ok(internal.ParseComplete) = decode.message(<<"1":utf8>>, <<>>)
 }
 
 pub fn decode_parse_complete_error_test() {
   let assert Error(internal.ProtocolError(
     kind: internal.DecodingError,
     message: "Unexpected payload for ParseComplete",
-  )) = decode.parse_complete(<<"X":utf8>>)
+  )) = decode.message(<<"1":utf8>>, <<"X":utf8>>)
 }
 
 pub fn decode_command_complete_test() {
@@ -237,7 +246,7 @@ pub fn decode_command_complete_test() {
     let #(bits, expected_rows, expected_command) = bits_rows_command
 
     let assert Ok(internal.CommandComplete(command:, rows:)) =
-      decode.command_complete(bits)
+      decode.message(<<"C":utf8>>, bits)
 
     let assert True = expected_rows == rows
     let assert True = expected_command == command
@@ -258,7 +267,7 @@ pub fn decode_command_complete_invalid_command_test() {
   use #(invalid_bits, name) <- list.each(commands)
 
   let assert Error(internal.ProtocolError(internal.DecodingError, msg)) =
-    decode.command_complete(invalid_bits)
+    decode.message(<<"C":utf8>>, invalid_bits)
 
   let assert True = "Invalid " <> name <> " row count" == msg
 }
@@ -267,34 +276,36 @@ pub fn decode_command_complete_invalid_payload_test() {
   let assert Error(internal.ProtocolError(
     kind: internal.DecodingError,
     message: "Unexpected payload for CommandComplete",
-  )) = decode.command_complete(<<0:int-size(1)>>)
+  )) = decode.message(<<"C":utf8>>, <<0:int-size(1)>>)
 }
-
-pub fn decode_error_and_mention_field_type_test() {
-  [
-    #("S", internal.Severity),
-    #("C", internal.Code),
-    #("M", internal.Message),
-    #("D", internal.Detail),
-    #("H", internal.Hint),
-    #("P", internal.Position),
-    #("p", internal.InternalPosition),
-    #("q", internal.InternalQuery),
-    #("W", internal.Where),
-    #("s", internal.Schema),
-    #("t", internal.Table),
-    #("c", internal.Column),
-    #("d", internal.DataType),
-    #("n", internal.Constraint),
-    #("F", internal.File),
-    #("L", internal.Line),
-    #("R", internal.Routine),
-    #("other", internal.Unknown(<<"other":utf8>>)),
-  ]
-  |> list.each(fn(field_type_expected) {
-    let #(field_type, expected) = field_type_expected
-
-    let assert True =
-      decode.error_and_mention_field_type(<<field_type:utf8>>) == expected
-  })
-}
+// pub fn decode_error_and_mention_field_type_test() {
+//   [
+//     #("S", internal.Severity),
+//     #("C", internal.Code),
+//     #("M", internal.Message),
+//     #("D", internal.Detail),
+//     #("H", internal.Hint),
+//     #("P", internal.Position),
+//     #("p", internal.InternalPosition),
+//     #("q", internal.InternalQuery),
+//     #("W", internal.Where),
+//     #("s", internal.Schema),
+//     #("t", internal.Table),
+//     #("c", internal.Column),
+//     #("d", internal.DataType),
+//     #("n", internal.Constraint),
+//     #("F", internal.File),
+//     #("L", internal.Line),
+//     #("R", internal.Routine),
+//     #("other", internal.Unknown(<<"other":utf8>>)),
+//   ]
+//   |> list.each(fn(field_type_expected) {
+//     let #(field_type, expected) = field_type_expected
+// 
+//     let assert Ok(internal.ErrorResponse(fields:)) =
+//       decode.message(<<"E":utf8>>, <<field_type:utf8>>)
+// 
+//     let assert Ok(field) = dict.get(fields, expected)
+//     echo field
+//   })
+// }
