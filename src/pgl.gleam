@@ -323,9 +323,7 @@ fn to_queried(
     True -> rows_to_maps(ext.fields, values)
     False -> Ok(list.map(values, dynamic.array))
   }
-  |> result.map(fn(rows) {
-    Queried(count: ext.count, fields: ext.fields, rows:)
-  })
+  |> result.map(Queried(count: ext.count, fields: ext.fields, rows: _))
   |> result.map_error(fn(_) {
     internal.PglError("Failed to process queried rows")
   })
@@ -335,36 +333,36 @@ fn rows_to_maps(
   fields: List(String),
   values: List(List(Dynamic)),
 ) -> Result(List(Dynamic), Nil) {
-  values
-  |> list.try_map(list.strict_zip(fields, _))
-  |> result.map(fn(rows) {
-    list.map(rows, fn(row) {
-      use #(col, val) <- list.map(row)
+  use rows <- result.map(list.try_map(values, list.strict_zip(fields, _)))
 
-      #(dynamic.string(col), val)
-    })
-    |> list.map(dynamic.properties)
-  })
+  {
+    use row <- list.map(rows)
+    use #(col, val) <- list.map(row)
+
+    #(dynamic.string(col), val)
+  }
+  |> list.map(dynamic.properties)
 }
 
 /// Creates a new connection to the database.
 fn connect(db: Db) -> Result(Connection, String) {
-  let conf =
-    db.config
-    |> to_protocol_config
+  let Db(pool: _, config:, tc:, qc:) = db
 
-  socket.connect(db.config.host, db.config.port)
-  |> result.try(fn(sock) {
-    protocol.auth(sock, conf)
-    |> result.map(Connection(
-      _,
-      None,
-      db.tc,
-      db.qc,
-      conf,
-      db.config.rows_as_maps,
-    ))
-  })
+  let conf = to_protocol_config(config)
+
+  {
+    use sock <- result.try(socket.connect(config.host, config.port))
+    use sock <- result.map(protocol.auth(sock, conf))
+
+    Connection(
+      sock:,
+      savepoint: None,
+      tc:,
+      qc:,
+      conf:,
+      rows_as_maps: config.rows_as_maps,
+    )
+  }
   |> result.map_error(internal.error_to_string)
 }
 
@@ -423,8 +421,9 @@ pub fn pipeline(
   protocol.pipeline()
   |> protocol.batch_process(ext, messages, conn.sock)
   |> result.try(fn(exts) {
-    exts
-    |> list.try_map(to_queried(_, conn.rows_as_maps))
+    use ext <- list.try_map(exts)
+
+    to_queried(ext, conn.rows_as_maps)
   })
 }
 
