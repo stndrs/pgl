@@ -4,6 +4,7 @@ import gleam/int
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/result
+import gleam/string
 import pgl/internal
 
 pub fn message(
@@ -127,17 +128,14 @@ pub fn backend_key_data(
 pub fn parameter_status(
   payload: BitArray,
 ) -> Result(internal.Message, internal.PglError) {
-  decode_string(payload)
-  |> result.try(fn(decoded) {
-    let #(name, rest) = decoded
-
-    decode_string(rest)
-    |> result.try(fn(decoded1) {
-      case decoded1 {
-        #(value, <<>>) -> Ok(internal.ParameterStatus(name:, value:))
-        _ -> Error(error("ParameterStatus"))
-      }
-    })
+  payload
+  |> bit_array.to_string
+  |> result.map_error(fn(_) { error("ParameterStatus") })
+  |> result.try(fn(str) {
+    case string.split(str, on: "\u{0000}") {
+      [name, value, _] -> Ok(internal.ParameterStatus(name:, value:))
+      _ -> Error(error("ParameterStatus"))
+    }
   })
 }
 
