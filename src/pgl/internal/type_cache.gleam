@@ -8,12 +8,12 @@ import gleam/otp/actor
 import gleam/otp/supervision
 import gleam/result
 import gleam/string
-import pg/types
 import pgl/internal
 import pgl/internal/encode
 import pgl/internal/protocol
 import pgl/internal/socket.{type Socket}
 import pgl/internal/store.{type Store}
+import pgl/types
 
 pub opaque type TypeCache {
   TypeCache(np: process.Name(Message), host: String, port: Int)

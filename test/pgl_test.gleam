@@ -10,9 +10,9 @@ import gleam/time/calendar
 import gleam/time/timestamp
 import gleeunit
 import global_value
-import pg/value
 import pgl
 import pgl/internal
+import pgl/value
 
 pub fn main() {
   gleeunit.main()

@@ -12,8 +12,6 @@ import gleam/otp/supervision
 import gleam/result
 import gleam/string
 import gleam/uri.{type Uri}
-import pg/types
-import pg/value.{type Value}
 import pgl/internal
 import pgl/internal/decode
 import pgl/internal/encode
@@ -21,6 +19,8 @@ import pgl/internal/protocol
 import pgl/internal/query_cache.{type QueryCache}
 import pgl/internal/socket.{type Socket}
 import pgl/internal/type_cache.{type TypeCache}
+import pgl/types
+import pgl/value.{type Value}
 
 // ---------- Config ---------- //
 

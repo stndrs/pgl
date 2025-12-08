@@ -14,7 +14,7 @@ This package implements the PostgreSQL wire protocol.
 
 ```gleam
 import pgl
-import pg/value
+import pgl/value
 
 pub fn main() {
   let assert Ok(conf) =
