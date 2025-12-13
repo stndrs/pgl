@@ -21,5 +21,4 @@ pg_value = { git = "https://github.com/stndrs/pg_value.git", ref = "main" }
 
 [dev-dependencies]
 gleeunit = "~> 1.0"
-birdie = ">= 1.4.1 and < 2.0.0"
 global_value = ">= 1.0.0 and < 2.0.0"
