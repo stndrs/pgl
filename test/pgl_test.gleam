@@ -10,9 +10,9 @@ import gleam/time/calendar
 import gleam/time/timestamp
 import gleeunit
 import global_value
+import pg_value
 import pgl
 import pgl/internal
-import pgl/value
 
 pub fn main() {
   gleeunit.main()
@@ -212,7 +212,7 @@ fn global_pool() -> pgl.Db {
 }
 
 // fn global_pool_ssl() -> pgl.Db {
-//   use <- global_value.create_with_unique_name("pgl_pool_ssl_test")
+//   use <- global_pg_value.create_with_unique_name("pgl_pool_ssl_test")
 // 
 //   let assert Ok(conf) =
 //     "postgres://postgres:postgres@127.0.0.1:5433/gleam_pgl_test?sslmode=require"
@@ -381,9 +381,9 @@ pub fn pipeline_multiple_query_test() {
     ])
     |> returning(["name", "active", "nicknames"])
 
-  let params1 = [value.Text("Margaret"), value.Bool(True)]
+  let params1 = [pg_value.Text("Margaret"), pg_value.Bool(True)]
 
-  let params2 = [value.Text("Richard"), value.Bool(False)]
+  let params2 = [pg_value.Text("Richard"), pg_value.Bool(False)]
 
   let assert Ok(_) =
     [pgl.Query(insert1, params1), pgl.Query(insert2, params2)]
@@ -399,7 +399,7 @@ pub fn pipeline_multiple_different_queries_test() {
     ])
     |> returning(["name", "active", "nicknames"])
 
-  let params1 = [value.Text("Margaret"), value.Bool(True)]
+  let params1 = [pg_value.Text("Margaret"), pg_value.Bool(True)]
 
   let assert Ok(_) =
     [pgl.Query(insert1, params1), pgl.Query("SELECT 1", [])]
@@ -461,9 +461,9 @@ pub fn pipeline_dependent_queries_test() {
 
   let create_user_sql = "INSERT INTO users (name) VALUES ($1) RETURNING id"
 
-  let q1 = pgl.Query(create_user_sql, params: [value.text("Jim")])
-  let q2 = pgl.Query(create_user_sql, params: [value.text("Will")])
-  let q3 = pgl.Query(create_user_sql, params: [value.text("Jean-Luc")])
+  let q1 = pgl.Query(create_user_sql, params: [pg_value.text("Jim")])
+  let q2 = pgl.Query(create_user_sql, params: [pg_value.text("Will")])
+  let q3 = pgl.Query(create_user_sql, params: [pg_value.text("Jean-Luc")])
 
   let assert Ok(queried) = pgl.pipeline([q1, q2, q3], conn)
 
@@ -490,29 +490,29 @@ pub fn pipeline_dependent_queries_test() {
     list.flat_map(user_ids, fn(user_id) {
       [
         pgl.Query(create_post_sql, params: [
-          value.int(user_id),
-          value.text("Unique title 1"),
-          value.text("Unique content"),
+          pg_value.int(user_id),
+          pg_value.text("Unique title 1"),
+          pg_value.text("Unique content"),
         ]),
         pgl.Query(create_post_sql, params: [
-          value.int(user_id),
-          value.text("Unique title 2"),
-          value.text("Unique content"),
+          pg_value.int(user_id),
+          pg_value.text("Unique title 2"),
+          pg_value.text("Unique content"),
         ]),
         pgl.Query(create_post_sql, params: [
-          value.int(user_id),
-          value.text("Unique title 3"),
-          value.text("Unique content"),
+          pg_value.int(user_id),
+          pg_value.text("Unique title 3"),
+          pg_value.text("Unique content"),
         ]),
         pgl.Query(create_post_sql, params: [
-          value.int(user_id),
-          value.text("Unique title 4"),
-          value.text("Unique content"),
+          pg_value.int(user_id),
+          pg_value.text("Unique title 4"),
+          pg_value.text("Unique content"),
         ]),
         pgl.Query(create_post_sql, params: [
-          value.int(user_id),
-          value.text("Unique title 5"),
-          value.text("Unique content"),
+          pg_value.int(user_id),
+          pg_value.text("Unique title 5"),
+          pg_value.text("Unique content"),
         ]),
       ]
     })
@@ -544,20 +544,20 @@ pub fn pipeline_dependent_queries_test() {
     list.flat_map(post_ids, fn(post_id) {
       [
         pgl.Query(create_comment_sql, params: [
-          value.int(post_id),
-          value.text("Unique comment 1"),
+          pg_value.int(post_id),
+          pg_value.text("Unique comment 1"),
         ]),
         pgl.Query(create_comment_sql, params: [
-          value.int(post_id),
-          value.text("Unique comment 2"),
+          pg_value.int(post_id),
+          pg_value.text("Unique comment 2"),
         ]),
         pgl.Query(create_tag_sql, params: [
-          value.int(post_id),
-          value.text("blog"),
+          pg_value.int(post_id),
+          pg_value.text("blog"),
         ]),
         pgl.Query(create_tag_sql, params: [
-          value.int(post_id),
-          value.text("mid"),
+          pg_value.int(post_id),
+          pg_value.text("mid"),
         ]),
       ]
     })
@@ -645,7 +645,7 @@ pub fn selecting_rows_test() {
   let assert Ok(returned) =
     pgl.query(
       "SELECT * FROM users WHERE name = $1",
-      [value.Text("James")],
+      [pg_value.Text("James")],
       conn,
     )
 
@@ -677,9 +677,9 @@ pub fn varchar_encoding_test() {
 
   let sql = "SELECT $1::VARCHAR, $2::VARCHAR, $3::VARCHAR"
   let params = [
-    value.Text("howdy"),
-    value.Text(""),
-    value.Text("postgres"),
+    pg_value.Text("howdy"),
+    pg_value.Text(""),
+    pg_value.Text("postgres"),
   ]
 
   let assert Ok(result) = pgl.query(sql, params, conn)
@@ -701,7 +701,7 @@ pub fn null_encoding_test() {
   use conn <- start_default()
 
   let sql = "SELECT $1::TEXT, $1 IS NULL, $2::INT"
-  let params = [value.null, value.int(42)]
+  let params = [pg_value.null, pg_value.int(42)]
 
   let assert Ok(result) = pgl.query(sql, params, conn)
 
@@ -751,7 +751,7 @@ pub fn mixed_types_with_encoding_test() {
     ])
     |> returning(["name", "active", "nicknames"])
 
-  let params = [value.Text("Margaret"), value.Bool(True)]
+  let params = [pg_value.Text("Margaret"), pg_value.Bool(True)]
 
   let assert Ok(result) = pgl.query(sql, params, conn)
 
@@ -872,10 +872,10 @@ pub fn insert_with_values_test() {
     "INSERT INTO users (name, nicknames, birthday, created_at) VALUES ($1, $2, $3, $4)"
 
   let values = [
-    value.text("Richard"),
-    value.array(["Dick", "Robin", "Nightwing"], of: value.text),
-    value.date(calendar.Date(2011, calendar.March, 20)),
-    value.timestamp(timestamp.system_time()),
+    pg_value.text("Richard"),
+    pg_value.array(["Dick", "Robin", "Nightwing"], of: pg_value.text),
+    pg_value.date(calendar.Date(2011, calendar.March, 20)),
+    pg_value.timestamp(timestamp.system_time()),
   ]
 
   let assert Ok(_) = pgl.query(sql, values, conn)
@@ -945,7 +945,7 @@ pub fn transaction_error_test() {
 
   let assert Ok(_queried) =
     "INSERT INTO tx_test (id, name) VALUES ($1, $2) RETURNING *"
-    |> pgl.query([value.int(1), value.text("Before")], conn)
+    |> pgl.query([pg_value.int(1), pg_value.text("Before")], conn)
 
   let assert Ok(queried) =
     "SELECT COUNT(*) FROM tx_test"
@@ -958,10 +958,10 @@ pub fn transaction_error_test() {
 
     let assert Ok(_queried) =
       "INSERT INTO tx_test (id, name) VALUES ($1, $2) RETURNING *"
-      |> pgl.query([value.int(2), value.text("Transaction")], tx)
+      |> pgl.query([pg_value.int(2), pg_value.text("Transaction")], tx)
 
     "INSERT INTO tx_test (id, name) VALUES ($1, $2) RETURNING *"
-    |> pgl.query([value.int(1), value.text("Duplicate")], tx)
+    |> pgl.query([pg_value.int(1), pg_value.text("Duplicate")], tx)
   }
 
   let assert "23505" = code

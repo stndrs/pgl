@@ -12,14 +12,13 @@ import gleam/otp/supervision
 import gleam/result
 import gleam/string
 import gleam/uri.{type Uri}
+import pg_value
 import pgl/internal
 import pgl/internal/encode
 import pgl/internal/protocol
 import pgl/internal/query_cache.{type QueryCache}
 import pgl/internal/socket.{type Socket}
 import pgl/internal/type_cache.{type TypeCache}
-import pgl/types
-import pgl/value.{type Value}
 
 // ---------- Config ---------- //
 
@@ -313,7 +312,7 @@ pub opaque type Connection {
 }
 
 fn to_queried(
-  ext: protocol.Extended(Value),
+  ext: protocol.Extended(pg_value.Value),
   rows_as_maps: Bool,
 ) -> Result(Queried, internal.PglError) {
   let values = list.reverse(ext.values)
@@ -379,17 +378,17 @@ pub type Queried {
 }
 
 pub type Query {
-  Query(sql: String, params: List(Value))
+  Query(sql: String, params: List(pg_value.Value))
 }
 
-pub fn with_params(q: Query, params: List(Value)) -> Query {
+pub fn with_params(q: Query, params: List(pg_value.Value)) -> Query {
   Query(..q, params:)
 }
 
 /// Perform a query with the given SQL string and list of parameters.
 pub fn query(
   sql: String,
-  params: List(Value),
+  params: List(pg_value.Value),
   conn: Connection,
 ) -> Result(Queried, PglError) {
   extended_query(sql, params, conn)
@@ -409,7 +408,7 @@ pub fn pipeline(
       use oids <- result.try(query_cache.lookup(conn.qc, sql))
       use info <- result.map(type_cache.lookup(conn.tc, oids, conn.conf))
 
-      encode.cached(sql, params, info, type_encoder)
+      encode.cached(sql, params, info, pg_value.encode)
     })
     |> result.lazy_unwrap(fn() {
       list.map(queries, fn(q) { encode.uncached(q.sql, q.params) })
@@ -437,9 +436,9 @@ pub fn exec(sql: String, on conn: Connection) -> Result(Int, PglError) {
 
 fn extended_query(
   sql: String,
-  params: List(Value),
+  params: List(pg_value.Value),
   conn: Connection,
-) -> Result(protocol.Extended(Value), internal.PglError) {
+) -> Result(protocol.Extended(pg_value.Value), internal.PglError) {
   let message =
     encode_from_cache(sql, params, conn)
     |> result.lazy_unwrap(fn() { encode.uncached(sql, params) })
@@ -448,7 +447,7 @@ fn extended_query(
   |> protocol.process(message, conn.sock)
 }
 
-fn extended(conn: Connection) -> protocol.Extended(Value) {
+fn extended(conn: Connection) -> protocol.Extended(pg_value.Value) {
   protocol.extended()
   |> protocol.on_decode_row(fn(vals, oids) { decode_row(vals, oids, conn) })
   |> protocol.on_param_description(fn(sql, params, oids) {
@@ -458,45 +457,26 @@ fn extended(conn: Connection) -> protocol.Extended(Value) {
 
 fn encode_from_cache(
   sql: String,
-  params: List(Value),
+  params: List(pg_value.Value),
   conn: Connection,
-) -> Result(encode.Query(Value, types.TypeInfo), internal.PglError) {
+) -> Result(encode.Query(pg_value.Value, pg_value.TypeInfo), internal.PglError) {
   use oids <- result.try(query_cache.lookup(conn.qc, sql))
   use info <- result.map(type_cache.lookup(conn.tc, oids, conn.conf))
 
-  encode.cached(sql, params, info, type_encoder)
+  encode.cached(sql, params, info, pg_value.encode)
   |> encode.with_sync
-}
-
-fn type_encoder(value: Value, info: types.TypeInfo) {
-  case value {
-    value.Null -> types.encode(value, info, with: types.null)
-    value.Bool(val) -> types.encode(val, info, with: types.bool)
-    value.Int(val) -> types.encode(val, info, with: types.int)
-    value.Float(val) -> types.encode(val, info, with: types.float)
-    value.Text(val) -> types.encode(val, info, with: types.text)
-    value.Bytea(val) -> types.encode(val, info, with: types.raw)
-    value.Time(val) -> types.encode(val, info, with: types.time)
-    value.Date(val) -> types.encode(val, info, with: types.date)
-    value.Timestamp(ts) -> types.encode(ts, info, with: types.timestamp)
-    value.Interval(val) -> types.encode(val, info, with: types.interval)
-    value.Array(val) ->
-      types.encode(val, info, with: fn(val, elem_ti) {
-        types.array(val, elem_ti, of: type_encoder)
-      })
-  }
 }
 
 fn on_param_description(
   sql: String,
-  params: List(Value),
+  params: List(pg_value.Value),
   oids: List(Int),
   conn: Connection,
 ) -> Result(BitArray, internal.PglError) {
   query_cache.insert(conn.qc, sql, oids)
   use info <- result.map(type_cache.lookup(conn.tc, oids, conn.conf))
 
-  encode.cached(sql, params, info, type_encoder)
+  encode.cached(sql, params, info, pg_value.encode)
   |> encode.with_sync
   |> encode.to_bit_array
 }
@@ -513,7 +493,7 @@ fn decode_row(
 
 fn decode_row_values(
   values: List(BitArray),
-  infos: List(types.TypeInfo),
+  infos: List(pg_value.TypeInfo),
 ) -> Result(List(Dynamic), internal.PglError) {
   list.strict_zip(values, infos)
   |> result.map_error(fn(_) {
@@ -524,7 +504,7 @@ fn decode_row_values(
     list.try_map(vals_infos, fn(val_info) {
       let #(val, info) = val_info
 
-      types.decode(val, info)
+      pg_value.decode(val, info)
       |> result.map_error(internal.decode_error)
     })
   })
