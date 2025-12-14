@@ -203,7 +203,7 @@ fn parse_type_info(
         use base_oid <- result.try(bits_to_oid(base_oid))
         use comp_oids <- result.map(parse_comp_oids(comp_oids))
 
-        pg_value.info(oid)
+        pg_value.type_info(oid)
         |> pg_value.name(name)
         |> pg_value.typesend(typesend)
         |> pg_value.typereceive(typereceive)
