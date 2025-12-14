@@ -11,6 +11,7 @@ import gleam/time/timestamp
 import gleeunit
 import global_value
 import pg_value
+import pg_value/interval
 import pgl
 import pgl/internal
 
@@ -712,6 +713,51 @@ pub fn null_encoding_test() {
     == [
       dynamic.array([dynamic.string(""), dynamic.bool(True), dynamic.int(42)]),
     ]
+}
+
+pub fn interval_encoding_test() {
+  use conn <- start_default()
+
+  let sql = "SELECT 'P14MT86430S'::INTERVAL"
+
+  let assert Ok(result) = pgl.query(sql, [], conn)
+
+  let assert True =
+    result.rows
+    == [
+      dynamic.array([
+        dynamic.array([
+          dynamic.int(14),
+          dynamic.int(0),
+          dynamic.int(86_430_000_000),
+        ]),
+      ]),
+    ]
+}
+
+pub fn interval_roundtrip_test() {
+  use conn <- start_default()
+
+  let sql = "SELECT $1::INTERVAL"
+
+  let interval =
+    interval.months(4)
+    |> interval.add(interval.days(3))
+    |> interval.add(interval.seconds(30))
+    |> interval.add(interval.microseconds(500_000))
+
+  let assert Ok(queried) = pgl.query(sql, [pg_value.interval(interval)], conn)
+
+  let decoder = {
+    use interval <- decode.field(0, interval.decoder())
+    decode.success(interval)
+  }
+
+  let assert Ok([
+    interval.Interval(months: 4, days: 3, seconds: 30, microseconds: 500_000),
+  ]) =
+    queried.rows
+    |> list.try_map(decode.run(_, decoder))
 }
 
 pub fn array_encoding_test() {

@@ -13,6 +13,7 @@ import gleam/result
 import gleam/string
 import gleam/uri.{type Uri}
 import pg_value
+import pg_value/type_info.{type TypeInfo}
 import pgl/internal
 import pgl/internal/encode
 import pgl/internal/protocol
@@ -459,7 +460,7 @@ fn encode_from_cache(
   sql: String,
   params: List(pg_value.Value),
   conn: Connection,
-) -> Result(encode.Query(pg_value.Value, pg_value.TypeInfo), internal.PglError) {
+) -> Result(encode.Query(pg_value.Value, TypeInfo), internal.PglError) {
   use oids <- result.try(query_cache.lookup(conn.qc, sql))
   use info <- result.map(type_cache.lookup(conn.tc, oids, conn.conf))
 
@@ -493,7 +494,7 @@ fn decode_row(
 
 fn decode_row_values(
   values: List(BitArray),
-  infos: List(pg_value.TypeInfo),
+  infos: List(TypeInfo),
 ) -> Result(List(Dynamic), internal.PglError) {
   list.strict_zip(values, infos)
   |> result.map_error(fn(_) {

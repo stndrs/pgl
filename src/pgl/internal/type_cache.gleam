@@ -8,7 +8,7 @@ import gleam/otp/actor
 import gleam/otp/supervision
 import gleam/result
 import gleam/string
-import pg_value
+import pg_value/type_info.{type TypeInfo}
 import pgl/internal
 import pgl/internal/encode
 import pgl/internal/protocol
@@ -22,7 +22,7 @@ pub opaque type TypeCache {
 pub opaque type Message {
   Load(client: process.Subject(Result(Nil, internal.PglError)), sock: Socket)
   Lookup(
-    client: process.Subject(Result(List(pg_value.TypeInfo), internal.PglError)),
+    client: process.Subject(Result(List(TypeInfo), internal.PglError)),
     oids: List(Int),
   )
   Shutdown
@@ -84,7 +84,7 @@ pub fn lookup(
   tc: TypeCache,
   oids: List(Int),
   config: protocol.Config,
-) -> Result(List(pg_value.TypeInfo), internal.PglError) {
+) -> Result(List(TypeInfo), internal.PglError) {
   use <- result.lazy_or(do_lookup(tc, oids))
   use _ <- result.try(load(tc, config))
 
@@ -94,7 +94,7 @@ pub fn lookup(
 fn do_lookup(
   tc: TypeCache,
   oids: List(Int),
-) -> Result(List(pg_value.TypeInfo), internal.PglError) {
+) -> Result(List(TypeInfo), internal.PglError) {
   process.named_subject(tc.np) |> actor.call(1000, Lookup(_, oids))
 }
 
@@ -103,9 +103,9 @@ pub fn shutdown(tc: TypeCache) -> Nil {
 }
 
 fn handle_message(
-  store: Store(Int, pg_value.TypeInfo),
+  store: Store(Int, TypeInfo),
   message: Message,
-) -> actor.Next(Store(Int, pg_value.TypeInfo), a) {
+) -> actor.Next(Store(Int, TypeInfo), a) {
   case message {
     Load(client, sock) -> handle_load(store, sock, client)
     Lookup(client, oids) -> handle_lookup(store, oids, client)
@@ -114,10 +114,10 @@ fn handle_message(
 }
 
 fn handle_load(
-  store: Store(Int, pg_value.TypeInfo),
+  store: Store(Int, TypeInfo),
   sock: Socket,
   client: process.Subject(Result(Nil, internal.PglError)),
-) -> actor.Next(Store(Int, pg_value.TypeInfo), a) {
+) -> actor.Next(Store(Int, TypeInfo), a) {
   {
     let packet = encode.query(bootstrap_sql)
 
@@ -134,10 +134,10 @@ fn handle_load(
 }
 
 fn handle_lookup(
-  store: Store(Int, pg_value.TypeInfo),
+  store: Store(Int, TypeInfo),
   oids: List(Int),
-  client: process.Subject(Result(List(pg_value.TypeInfo), internal.PglError)),
-) -> actor.Next(Store(Int, pg_value.TypeInfo), a) {
+  client: process.Subject(Result(List(TypeInfo), internal.PglError)),
+) -> actor.Next(Store(Int, TypeInfo), a) {
   list.try_map(oids, store.lookup(store, _))
   |> result.replace_error(internal.TypeCacheError(
     kind: internal.NotFoundError,
@@ -149,9 +149,9 @@ fn handle_lookup(
 }
 
 fn parse_type_infos(
-  store: Store(Int, pg_value.TypeInfo),
-  infos: List(pg_value.TypeInfo),
-) -> Store(Int, pg_value.TypeInfo) {
+  store: Store(Int, TypeInfo),
+  infos: List(TypeInfo),
+) -> Store(Int, TypeInfo) {
   let oid_to_info =
     infos
     |> list.map(fn(ti) { #(ti.oid, ti) })
@@ -165,8 +165,8 @@ fn parse_type_infos(
       use elem_type <- result.map(dict.get(oid_to_info, info.elem_oid))
 
       info
-      |> pg_value.elem_type(Some(elem_type))
-      |> pg_value.comp_types(Some(comp_types))
+      |> type_info.elem_type(Some(elem_type))
+      |> type_info.comp_types(Some(comp_types))
     })
     |> result.unwrap(info)
     |> store.insert(store, oid, _)
@@ -175,9 +175,7 @@ fn parse_type_infos(
   })
 }
 
-fn parse_type_info(
-  row: List(BitArray),
-) -> Result(pg_value.TypeInfo, internal.PglError) {
+fn parse_type_info(row: List(BitArray)) -> Result(TypeInfo, internal.PglError) {
   case row {
     [
       <<oid:bits>>,
@@ -203,16 +201,16 @@ fn parse_type_info(
         use base_oid <- result.try(bits_to_oid(base_oid))
         use comp_oids <- result.map(parse_comp_oids(comp_oids))
 
-        pg_value.type_info(oid)
-        |> pg_value.name(name)
-        |> pg_value.typesend(typesend)
-        |> pg_value.typereceive(typereceive)
-        |> pg_value.typelen(typelen)
-        |> pg_value.output(output)
-        |> pg_value.input(input)
-        |> pg_value.elem_oid(elem_oid)
-        |> pg_value.base_oid(base_oid)
-        |> pg_value.comp_oids(comp_oids)
+        type_info.new(oid)
+        |> type_info.name(name)
+        |> type_info.typesend(typesend)
+        |> type_info.typereceive(typereceive)
+        |> type_info.typelen(typelen)
+        |> type_info.output(output)
+        |> type_info.input(input)
+        |> type_info.elem_oid(elem_oid)
+        |> type_info.base_oid(base_oid)
+        |> type_info.comp_oids(comp_oids)
       }
       |> result.replace_error(internal.TypeCacheError(
         kind: internal.LoadError,
