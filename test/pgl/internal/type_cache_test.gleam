@@ -48,7 +48,7 @@ pub fn lookup_many_test() {
   let assert 4 = result |> list.length
 }
 
-fn with_type_cache(next: fn(TypeCache) -> t) -> t {
+fn with_type_cache(next: fn(TypeCache) -> t) {
   let tc = type_cache.new()
 
   let assert Ok(_) = type_cache.start(tc)

@@ -223,7 +223,12 @@ pub type TransactionError(error) {
 // ---------- Pool ---------- //
 
 pub opaque type Db {
-  Db(pool: pool.Pool(Connection), config: Config, tc: TypeCache, qc: QueryCache)
+  Db(
+    pool: process.Name(pool.Msg(Connection)),
+    config: Config,
+    tc: TypeCache,
+    qc: QueryCache,
+  )
 }
 
 pub fn new(config: Config) -> Db {
@@ -233,14 +238,14 @@ pub fn new(config: Config) -> Db {
     |> type_cache.port(config.port)
 
   let qc = query_cache.new()
-  let pool = pool.new()
+  let pool = process.new_name("pgl_pool")
 
   Db(pool:, config:, tc:, qc:)
 }
 
 pub fn start(db: Db) -> actor.StartResult(Supervisor) {
   let pool =
-    db.pool
+    pool.new()
     |> pool.size(db.config.pool_size)
     |> pool.on_open(fn() { connect(db) })
     |> pool.on_close(disconnect)
@@ -253,13 +258,13 @@ pub fn start(db: Db) -> actor.StartResult(Supervisor) {
   supervisor.new(supervisor.OneForOne)
   |> supervisor.add(type_cache.supervised(db.tc))
   |> supervisor.add(query_cache.supervised(db.qc))
-  |> supervisor.add(pool.supervised(pool, 1000))
+  |> supervisor.add(pool.supervised(pool, db.pool, 1000))
   |> supervisor.start
 }
 
 pub fn supervised(db: Db) -> supervision.ChildSpecification(Supervisor) {
   let pool_supervisor =
-    supervision.worker(fn() { start(db) })
+    supervision.supervisor(fn() { start(db) })
     |> supervision.restart(supervision.Transient)
 
   supervisor.new(supervisor.OneForOne)
@@ -280,16 +285,22 @@ pub fn with_connection(db: Db, next: fn(Connection) -> t) -> Result(t, PglError)
 }
 
 pub fn checkout(db: Db, caller: Pid) -> Result(Connection, PglError) {
-  pool.checkout(db.pool, caller, 500)
+  db.pool
+  |> process.named_subject
+  |> pool.checkout(caller, 500)
   |> result.map_error(PglError)
 }
 
 pub fn checkin(db: Db, conn: Connection, caller: Pid) -> Nil {
-  pool.checkin(db.pool, conn, caller)
+  db.pool
+  |> process.named_subject
+  |> pool.checkin(conn, caller)
 }
 
 pub fn shutdown(db: Db) -> Result(Nil, PglError) {
-  pool.shutdown(db.pool, 500)
+  db.pool
+  |> process.named_subject
+  |> pool.shutdown(500)
   |> result.map_error(PglError)
 }
 
