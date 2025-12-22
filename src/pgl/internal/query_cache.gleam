@@ -63,7 +63,7 @@ pub fn insert(qc: QueryCache, query: String, oids: List(Int)) -> Nil {
 
 pub fn reset(qc: QueryCache) -> Nil {
   process.named_subject(qc.np)
-  |> process.call(1000, Reset)
+  |> actor.call(1000, Reset)
 }
 
 pub fn shutdown(qc: QueryCache) -> Nil {

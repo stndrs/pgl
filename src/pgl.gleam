@@ -224,7 +224,7 @@ pub type TransactionError(error) {
 
 pub opaque type Db {
   Db(
-    pool: process.Name(pool.Msg(Connection)),
+    pool: process.Name(pool.Msg(Connection, PglError)),
     config: Config,
     tc: TypeCache,
     qc: QueryCache,
@@ -249,11 +249,7 @@ pub fn start(db: Db) -> actor.StartResult(Supervisor) {
     |> pool.size(db.config.pool_size)
     |> pool.on_open(fn() { connect(db) })
     |> pool.on_close(disconnect)
-    |> pool.on_ping(fn(conn) {
-      let _ = ping(conn)
-
-      Nil
-    })
+    |> pool.on_ping(fn(conn) { ping(conn) |> result.replace(Nil) })
 
   supervisor.new(supervisor.OneForOne)
   |> supervisor.add(type_cache.supervised(db.tc))
@@ -288,7 +284,6 @@ pub fn checkout(db: Db, caller: Pid) -> Result(Connection, PglError) {
   db.pool
   |> process.named_subject
   |> pool.checkout(caller, 500)
-  |> result.map_error(PglError)
 }
 
 pub fn checkin(db: Db, conn: Connection, caller: Pid) -> Nil {
@@ -301,7 +296,6 @@ pub fn shutdown(db: Db) -> Result(Nil, PglError) {
   db.pool
   |> process.named_subject
   |> pool.shutdown(500)
-  |> result.map_error(PglError)
 }
 
 pub fn ping(conn: Connection) -> Result(Connection, PglError) {
@@ -326,7 +320,7 @@ pub opaque type Connection {
 fn to_queried(
   ext: protocol.Extended(pg_value.Value),
   rows_as_maps: Bool,
-) -> Result(Queried, internal.PglError) {
+) -> Result(Queried, PglError) {
   let values = list.reverse(ext.values)
 
   case rows_as_maps {
@@ -334,9 +328,7 @@ fn to_queried(
     False -> Ok(list.map(values, dynamic.array))
   }
   |> result.map(Queried(count: ext.count, fields: ext.fields, rows: _))
-  |> result.map_error(fn(_) {
-    internal.PglError("Failed to process queried rows")
-  })
+  |> result.map_error(fn(_) { PglError("Failed to process queried rows") })
 }
 
 fn rows_to_maps(
@@ -355,7 +347,7 @@ fn rows_to_maps(
 }
 
 /// Creates a new connection to the database.
-fn connect(db: Db) -> Result(Connection, String) {
+fn connect(db: Db) -> Result(Connection, PglError) {
   let Db(pool: _, config:, tc:, qc:) = db
 
   let conf = to_protocol_config(config)
@@ -373,14 +365,13 @@ fn connect(db: Db) -> Result(Connection, String) {
       rows_as_maps: config.rows_as_maps,
     )
   }
-  |> result.map_error(internal.error_to_string)
+  |> result.map_error(from_internal_error)
 }
 
 /// Shuts down a database connection.
-pub fn disconnect(conn: Connection) -> Nil {
-  let _ = socket.shutdown(conn.sock)
-
-  Nil
+pub fn disconnect(conn: Connection) -> Result(Nil, PglError) {
+  socket.shutdown(conn.sock)
+  |> result.map_error(from_internal_error)
 }
 
 // ---------- Query ---------- //
@@ -404,14 +395,14 @@ pub fn query(
   conn: Connection,
 ) -> Result(Queried, PglError) {
   extended_query(sql, params, conn)
-  |> result.try(to_queried(_, conn.rows_as_maps))
   |> result.map_error(from_internal_error)
+  |> result.try(to_queried(_, conn.rows_as_maps))
 }
 
 pub fn pipeline(
   queries: List(Query),
   conn: Connection,
-) -> Result(List(Queried), internal.PglError) {
+) -> Result(List(Queried), PglError) {
   let messages =
     queries
     |> list.try_map(fn(query) {
@@ -430,6 +421,7 @@ pub fn pipeline(
 
   protocol.pipeline()
   |> protocol.batch_process(ext, messages, conn.sock)
+  |> result.map_error(from_internal_error)
   |> result.try(fn(exts) {
     use ext <- list.try_map(exts)
 
