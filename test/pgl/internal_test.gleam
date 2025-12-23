@@ -29,17 +29,3 @@ pub fn not_in_transaction_test() {
   let assert internal.NotInTransaction(message: "test message") =
     internal.not_in_transaction("test message")
 }
-
-pub fn type_encode_error_test() {
-  let assert internal.TypeError(
-    kind: internal.TypeEncodeError,
-    message: "test message",
-  ) = internal.type_encode_error("test message")
-}
-
-pub fn type_decode_error_test() {
-  let assert internal.TypeError(
-    kind: internal.TypeDecodeError,
-    message: "test message",
-  ) = internal.type_decode_error("test message")
-}

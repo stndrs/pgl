@@ -90,17 +90,13 @@ pub type Command {
 // ---------- Errors ---------- //
 
 pub type PglError {
-  // Generic package errors
   PglError(message: String)
   QueryCacheError(kind: CacheError, message: String)
   TypeCacheError(kind: CacheError, message: String)
   AuthenticationError(kind: AuthenticationError, message: String)
   SocketError(kind: SocketError, message: String)
-  // Errors related to working with Postgres wire protocol
   ProtocolError(kind: ProtocolError, message: String)
-  // Errors from the postgres server
   PostgresError(kind: PgError)
-  TypeError(kind: TypeError, message: String)
 }
 
 pub type PgError {
@@ -127,7 +123,6 @@ pub fn error_to_string(err: PglError) -> String {
       <> name
       <> ", message: "
       <> message
-    TypeError(_, msg) -> "[TypeError] " <> msg
   }
 }
 
@@ -245,19 +240,6 @@ pub fn failed_transaction(
   cause: PglError,
 ) -> TransactionError(error) {
   FailedTransaction(message:, cause:)
-}
-
-pub type TypeError {
-  TypeEncodeError
-  TypeDecodeError
-}
-
-pub fn type_encode_error(message: String) -> PglError {
-  TypeError(kind: TypeEncodeError, message:)
-}
-
-pub fn type_decode_error(message: String) -> PglError {
-  TypeError(kind: TypeDecodeError, message:)
 }
 
 // https://www.erlang.org/doc/apps/kernel/inet.html#module-posix-error-codes
