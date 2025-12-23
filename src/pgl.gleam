@@ -190,8 +190,30 @@ pub type PglError {
     code: String,
     name: String,
     message: String,
-    fields: Dict(String, String),
+    fields: Dict(Field, String),
   )
+}
+
+// https://www.postgresql.org/docs/current/protocol-error-fields.html
+/// Error and notice message fields
+pub type Field {
+  Severity
+  Code
+  Message
+  Detail
+  Hint
+  Position
+  InternalPosition
+  InternalQuery
+  Where
+  Schema
+  Table
+  Column
+  DataType
+  Constraint
+  File
+  Line
+  Routine
 }
 
 fn from_internal_error(err: internal.PglError) -> PglError {
@@ -199,18 +221,40 @@ fn from_internal_error(err: internal.PglError) -> PglError {
     internal.PglError(message:) -> PglError(message:)
     internal.PostgresError(code:, name:, message:, fields:) -> {
       let fields =
-        fields
-        |> dict.to_list
-        |> list.map(fn(field_value) {
-          let #(field, value) = field_value
-          let field = internal.field_to_string(field)
-          #(field, value)
-        })
-        |> dict.from_list
+        {
+          use #(field, val) <- list.try_map(dict.to_list(fields))
+          use field1 <- result.map(field_from_bit_array(field))
+          #(field1, val)
+        }
+        |> result.map(dict.from_list)
+        |> result.lazy_unwrap(fn() { dict.new() })
 
       PostgresError(code:, name:, message:, fields:)
     }
     err -> PglError(internal.error_to_string(err))
+  }
+}
+
+fn field_from_bit_array(field_type: BitArray) -> Result(Field, Nil) {
+  case field_type {
+    <<"S":utf8>> -> Ok(Severity)
+    <<"C":utf8>> -> Ok(Code)
+    <<"M":utf8>> -> Ok(Message)
+    <<"D":utf8>> -> Ok(Detail)
+    <<"H":utf8>> -> Ok(Hint)
+    <<"P":utf8>> -> Ok(Position)
+    <<"p":utf8>> -> Ok(InternalPosition)
+    <<"q":utf8>> -> Ok(InternalQuery)
+    <<"W":utf8>> -> Ok(Where)
+    <<"s":utf8>> -> Ok(Schema)
+    <<"t":utf8>> -> Ok(Table)
+    <<"c":utf8>> -> Ok(Column)
+    <<"d":utf8>> -> Ok(DataType)
+    <<"n":utf8>> -> Ok(Constraint)
+    <<"F":utf8>> -> Ok(File)
+    <<"L":utf8>> -> Ok(Line)
+    <<"R":utf8>> -> Ok(Routine)
+    _ -> Error(Nil)
   }
 }
 

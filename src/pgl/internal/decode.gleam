@@ -344,14 +344,13 @@ fn ready_for_query(
 
 fn error_and_notice_message_fields(
   payload: BitArray,
-  acc: Dict(internal.Field, String),
-) -> Result(Dict(internal.Field, String), internal.PglError) {
+  acc: Dict(BitArray, String),
+) -> Result(Dict(BitArray, String), internal.PglError) {
   case payload {
     <<0>> -> Ok(acc)
-    <<field_type:bits-size(8), rest:bits>> -> {
+    <<field:bits-size(8), rest:bits>> -> {
       case decode_string(rest) {
         Ok(#(field_string, rest1)) -> {
-          let field = error_and_mention_field_type(field_type)
           let acc1 = dict.insert(acc, field, field_string)
 
           error_and_notice_message_fields(rest1, acc1)
@@ -542,28 +541,5 @@ fn parameter_data_types(payload: BitArray, acc: List(Int)) -> List(Int) {
       parameter_data_types(rest, [oid, ..acc])
     }
     _ -> acc
-  }
-}
-
-fn error_and_mention_field_type(field_type: BitArray) -> internal.Field {
-  case field_type {
-    <<"S":utf8>> -> internal.Severity
-    <<"C":utf8>> -> internal.Code
-    <<"M":utf8>> -> internal.Message
-    <<"D":utf8>> -> internal.Detail
-    <<"H":utf8>> -> internal.Hint
-    <<"P":utf8>> -> internal.Position
-    <<"p":utf8>> -> internal.InternalPosition
-    <<"q":utf8>> -> internal.InternalQuery
-    <<"W":utf8>> -> internal.Where
-    <<"s":utf8>> -> internal.Schema
-    <<"t":utf8>> -> internal.Table
-    <<"c":utf8>> -> internal.Column
-    <<"d":utf8>> -> internal.DataType
-    <<"n":utf8>> -> internal.Constraint
-    <<"F":utf8>> -> internal.File
-    <<"L":utf8>> -> internal.Line
-    <<"R":utf8>> -> internal.Routine
-    other -> internal.Unknown(other)
   }
 }

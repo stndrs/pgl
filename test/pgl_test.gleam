@@ -859,16 +859,16 @@ pub fn insert_constraint_error_test() {
   let assert "duplicate key value violates unique constraint \"users_pkey\"" =
     message
 
-  let assert Ok(constraint) = dict.get(fields, "Constraint")
+  let assert Ok(constraint) = dict.get(fields, pgl.Constraint)
   let assert "users_pkey" = constraint
 
-  let assert Ok(detail) = dict.get(fields, "Detail")
+  let assert Ok(detail) = dict.get(fields, pgl.Detail)
   let assert "Key (id)=(900) already exists." = detail
 
-  let assert Ok(table) = dict.get(fields, "Table")
+  let assert Ok(table) = dict.get(fields, pgl.Table)
   let assert "users" = table
 
-  let assert Ok(schema) = dict.get(fields, "Schema")
+  let assert Ok(schema) = dict.get(fields, pgl.Schema)
   let assert "public" = schema
 }
 

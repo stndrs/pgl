@@ -177,10 +177,10 @@ fn auth_sasl(
 }
 
 fn handle_error_response(
-  fields: Dict(internal.Field, String),
+  fields: Dict(BitArray, String),
 ) -> Result(a, internal.PglError) {
-  let code = dict.get(fields, internal.Code) |> result.unwrap("")
-  let message = dict.get(fields, internal.Message) |> result.unwrap("")
+  let code = dict.get(fields, <<"C":utf8>>) |> result.unwrap("")
+  let message = dict.get(fields, <<"M":utf8>>) |> result.unwrap("")
   let name = internal.pg_error_code_name(code) |> result.unwrap("")
 
   internal.PostgresError(code:, name:, message:, fields:)

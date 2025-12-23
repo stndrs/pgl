@@ -172,8 +172,8 @@ pub fn decode_error_response_test() {
         "there is already a transaction in progress":utf8, 0, 0,
       >>,
       dict.from_list([
-        #(internal.Code, "25001"),
-        #(internal.Message, "there is already a transaction in progress"),
+        #(<<"C">>, "25001"),
+        #(<<"M">>, "there is already a transaction in progress"),
       ]),
     ),
   ]

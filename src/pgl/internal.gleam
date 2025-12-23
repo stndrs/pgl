@@ -1,5 +1,4 @@
 import gleam/dict.{type Dict}
-import gleam/result
 
 pub const protocol_version_major = <<3:int-size(16)>>
 
@@ -36,10 +35,10 @@ pub type Message {
   CopyOutResponse
   DataRow(values: List(BitArray))
   EmptyQueryResponse
-  ErrorResponse(fields: Dict(Field, String))
+  ErrorResponse(fields: Dict(BitArray, String))
   FunctionCallResponse
   NoData
-  NoticeResponse(fields: Dict(Field, String))
+  NoticeResponse(fields: Dict(BitArray, String))
   NotificationResponse(proc_id: Int, channel: BitArray, payload: BitArray)
   ParameterDescription(count: Int, data_types: List(Int))
   ParameterStatus(name: String, value: String)
@@ -98,7 +97,7 @@ pub type PglError {
     code: String,
     name: String,
     message: String,
-    fields: Dict(Field, String),
+    fields: Dict(BitArray, String),
   )
 }
 
@@ -115,52 +114,6 @@ pub fn error_to_string(err: PglError) -> String {
       <> name
       <> ", message: "
       <> message
-  }
-}
-
-// https://www.postgresql.org/docs/current/protocol-error-fields.html
-/// Error and notice message fields
-pub type Field {
-  Severity
-  Code
-  Message
-  Detail
-  Hint
-  Position
-  InternalPosition
-  InternalQuery
-  Where
-  Schema
-  Table
-  Column
-  DataType
-  Constraint
-  File
-  Line
-  Routine
-  Unknown(code: BitArray)
-}
-
-pub fn field_to_string(field: Field) -> String {
-  case field {
-    Severity -> "Severity"
-    Code -> "Code"
-    Message -> "Message"
-    Detail -> "Detail"
-    Hint -> "Hint"
-    Position -> "Position"
-    InternalPosition -> "InternalPosition"
-    InternalQuery -> "InternalQuery"
-    Where -> "Where"
-    Schema -> "Schema"
-    Table -> "Table"
-    Column -> "Column"
-    DataType -> "DataType"
-    Constraint -> "Constraint"
-    File -> "File"
-    Line -> "Line"
-    Routine -> "Routine"
-    Unknown(code: _) -> "Unknown"
   }
 }
 
