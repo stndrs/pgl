@@ -11,9 +11,15 @@ pub fn ssl_upgrade_unexpected_receive_test() {
     protocol.config
     |> protocol.ssl(option.Some(False))
 
-  let sock =
-    socket_test.connect_test()
+  let builder =
+    socket.new()
+    |> socket.host(internal.default_host)
+    |> socket.port(internal.default_port)
     |> socket.with_receive(fn(_, _, _) { Ok(<<"X":utf8>>) })
+
+  let sock =
+    socket_test.sockets()
+    |> socket_test.new_socket(builder)
 
   let assert Error(internal.SocketError(
     kind: internal.SslError,
@@ -64,8 +70,11 @@ pub fn protocol_bootstrap_test() {
 }
 
 fn connect() -> Socket {
-  let assert Ok(sock) =
-    socket.connect(internal.default_host, internal.default_port)
+  let builder =
+    socket.new()
+    |> socket.host(internal.default_host)
+    |> socket.port(internal.default_port)
 
-  sock
+  socket_test.sockets()
+  |> socket_test.new_socket(builder)
 }

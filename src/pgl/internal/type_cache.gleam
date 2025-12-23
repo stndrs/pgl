@@ -70,14 +70,23 @@ pub fn load(
   tc: TypeCache,
   conf: protocol.Config,
 ) -> Result(Nil, internal.PglError) {
-  use sock <- result.try(socket.connect(tc.host, tc.port))
-  use sock <- result.try(protocol.auth(sock, conf))
+  let socket_builder =
+    socket.new()
+    |> socket.host(tc.host)
+    |> socket.port(tc.port)
 
-  let res = process.named_subject(tc.np) |> actor.call(1000, Load(_, sock))
+  socket.connect(socket_builder)
+  |> result.map_error(fn(_) {
+    internal.PglError("(pgl/type_cache.load) Failed to start connection")
+  })
+  |> result.try(fn(started) { protocol.auth(started.data, conf) })
+  |> result.try(fn(sock) {
+    let res = process.named_subject(tc.np) |> actor.call(1000, Load(_, sock))
 
-  let _ = socket.shutdown(sock)
+    let _ = socket.shutdown(sock)
 
-  res
+    res
+  })
 }
 
 pub fn lookup(

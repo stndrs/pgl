@@ -1,40 +1,112 @@
 import gleam/dict.{type Dict}
 import gleam/erlang/charlist.{type Charlist}
+import gleam/erlang/process.{type Subject}
+import gleam/otp/actor
+import gleam/otp/factory_supervisor as factory
+import gleam/otp/supervision
 import gleam/result
 import pgl/internal
 
-pub type Conn
+type TcpSocket
 
-pub opaque type Socket {
-  Socket(
-    conn: Conn,
+type SslSocket
+
+pub opaque type InternalSocket {
+  Tcp(TcpSocket)
+  Ssl(SslSocket)
+}
+
+pub opaque type SocketBuilder {
+  SocketBuilder(
     host: String,
-    parameters: Dict(String, String),
-    send: fn(Conn, BitArray) -> Result(Nil, internal.PosixError),
-    receive: fn(Conn, Int, Int) -> Result(BitArray, internal.PosixError),
-    shutdown: fn(Conn) -> Result(Nil, internal.PosixError),
+    port: Int,
+    timeout: Int,
+    send: Sender,
+    receive: Receiver,
+    shutdown: Disconnector,
   )
 }
 
+pub opaque type Socket {
+  Socket(
+    subject: Subject(Msg),
+    host: String,
+    timeout: Int,
+    parameters: Dict(String, String),
+    send: Sender,
+    receive: Receiver,
+    shutdown: Disconnector,
+  )
+}
+
+pub opaque type Msg {
+  SslUpgrade(
+    client: Subject(Result(Nil, internal.PglError)),
+    host: String,
+    verified: Bool,
+  )
+  Send(
+    client: Subject(Result(Nil, internal.PosixError)),
+    send: Sender,
+    payload: BitArray,
+  )
+  Receive(
+    client: Subject(Result(BitArray, internal.PosixError)),
+    receive: Receiver,
+    length: Int,
+    timeout: Int,
+  )
+  Shutdown(
+    client: Subject(Result(Nil, internal.PosixError)),
+    shutdown: Disconnector,
+  )
+}
+
+pub fn new() -> SocketBuilder {
+  SocketBuilder(
+    host: internal.default_host,
+    port: internal.default_port,
+    timeout: 1000,
+    send: socket_send,
+    receive: socket_receive,
+    shutdown: socket_shutdown,
+  )
+}
+
+pub fn host(builder: SocketBuilder, host: String) -> SocketBuilder {
+  SocketBuilder(..builder, host:)
+}
+
+pub fn port(builder: SocketBuilder, port: Int) -> SocketBuilder {
+  SocketBuilder(..builder, port:)
+}
+
+pub fn timeout(builder: SocketBuilder, timeout: Int) -> SocketBuilder {
+  SocketBuilder(..builder, timeout:)
+}
+
 pub type Sender =
-  fn(Conn, BitArray) -> Result(Nil, internal.PosixError)
+  fn(InternalSocket, BitArray) -> Result(Nil, internal.PosixError)
 
 pub type Receiver =
-  fn(Conn, Int, Int) -> Result(BitArray, internal.PosixError)
+  fn(InternalSocket, Int, Int) -> Result(BitArray, internal.PosixError)
 
 pub type Disconnector =
-  fn(Conn) -> Result(Nil, internal.PosixError)
+  fn(InternalSocket) -> Result(Nil, internal.PosixError)
 
-pub fn with_send(sock: Socket, send: Sender) -> Socket {
-  Socket(..sock, send:)
+pub fn with_send(builder: SocketBuilder, send: Sender) -> SocketBuilder {
+  SocketBuilder(..builder, send:)
 }
 
-pub fn with_receive(sock: Socket, receive: Receiver) -> Socket {
-  Socket(..sock, receive:)
+pub fn with_receive(builder: SocketBuilder, receive: Receiver) -> SocketBuilder {
+  SocketBuilder(..builder, receive:)
 }
 
-pub fn with_shutdown(sock: Socket, shutdown: Disconnector) -> Socket {
-  Socket(..sock, shutdown:)
+pub fn with_shutdown(
+  builder: SocketBuilder,
+  shutdown: Disconnector,
+) -> SocketBuilder {
+  SocketBuilder(..builder, shutdown:)
 }
 
 /// Assign Key/Value pairs to a Socket's parameters Dict.
@@ -43,47 +115,74 @@ pub fn parameter(sock: Socket, key: String, value: String) -> Socket {
   Socket(..sock, parameters:)
 }
 
-/// Creates a TCP connection and returns a Socket
-pub fn connect(host: String, port: Int) -> Result(Socket, internal.PglError) {
-  charlist.from_string(host)
-  |> tcp_connect(port)
-  |> result.map(fn(conn) {
-    Socket(
-      conn:,
-      host:,
-      parameters: dict.new(),
-      send: tcp_send,
-      receive: tcp_receive,
-      shutdown: tcp_shutdown,
-    )
-  })
-  |> result.map_error(fn(code) {
-    internal.SocketError(
-      kind: internal.ConnectError(code:),
-      message: "Failed to connect",
-    )
-  })
+pub fn supervised(
+  name: process.Name(factory.Message(SocketBuilder, Socket)),
+) -> supervision.ChildSpecification(factory.Supervisor(SocketBuilder, Socket)) {
+  factory.worker_child(connect)
+  |> factory.named(name)
+  |> factory.supervised
 }
 
-/// Calls the Socket's `send` function
+pub fn connect(builder: SocketBuilder) -> actor.StartResult(Socket) {
+  let SocketBuilder(host:, port:, timeout:, send:, receive:, shutdown:) =
+    builder
+
+  actor.new_with_initialiser(1000, fn(subject) {
+    tcp_connect(host, port)
+    |> result.map_error(fn(_) { "Failed to start connection" })
+    |> result.map(fn(sock) {
+      let selector = process.new_selector() |> process.select(subject)
+
+      let socket =
+        Socket(
+          subject:,
+          host:,
+          timeout:,
+          parameters: dict.new(),
+          send:,
+          receive:,
+          shutdown:,
+        )
+
+      sock
+      |> actor.initialised
+      |> actor.selecting(selector)
+      |> actor.returning(socket)
+    })
+  })
+  |> actor.on_message(handle_message)
+  |> actor.start
+}
+
+pub fn to_ssl(
+  socket: Socket,
+  verified verified: Bool,
+) -> Result(Socket, internal.PglError) {
+  actor.call(socket.subject, 1000, SslUpgrade(_, socket.host, verified))
+  |> result.replace(socket)
+}
+
 pub fn send(
-  sock: Socket,
+  socket: Socket,
   payload: BitArray,
 ) -> Result(Socket, internal.PglError) {
-  sock.send(sock.conn, payload)
-  |> result.replace(sock)
+  actor.call(socket.subject, 1000, Send(_, socket.send, payload))
   |> result.map_error(fn(code) {
     internal.SocketError(
       kind: internal.SendError(code:),
       message: "Failed to send",
     )
   })
+  |> result.replace(socket)
 }
 
-/// Calls the Socket's `receive` function. The `length` argument indicates the number
-/// of bytes to read. `receive`'s timeout is 1000ms.
-pub fn receive(sock: Socket, length: Int) -> Result(BitArray, internal.PglError) {
-  sock.receive(sock.conn, length, 1000)
+pub fn receive(conn: Socket, length: Int) -> Result(BitArray, internal.PglError) {
+  actor.call(conn.subject, conn.timeout, Receive(
+    _,
+    conn.receive,
+    length,
+    conn.timeout,
+  ))
   |> result.map_error(fn(code) {
     internal.SocketError(
       kind: internal.ReceiveError(code:),
@@ -92,35 +191,71 @@ pub fn receive(sock: Socket, length: Int) -> Result(BitArray, internal.PglError)
   })
 }
 
-/// Calls the Socket's `shutdown` function. This will disconnect the Socket's connection if
-/// it has one. If the Conn doesn't have a connection, this function returns an error. This
-/// function also returns an error if shutdown fails.
-pub fn shutdown(sock: Socket) -> Result(Nil, internal.PglError) {
-  sock.shutdown(sock.conn)
+pub fn shutdown(conn: Socket) -> Result(Nil, internal.PglError) {
+  actor.call(conn.subject, 1000, Shutdown(_, conn.shutdown))
   |> result.map_error(fn(code) {
     internal.SocketError(
       kind: internal.ShutdownError(code:),
-      message: "Failed to receive",
+      message: "Failed to shutdown",
     )
   })
 }
 
-// Default Conn functions
+fn handle_message(
+  sock: InternalSocket,
+  msg: Msg,
+) -> actor.Next(InternalSocket, Msg) {
+  case msg {
+    SslUpgrade(client:, host:, verified:) -> {
+      case tcp_to_ssl(sock, host, verified) {
+        Ok(ssl) -> {
+          actor.send(client, Ok(Nil))
 
-pub fn ssl_upgrade(
-  sock: Socket,
-  verified verified: Bool,
-) -> Result(Socket, internal.PglError) {
-  ssl_connect(sock.conn, sock.host, verified)
-  |> result.map(fn(conn) {
-    Socket(
-      ..sock,
-      conn:,
-      send: ssl_send,
-      receive: ssl_receive,
-      shutdown: ssl_shutdown,
-    )
-  })
+          ssl
+        }
+        Error(err) -> {
+          actor.send(client, Error(err))
+
+          sock
+        }
+      }
+      |> actor.continue
+    }
+    Send(client:, send:, payload:) -> {
+      send(sock, payload)
+      |> result.replace(Nil)
+      |> actor.send(client, _)
+
+      actor.continue(sock)
+    }
+    Receive(client:, receive:, length:, timeout:) -> {
+      receive(sock, length, timeout)
+      |> actor.send(client, _)
+
+      actor.continue(sock)
+    }
+    Shutdown(client:, shutdown:) -> {
+      shutdown(sock)
+      |> actor.send(client, _)
+
+      actor.stop()
+    }
+  }
+}
+
+fn tcp_to_ssl(
+  socket: InternalSocket,
+  host: String,
+  verified: Bool,
+) -> Result(InternalSocket, internal.PglError) {
+  case socket {
+    Tcp(sock) -> {
+      sock
+      |> ssl_connect(host, verified)
+      |> result.map(Ssl)
+    }
+    _ -> Ok(socket)
+  }
   |> result.map_error(fn(code) {
     internal.SocketError(
       kind: internal.ConnectError(code:),
@@ -129,44 +264,94 @@ pub fn ssl_upgrade(
   })
 }
 
-// FFI
+fn tcp_connect(
+  host: String,
+  port: Int,
+) -> Result(InternalSocket, internal.PglError) {
+  host
+  |> charlist.from_string
+  |> tcp_connect_(port)
+  |> result.map(Tcp)
+  |> result.map_error(fn(code) {
+    internal.SocketError(
+      kind: internal.ConnectError(code:),
+      message: "Failed to connect",
+    )
+  })
+}
 
-// TCP Connection
+fn socket_send(
+  socket: InternalSocket,
+  payload: BitArray,
+) -> Result(Nil, internal.PosixError) {
+  case socket {
+    Tcp(sock) -> tcp_send(sock, payload)
+    Ssl(sock) -> ssl_send(sock, payload)
+  }
+}
+
+fn socket_receive(
+  socket: InternalSocket,
+  length: Int,
+  timeout: Int,
+) -> Result(BitArray, internal.PosixError) {
+  case socket {
+    Tcp(sock) -> tcp_receive(sock, length, timeout)
+    Ssl(sock) -> ssl_receive(sock, length)
+  }
+}
+
+fn socket_shutdown(socket: InternalSocket) -> Result(Nil, internal.PosixError) {
+  case socket {
+    Tcp(sock) -> tcp_shutdown(sock)
+    Ssl(sock) -> ssl_shutdown(sock)
+  }
+}
+
+// SSL
 
 @external(erlang, "pgl_ffi", "gen_tcp_connect")
-fn tcp_connect(host: Charlist, port: Int) -> Result(Conn, internal.PosixError)
+fn tcp_connect_(
+  host: Charlist,
+  port: Int,
+) -> Result(TcpSocket, internal.PosixError)
 
 @external(erlang, "pgl_ffi", "gen_tcp_recv")
 fn tcp_receive(
-  tcp: Conn,
+  socket: TcpSocket,
   read_bytes_num: Int,
   timeout_milliseconds timeout: Int,
 ) -> Result(BitArray, internal.PosixError)
 
 @external(erlang, "pgl_ffi", "gen_tcp_send")
-fn tcp_send(tcp: Conn, packet: BitArray) -> Result(Nil, internal.PosixError)
+fn tcp_send(
+  socket: TcpSocket,
+  packet: BitArray,
+) -> Result(Nil, internal.PosixError)
 
 @external(erlang, "pgl_ffi", "gen_tcp_shutdown")
-fn tcp_shutdown(tcp: Conn) -> Result(Nil, internal.PosixError)
+fn tcp_shutdown(socket: TcpSocket) -> Result(Nil, internal.PosixError)
 
-// SSL Connection
+// SSL
 
 @external(erlang, "pgl_ffi", "ssl_connect")
 fn ssl_connect(
-  tcp: Conn,
+  socket: TcpSocket,
   host: String,
   verified: Bool,
-) -> Result(Conn, internal.PosixError)
+) -> Result(SslSocket, internal.PosixError)
 
 @external(erlang, "pgl_ffi", "ssl_send")
-fn ssl_send(ssl: Conn, packet: BitArray) -> Result(Nil, internal.PosixError)
+fn ssl_send(
+  socket: SslSocket,
+  payload: BitArray,
+) -> Result(Nil, internal.PosixError)
 
 @external(erlang, "pgl_ffi", "ssl_recv")
 fn ssl_receive(
-  ssl: Conn,
-  read_bytes_num: Int,
-  timeout_milliseconds timeout: Int,
+  socket: SslSocket,
+  length: Int,
 ) -> Result(BitArray, internal.PosixError)
 
 @external(erlang, "pgl_ffi", "ssl_shutdown")
-fn ssl_shutdown(conn: Conn) -> Result(Nil, internal.PosixError)
+fn ssl_shutdown(socket: SslSocket) -> Result(Nil, internal.PosixError)

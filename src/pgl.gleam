@@ -7,6 +7,7 @@ import gleam/int
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/otp/actor
+import gleam/otp/factory_supervisor as factory
 import gleam/otp/static_supervisor.{type Supervisor} as supervisor
 import gleam/otp/supervision
 import gleam/result
@@ -225,6 +226,7 @@ pub type TransactionError(error) {
 pub opaque type Db {
   Db(
     pool: process.Name(pool.Msg(Connection, PglError)),
+    factory: process.Name(factory.Message(socket.SocketBuilder, Socket)),
     config: Config,
     tc: TypeCache,
     qc: QueryCache,
@@ -239,8 +241,9 @@ pub fn new(config: Config) -> Db {
 
   let qc = query_cache.new()
   let pool = process.new_name("pgl_pool")
+  let factory = process.new_name("pgl_sockets")
 
-  Db(pool:, config:, tc:, qc:)
+  Db(pool:, factory:, config:, tc:, qc:)
 }
 
 pub fn start(db: Db) -> actor.StartResult(Supervisor) {
@@ -254,6 +257,7 @@ pub fn start(db: Db) -> actor.StartResult(Supervisor) {
   supervisor.new(supervisor.OneForOne)
   |> supervisor.add(type_cache.supervised(db.tc))
   |> supervisor.add(query_cache.supervised(db.qc))
+  |> supervisor.add(socket.supervised(db.factory))
   |> supervisor.add(pool.supervised(pool, db.pool, 1000))
   |> supervisor.start
 }
@@ -346,16 +350,23 @@ fn rows_to_maps(
   |> list.map(dynamic.properties)
 }
 
-/// Creates a new connection to the database.
 fn connect(db: Db) -> Result(Connection, PglError) {
-  let Db(pool: _, config:, tc:, qc:) = db
+  let Db(pool: _, factory: _, config:, tc:, qc:) = db
 
   let conf = to_protocol_config(config)
 
-  {
-    use sock <- result.try(socket.connect(config.host, config.port))
-    use sock <- result.map(protocol.auth(sock, conf))
+  let sock =
+    socket.new()
+    |> socket.host(config.host)
+    |> socket.port(config.port)
 
+  factory.get_by_name(db.factory)
+  |> factory.start_child(sock)
+  |> result.map_error(fn(_start_error) {
+    internal.PglError("Failed to start connection")
+  })
+  |> result.try(fn(started) { protocol.auth(started.data, conf) })
+  |> result.map(fn(sock) {
     Connection(
       sock:,
       savepoint: None,
@@ -364,7 +375,7 @@ fn connect(db: Db) -> Result(Connection, PglError) {
       conf:,
       rows_as_maps: config.rows_as_maps,
     )
-  }
+  })
   |> result.map_error(from_internal_error)
 }
 

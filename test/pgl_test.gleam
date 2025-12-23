@@ -213,7 +213,7 @@ fn global_pool() -> pgl.Db {
 }
 
 // fn global_pool_ssl() -> pgl.Db {
-//   use <- global_pg_value.create_with_unique_name("pgl_pool_ssl_test")
+//   use <- global_value.create_with_unique_name("pgl_pool_ssl_test")
 // 
 //   let assert Ok(conf) =
 //     "postgres://postgres:postgres@127.0.0.1:5433/gleam_pgl_test?sslmode=require"
@@ -247,12 +247,9 @@ fn connect(next: fn(pgl.Connection) -> t) {
   |> with_setup_conn(next)
 }
 
-// fn start_ssl(next: fn(pgl.Connection) -> t) -> t {
-//   let assert Ok(res) =
-//     global_pool_ssl()
-//     |> with_setup_conn(next)
-// 
-//   res
+// fn start_ssl(next: fn(pgl.Connection) -> t) {
+//   global_pool_ssl()
+//   |> with_setup_conn(next)
 // }
 
 fn with_setup_conn(db: pgl.Db, next: fn(pgl.Connection) -> t) {

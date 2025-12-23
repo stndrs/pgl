@@ -77,7 +77,7 @@ fn do_ssl_upgrade(
   use sock <- result.try(socket.send(sock, encode.ssl_request()))
 
   case socket.receive(sock, 1) {
-    Ok(<<"S":utf8>>) -> socket.ssl_upgrade(sock, verified:)
+    Ok(<<"S":utf8>>) -> socket.to_ssl(sock, verified:)
     Ok(<<"N":utf8>>) -> {
       internal.SslError
       |> internal.SocketError(message: "SSL Refused")
