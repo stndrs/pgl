@@ -179,9 +179,7 @@ fn auth_sasl(
 fn handle_error_response(
   fields: Dict(internal.Field, String),
 ) -> Result(a, internal.PglError) {
-  internal.from_response_fields(fields)
-  |> internal.PostgresError
-  |> Error
+  Error(internal.from_response_fields(fields))
 }
 
 fn auth_sasl_continue(

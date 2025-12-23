@@ -94,11 +94,7 @@ pub type PglError {
   AuthenticationError(kind: AuthenticationError, message: String)
   SocketError(kind: SocketError, message: String)
   ProtocolError(kind: ProtocolError, message: String)
-  PostgresError(kind: PgError)
-}
-
-pub type PgError {
-  PgError(
+  PostgresError(
     code: String,
     name: String,
     message: String,
@@ -112,7 +108,7 @@ pub fn error_to_string(err: PglError) -> String {
     AuthenticationError(_, msg) -> "[AuthenticationError] " <> msg
     SocketError(_, msg) -> "[SocketError] " <> msg
     ProtocolError(_, msg) -> "[ProtocolError] " <> msg
-    PostgresError(PgError(code, name, message, _)) ->
+    PostgresError(code, name, message, _) ->
       "[PostgresError] code:"
       <> code
       <> ", name: "
@@ -208,12 +204,12 @@ pub fn message_error(message: String) -> PglError {
   ProtocolError(kind: MessageError, message:)
 }
 
-pub fn from_response_fields(fields: Dict(Field, String)) -> PgError {
+pub fn from_response_fields(fields: Dict(Field, String)) -> PglError {
   let code = dict.get(fields, Code) |> result.unwrap("")
   let message = dict.get(fields, Message) |> result.unwrap("")
   let name = pg_error_code_name(code) |> result.unwrap("")
 
-  PgError(code:, name:, message:, fields:)
+  PostgresError(code:, name:, message:, fields:)
 }
 
 pub type TransactionError(error) {

@@ -47,11 +47,12 @@ pub fn auth_failure_test() {
 
   let sock = connect()
 
-  let assert Error(internal.PostgresError(err)) = protocol.auth(sock, conf)
+  let assert Error(internal.PostgresError(code:, name:, message:, fields: _)) =
+    protocol.auth(sock, conf)
 
-  let assert "28000" = err.code
-  let assert "invalid_authorization_specification" = err.name
-  let assert "no PostgreSQL user name specified in startup packet" = err.message
+  let assert "28000" = code
+  let assert "invalid_authorization_specification" = name
+  let assert "no PostgreSQL user name specified in startup packet" = message
 }
 
 pub fn protocol_bootstrap_test() {

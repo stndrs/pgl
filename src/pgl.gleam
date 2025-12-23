@@ -197,7 +197,7 @@ pub type PglError {
 fn from_internal_error(err: internal.PglError) -> PglError {
   case err {
     internal.PglError(message:) -> PglError(message:)
-    internal.PostgresError(internal.PgError(code:, name:, message:, fields:)) -> {
+    internal.PostgresError(code:, name:, message:, fields:) -> {
       let fields =
         fields
         |> dict.to_list
