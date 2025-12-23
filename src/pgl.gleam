@@ -395,7 +395,11 @@ pub type Query {
   Query(sql: String, params: List(pg_value.Value))
 }
 
-pub fn with_params(q: Query, params: List(pg_value.Value)) -> Query {
+pub fn sql(sql: String) -> Query {
+  Query(sql:, params: [])
+}
+
+pub fn params(q: Query, params: List(pg_value.Value)) -> Query {
   Query(..q, params:)
 }
 

@@ -184,6 +184,14 @@ pub fn default_values_test() {
   let assert pgl.SslDisabled = conf.ssl
 }
 
+pub fn query_params_test() {
+  let query =
+    pgl.sql("SELECT * FROM users WHERE id=$1")
+    |> pgl.params([pg_value.int(10)])
+
+  let assert [pg_value.Int(10)] = query.params
+}
+
 // Database tests
 
 const drop_table_sql = "DROP TABLE IF EXISTS users;"
