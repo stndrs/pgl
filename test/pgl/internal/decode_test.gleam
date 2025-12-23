@@ -147,8 +147,8 @@ pub fn decode_authentication_error_test() {
 
 pub fn decode_authentication_sasl_methods_error_test() {
   let assert Error(internal.AuthenticationError(
-    kind: internal.UnsupportedSASLMethod(method: <<"NOPE":utf8>>),
-    message: "",
+    kind: internal.MethodNotImplemented,
+    message: "Supported methods: [SCRAM-SHA-256]",
   )) = decode.message(<<"R":utf8>>, <<10:int-size(32), "NOPE":utf8>>)
 }
 

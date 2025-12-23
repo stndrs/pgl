@@ -224,8 +224,8 @@ fn sasl_methods_inner(
     <<"SCRAM-SHA-256":utf8, _rest:bits>> -> Ok(["SCRAM-SHA-256"])
     _ ->
       Error(internal.AuthenticationError(
-        kind: internal.UnsupportedSASLMethod(method: binary),
-        message: "",
+        kind: internal.MethodNotImplemented,
+        message: "Supported methods: [SCRAM-SHA-256]",
       ))
   }
 }

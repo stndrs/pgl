@@ -184,18 +184,8 @@ pub type CacheError {
 }
 
 pub type AuthenticationError {
-  UnsupportedSASLMethod(method: BitArray)
-  AuthenticationFailed(cause: PglError)
-  SignatureMismatch
-  MethodNotSupported
-}
-
-pub fn authentication_failed(cause: PglError, message: String) -> PglError {
-  AuthenticationError(kind: AuthenticationFailed(cause:), message:)
-}
-
-pub fn signature_mismatch(message: String) -> PglError {
-  AuthenticationError(kind: SignatureMismatch, message:)
+  AuthenticationFailed
+  MethodNotImplemented
 }
 
 pub type SocketError {

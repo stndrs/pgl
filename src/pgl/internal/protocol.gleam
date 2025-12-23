@@ -167,8 +167,8 @@ fn auth_sasl(
       |> result.replace(client_nonce)
     }
     _ -> {
-      internal.MethodNotSupported
-      |> internal.AuthenticationError(
+      internal.AuthenticationError(
+        kind: internal.MethodNotImplemented,
         message: "Supported methods: [SCRAM-SHA-256]",
       )
       |> Error
@@ -209,14 +209,18 @@ fn auth_sasl_final(
   server_final: BitArray,
   server_signature: BitArray,
 ) -> Result(BitArray, internal.PglError) {
-  scram.parse_server_final(server_final)
-  |> result.map_error(internal.authentication_failed(_, ""))
-  |> result.try(fn(srv_final) {
-    case srv_final == server_signature {
-      True -> Ok(server_signature)
-      False -> Error(internal.signature_mismatch("Failed to match signature"))
+  use srv_final <- result.try(scram.parse_server_final(server_final))
+
+  case srv_final == server_signature {
+    True -> Ok(server_signature)
+    False -> {
+      internal.AuthenticationError(
+        kind: internal.AuthenticationFailed,
+        message: "Failed to match server signature",
+      )
+      |> Error
     }
-  })
+  }
 }
 
 // ---------- Simple Query ---------- //
