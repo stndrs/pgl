@@ -96,7 +96,6 @@ pub type PglError {
   TypeCacheError(kind: CacheError, message: String)
   AuthenticationError(kind: AuthenticationError, message: String)
   SocketError(kind: SocketError, message: String)
-  ScramError(kind: ScramError, message: String)
   // Errors related to working with Postgres wire protocol
   ProtocolError(kind: ProtocolError, message: String)
   // Errors from the postgres server
@@ -120,7 +119,6 @@ pub fn error_to_string(err: PglError) -> String {
     TypeCacheError(_, msg) -> "[TypeCacheError] " <> msg
     AuthenticationError(_, msg) -> "[AuthenticationError] " <> msg
     SocketError(_, msg) -> "[SocketError] " <> msg
-    ScramError(_, msg) -> "[ScramError] " <> msg
     ProtocolError(_, msg) -> "[ProtocolError] " <> msg
     PostgresError(PgError(code, name, message, _)) ->
       "[PostgresError] code:"
@@ -200,24 +198,6 @@ pub fn signature_mismatch(message: String) -> PglError {
   AuthenticationError(kind: SignatureMismatch, message:)
 }
 
-pub type ScramError {
-  ServerFirst
-  ServerFinal
-  ServerContinue
-}
-
-pub fn server_first_error(message: String) -> PglError {
-  ScramError(kind: ServerFirst, message:)
-}
-
-pub fn server_final_error(message: String) -> PglError {
-  ScramError(kind: ServerFinal, message:)
-}
-
-pub fn server_continue_error(message: String) -> PglError {
-  ScramError(kind: ServerContinue, message:)
-}
-
 pub type SocketError {
   SendError(code: PosixError)
   ReceiveError(code: PosixError)
@@ -227,6 +207,9 @@ pub type SocketError {
 }
 
 pub type ProtocolError {
+  SaslServerError
+  SaslServerFinal
+  SaslServerFirst
   DecodingError
   EncodingError
   MessageError

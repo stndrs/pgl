@@ -114,7 +114,10 @@ pub fn parse_server_first(
     _ -> Error(Nil)
   }
   |> result.map_error(fn(_) {
-    internal.server_first_error("server_first parse error")
+    internal.ProtocolError(
+      kind: internal.SaslServerFirst,
+      message: "Failed to parse server_first",
+    )
   })
 }
 
@@ -122,16 +125,32 @@ pub fn parse_server_final(
   server_final: BitArray,
 ) -> Result(BitArray, internal.PglError) {
   case server_final {
+    // https://datatracker.ietf.org/doc/html/rfc5802 - p. 17
     <<"v=":utf8, final:bits>> -> {
       bit_array.to_string(final)
       |> result.map(string.split(_, ","))
       |> result.try(list.first)
       |> result.try(bit_array.base64_decode)
-      |> result.map_error(fn(_) { internal.server_final_error("payload error") })
+      |> result.map_error(fn(_) {
+        internal.ProtocolError(
+          kind: internal.SaslServerFinal,
+          message: "Failed to parse server_final",
+        )
+      })
     }
-    <<"e=":utf8, _error:bits>> ->
-      Error(internal.server_final_error("payload error"))
-    _bits -> Error(internal.server_final_error("unexpected payload"))
+    // https://datatracker.ietf.org/doc/html/rfc5802 - p. 18
+    <<"e=":utf8, error:bits>> -> {
+      let error_value =
+        bit_array.to_string(error)
+        |> result.unwrap("")
+
+      internal.ProtocolError(
+        kind: internal.SaslServerError,
+        message: "Server error: '" <> error_value <> "'",
+      )
+      |> Error
+    }
+    _bits -> panic as "Unexpected SASL server final payload"
   }
 }
 
