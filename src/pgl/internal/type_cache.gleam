@@ -148,10 +148,7 @@ fn handle_lookup(
   client: process.Subject(Result(List(TypeInfo), internal.PglError)),
 ) -> actor.Next(Store(Int, TypeInfo), a) {
   list.try_map(oids, store.lookup(store, _))
-  |> result.replace_error(internal.TypeCacheError(
-    kind: internal.NotFoundError,
-    message: "Failed to find type info for OIDs",
-  ))
+  |> result.replace_error(internal.PglError("Failed to find type info for OIDs"))
   |> actor.send(client, _)
 
   actor.continue(store)
@@ -221,16 +218,9 @@ fn parse_type_info(row: List(BitArray)) -> Result(TypeInfo, internal.PglError) {
         |> type_info.base_oid(base_oid)
         |> type_info.comp_oids(comp_oids)
       }
-      |> result.replace_error(internal.TypeCacheError(
-        kind: internal.LoadError,
-        message: "Failed to parse type info",
-      ))
+      |> result.replace_error(internal.PglError("Failed to parse type info"))
     }
-    _ ->
-      Error(internal.TypeCacheError(
-        kind: internal.LoadError,
-        message: "Unexpected type info format",
-      ))
+    _ -> Error(internal.PglError("Unexpected type info format"))
   }
 }
 

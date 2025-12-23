@@ -77,10 +77,7 @@ fn handle_message(
   case msg {
     Lookup(client, query) -> {
       store.lookup(store, query)
-      |> result.replace_error(internal.QueryCacheError(
-        kind: internal.NotFoundError,
-        message: "SQL query not found in cache",
-      ))
+      |> result.replace_error(internal.PglError("SQL query not found in cache"))
       |> actor.send(client, _)
 
       actor.continue(store)

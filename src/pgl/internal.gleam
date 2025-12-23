@@ -91,8 +91,6 @@ pub type Command {
 
 pub type PglError {
   PglError(message: String)
-  QueryCacheError(kind: CacheError, message: String)
-  TypeCacheError(kind: CacheError, message: String)
   AuthenticationError(kind: AuthenticationError, message: String)
   SocketError(kind: SocketError, message: String)
   ProtocolError(kind: ProtocolError, message: String)
@@ -111,8 +109,6 @@ pub type PgError {
 pub fn error_to_string(err: PglError) -> String {
   case err {
     PglError(message:) -> "[PglError] " <> message
-    QueryCacheError(_, msg) -> "[QueryCacheError] " <> msg
-    TypeCacheError(_, msg) -> "[TypeCacheError] " <> msg
     AuthenticationError(_, msg) -> "[AuthenticationError] " <> msg
     SocketError(_, msg) -> "[SocketError] " <> msg
     ProtocolError(_, msg) -> "[ProtocolError] " <> msg
