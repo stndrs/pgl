@@ -164,12 +164,6 @@ pub fn field_to_string(field: Field) -> String {
   }
 }
 
-pub type CacheError {
-  LoadError
-  CacheStartError
-  NotFoundError
-}
-
 pub type AuthenticationError {
   AuthenticationFailed
   MethodNotImplemented
@@ -188,28 +182,7 @@ pub type ProtocolError {
   SaslServerFinal
   SaslServerFirst
   DecodingError
-  EncodingError
   MessageError
-}
-
-pub fn decode_error(message: String) -> PglError {
-  ProtocolError(kind: DecodingError, message:)
-}
-
-pub fn encode_error(message: String) -> PglError {
-  ProtocolError(kind: EncodingError, message:)
-}
-
-pub fn message_error(message: String) -> PglError {
-  ProtocolError(kind: MessageError, message:)
-}
-
-pub fn from_response_fields(fields: Dict(Field, String)) -> PglError {
-  let code = dict.get(fields, Code) |> result.unwrap("")
-  let message = dict.get(fields, Message) |> result.unwrap("")
-  let name = pg_error_code_name(code) |> result.unwrap("")
-
-  PostgresError(code:, name:, message:, fields:)
 }
 
 pub type TransactionError(error) {

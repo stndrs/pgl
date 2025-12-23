@@ -335,7 +335,7 @@ fn ready_for_query(
     <<"T":utf8>> -> Ok(internal.ReadyForQuery(status: internal.Transaction))
     <<"E":utf8>> -> Ok(internal.ReadyForQuery(status: internal.Err))
     _bits -> {
-      internal.DecodingError
+      internal.MessageError
       |> internal.ProtocolError(message: "Unexpected payload for ReadyForQuery")
       |> Error
     }
@@ -360,7 +360,9 @@ fn error_and_notice_message_fields(
       }
     }
     _ -> {
-      Error(internal.message_error("Unexpected message format"))
+      internal.MessageError
+      |> internal.ProtocolError("Unexpected message format")
+      |> Error
     }
   }
 }

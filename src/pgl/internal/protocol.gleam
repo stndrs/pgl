@@ -179,7 +179,12 @@ fn auth_sasl(
 fn handle_error_response(
   fields: Dict(internal.Field, String),
 ) -> Result(a, internal.PglError) {
-  Error(internal.from_response_fields(fields))
+  let code = dict.get(fields, internal.Code) |> result.unwrap("")
+  let message = dict.get(fields, internal.Message) |> result.unwrap("")
+  let name = internal.pg_error_code_name(code) |> result.unwrap("")
+
+  internal.PostgresError(code:, name:, message:, fields:)
+  |> Error
 }
 
 fn auth_sasl_continue(

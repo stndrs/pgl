@@ -524,7 +524,7 @@ fn decode_row_values(
       let #(val, info) = val_info
 
       pg_value.decode(val, info)
-      |> result.map_error(internal.decode_error)
+      |> result.map_error(internal.ProtocolError(internal.DecodingError, _))
     })
   })
 }

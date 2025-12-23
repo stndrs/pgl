@@ -202,7 +202,7 @@ pub fn decode_ready_for_query_test() {
 
 pub fn decode_ready_for_query_error_test() {
   let assert Error(internal.ProtocolError(
-    kind: internal.DecodingError,
+    kind: internal.MessageError,
     message: "Unexpected payload for ReadyForQuery",
   )) = decode.message(<<"Z":utf8>>, <<"X":utf8>>)
 }
