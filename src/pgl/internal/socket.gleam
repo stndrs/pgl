@@ -168,10 +168,7 @@ pub fn send(
 ) -> Result(Socket, internal.PglError) {
   actor.call(socket.subject, 1000, Send(_, socket.send, payload))
   |> result.map_error(fn(code) {
-    internal.SocketError(
-      kind: internal.SendError(code:),
-      message: "Failed to send",
-    )
+    internal.SocketError(code:, message: "Failed to send")
   })
   |> result.replace(socket)
 }
@@ -184,20 +181,14 @@ pub fn receive(conn: Socket, length: Int) -> Result(BitArray, internal.PglError)
     conn.timeout,
   ))
   |> result.map_error(fn(code) {
-    internal.SocketError(
-      kind: internal.ReceiveError(code:),
-      message: "Failed to receive",
-    )
+    internal.SocketError(code:, message: "Failed to receive")
   })
 }
 
 pub fn shutdown(conn: Socket) -> Result(Nil, internal.PglError) {
   actor.call(conn.subject, 1000, Shutdown(_, conn.shutdown))
   |> result.map_error(fn(code) {
-    internal.SocketError(
-      kind: internal.ShutdownError(code:),
-      message: "Failed to shutdown",
-    )
+    internal.SocketError(code:, message: "Failed to shutdown")
   })
 }
 
@@ -257,10 +248,7 @@ fn tcp_to_ssl(
     _ -> Ok(socket)
   }
   |> result.map_error(fn(code) {
-    internal.SocketError(
-      kind: internal.ConnectError(code:),
-      message: "Failed to connect SSL",
-    )
+    internal.SocketError(code:, message: "Failed to connect SSL")
   })
 }
 
@@ -273,10 +261,7 @@ fn tcp_connect(
   |> tcp_connect_(port)
   |> result.map(Tcp)
   |> result.map_error(fn(code) {
-    internal.SocketError(
-      kind: internal.ConnectError(code:),
-      message: "Failed to connect",
-    )
+    internal.SocketError(code:, message: "Failed to connect")
   })
 }
 

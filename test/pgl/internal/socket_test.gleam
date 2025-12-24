@@ -69,10 +69,8 @@ pub fn send_error_test() {
     sockets()
     |> new_socket(builder)
 
-  let assert Error(internal.SocketError(
-    internal.SendError(_posix),
-    "Failed to send",
-  )) = socket.send(sock, <<"bits":utf8>>)
+  let assert Error(internal.SocketError(internal.Econnreset, "Failed to send")) =
+    socket.send(sock, <<"bits":utf8>>)
 }
 
 pub fn receive_test() {
@@ -102,10 +100,8 @@ pub fn receive_error_test() {
     sockets()
     |> new_socket(builder)
 
-  let assert Error(internal.SocketError(
-    internal.ReceiveError(_posix),
-    "Failed to receive",
-  )) = socket.receive(sock, 5)
+  let assert Error(internal.SocketError(internal.Closed, "Failed to receive")) =
+    socket.receive(sock, 5)
 }
 
 @external(erlang, "pgl_ffi", "gen_tcp_listen")

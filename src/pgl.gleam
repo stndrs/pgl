@@ -186,6 +186,9 @@ fn try_option(maybe: Option(a), next: fn(a) -> Result(b, Nil)) -> Result(b, Nil)
 
 pub type PglError {
   PglError(message: String)
+  AuthenticationError(message: String)
+  ProtocolError(message: String)
+  SocketError(message: String)
   PostgresError(
     code: String,
     name: String,
@@ -231,7 +234,21 @@ fn from_internal_error(err: internal.PglError) -> PglError {
 
       PostgresError(code:, name:, message:, fields:)
     }
-    err -> PglError(internal.error_to_string(err))
+    internal.AuthenticationError(_, _) -> {
+      err
+      |> internal.error_to_string
+      |> AuthenticationError
+    }
+    internal.SocketError(_, _) -> {
+      err
+      |> internal.error_to_string
+      |> SocketError
+    }
+    internal.ProtocolError(_, _) -> {
+      err
+      |> internal.error_to_string
+      |> ProtocolError
+    }
   }
 }
 

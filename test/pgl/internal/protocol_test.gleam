@@ -21,7 +21,7 @@ pub fn ssl_upgrade_unexpected_receive_test() {
     socket_test.sockets()
     |> socket_test.new_socket(builder)
 
-  let assert Error(internal.SocketError(
+  let assert Error(internal.ProtocolError(
     kind: internal.SslError,
     message: "Failed to upgrade SSL",
   )) = protocol.auth(sock, conf)

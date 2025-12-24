@@ -91,7 +91,7 @@ pub type Command {
 pub type PglError {
   PglError(message: String)
   AuthenticationError(kind: AuthenticationError, message: String)
-  SocketError(kind: SocketError, message: String)
+  SocketError(code: PosixError, message: String)
   ProtocolError(kind: ProtocolError, message: String)
   PostgresError(
     code: String,
@@ -103,12 +103,18 @@ pub type PglError {
 
 pub fn error_to_string(err: PglError) -> String {
   case err {
-    PglError(message:) -> "[PglError] " <> message
-    AuthenticationError(_, msg) -> "[AuthenticationError] " <> msg
-    SocketError(_, msg) -> "[SocketError] " <> msg
-    ProtocolError(_, msg) -> "[ProtocolError] " <> msg
+    PglError(message:) -> "(PglError) " <> message
+    AuthenticationError(kind, msg) -> {
+      "(" <> auth_error_to_string(kind) <> ") " <> msg
+    }
+    SocketError(code, msg) -> {
+      "(SocketError[" <> posix_error_to_string(code) <> "]) " <> msg
+    }
+    ProtocolError(kind, msg) -> {
+      "(" <> protocol_error_to_string(kind) <> ") " <> msg
+    }
     PostgresError(code, name, message, _) ->
-      "[PostgresError] code:"
+      "(PostgresError) code:"
       <> code
       <> ", name: "
       <> name
@@ -117,17 +123,16 @@ pub fn error_to_string(err: PglError) -> String {
   }
 }
 
+fn auth_error_to_string(err: AuthenticationError) -> String {
+  case err {
+    AuthenticationFailed -> "AuthenticationFailed"
+    MethodNotImplemented -> "MethodNotImplemented"
+  }
+}
+
 pub type AuthenticationError {
   AuthenticationFailed
   MethodNotImplemented
-}
-
-pub type SocketError {
-  SendError(code: PosixError)
-  ReceiveError(code: PosixError)
-  ConnectError(code: PosixError)
-  ShutdownError(code: PosixError)
-  SslError
 }
 
 pub type ProtocolError {
@@ -136,28 +141,18 @@ pub type ProtocolError {
   SaslServerFirst
   DecodingError
   MessageError
+  SslError
 }
 
-pub type TransactionError(error) {
-  RollbackError(cause: error)
-  NotInTransaction(message: String)
-  FailedTransaction(message: String, cause: PglError)
-  TransactionError
-}
-
-pub fn rollback(cause: error) -> TransactionError(error) {
-  RollbackError(cause:)
-}
-
-pub fn not_in_transaction(message: String) -> TransactionError(error) {
-  NotInTransaction(message:)
-}
-
-pub fn failed_transaction(
-  message: String,
-  cause: PglError,
-) -> TransactionError(error) {
-  FailedTransaction(message:, cause:)
+fn protocol_error_to_string(err: ProtocolError) {
+  case err {
+    SaslServerError -> "SaslServerError"
+    SaslServerFinal -> "SaslServerFinal"
+    SaslServerFirst -> "SaslServerFirst"
+    DecodingError -> "DecodingError"
+    MessageError -> "MessageError"
+    SslError -> "SSLError"
+  }
 }
 
 // https://www.erlang.org/doc/apps/kernel/inet.html#module-posix-error-codes
@@ -242,7 +237,7 @@ pub type PosixError {
   Exdev
 }
 
-pub fn posix_error_to_string(code: PosixError) -> String {
+fn posix_error_to_string(code: PosixError) -> String {
   case code {
     Closed -> "closed"
     Timeout -> "timeout"

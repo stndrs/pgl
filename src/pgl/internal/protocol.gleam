@@ -80,12 +80,12 @@ fn do_ssl_upgrade(
     Ok(<<"S":utf8>>) -> socket.to_ssl(sock, verified:)
     Ok(<<"N":utf8>>) -> {
       internal.SslError
-      |> internal.SocketError(message: "SSL Refused")
+      |> internal.ProtocolError(message: "SSL Refused")
       |> Error
     }
     Ok(_) -> {
       internal.SslError
-      |> internal.SocketError(message: "Failed to upgrade SSL")
+      |> internal.ProtocolError(message: "Failed to upgrade SSL")
       |> Error
     }
     Error(err) -> Error(err)
