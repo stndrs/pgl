@@ -17,7 +17,7 @@ import pgl/internal/store.{type Store}
 
 pub opaque type TypeCache {
   TypeCache(
-    np: process.Name(Message),
+    name: process.Name(Message),
     handle_connect: fn() -> Result(Socket, internal.PglError),
   )
 }
@@ -31,25 +31,26 @@ pub opaque type Message {
   Shutdown
 }
 
-const name = "pgl_type_cache"
+const type_cache_name = "pgl_type_cache"
 
 pub fn new() -> TypeCache {
-  let np = process.new_name(name)
   let handle_connect = fn() { panic as "TypeCache connect not configured" }
 
-  TypeCache(np:, handle_connect:)
+  type_cache_name
+  |> process.new_name
+  |> TypeCache(handle_connect:)
 }
 
 pub fn on_connect(
-  tc: TypeCache,
+  type_cache: TypeCache,
   handle_connect: fn() -> Result(Socket, internal.PglError),
 ) {
-  TypeCache(..tc, handle_connect:)
+  TypeCache(..type_cache, handle_connect:)
 }
 
 const table_name = "pgl_type_cache_table"
 
-pub fn start(tc: TypeCache) -> actor.StartResult(Nil) {
+pub fn start(type_cache: TypeCache) -> actor.StartResult(Nil) {
   actor.new_with_initialiser(1000, fn(subj) {
     let selector = process.new_selector() |> process.select(subj)
 
@@ -58,44 +59,45 @@ pub fn start(tc: TypeCache) -> actor.StartResult(Nil) {
     |> actor.selecting(selector)
     |> Ok
   })
-  |> actor.named(tc.np)
+  |> actor.named(type_cache.name)
   |> actor.on_message(handle_message)
   |> actor.start
 }
 
-pub fn supervised(tc: TypeCache) -> supervision.ChildSpecification(Nil) {
-  supervision.worker(fn() { start(tc) })
+pub fn supervised(type_cache: TypeCache) -> supervision.ChildSpecification(Nil) {
+  supervision.worker(fn() { start(type_cache) })
   |> supervision.timeout(1000)
   |> supervision.restart(supervision.Transient)
 }
 
-pub fn load(tc: TypeCache) -> Result(Nil, internal.PglError) {
-  use sock <- result.try(tc.handle_connect())
+pub fn load(type_cache: TypeCache) -> Result(Nil, internal.PglError) {
+  use sock <- result.try(type_cache.handle_connect())
 
-  let res = process.named_subject(tc.np) |> actor.call(1000, Load(_, sock))
+  let res =
+    process.named_subject(type_cache.name) |> actor.call(1000, Load(_, sock))
   let _ = socket.shutdown(sock)
   res
 }
 
 pub fn lookup(
-  tc: TypeCache,
+  type_cache: TypeCache,
   oids: List(Int),
 ) -> Result(List(TypeInfo), internal.PglError) {
-  use <- result.lazy_or(do_lookup(tc, oids))
-  use _ <- result.try(load(tc))
+  use <- result.lazy_or(do_lookup(type_cache, oids))
+  use _ <- result.try(load(type_cache))
 
-  do_lookup(tc, oids)
+  do_lookup(type_cache, oids)
 }
 
 fn do_lookup(
-  tc: TypeCache,
+  type_cache: TypeCache,
   oids: List(Int),
 ) -> Result(List(TypeInfo), internal.PglError) {
-  process.named_subject(tc.np) |> actor.call(1000, Lookup(_, oids))
+  process.named_subject(type_cache.name) |> actor.call(1000, Lookup(_, oids))
 }
 
-pub fn shutdown(tc: TypeCache) -> Nil {
-  process.named_subject(tc.np) |> actor.send(Shutdown)
+pub fn shutdown(type_cache: TypeCache) -> Nil {
+  process.named_subject(type_cache.name) |> actor.send(Shutdown)
 }
 
 fn handle_message(

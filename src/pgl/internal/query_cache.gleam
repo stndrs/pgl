@@ -5,13 +5,11 @@ import gleam/result
 import pgl/internal
 import pgl/internal/store.{type Store}
 
-const name = "pgl_query_cache"
-
 pub opaque type QueryCache {
-  QueryCache(np: process.Name(Message))
+  QueryCache(name: process.Name(Message))
 }
 
-pub opaque type Message {
+type Message {
   Lookup(
     client: process.Subject(Result(List(Int), internal.PglError)),
     query: String,
@@ -21,20 +19,26 @@ pub opaque type Message {
   Shutdown
 }
 
-// Table
+const query_cache_name = "pgl_query_cache"
 
 const table_name = "pgl_query_cache_table"
 
 pub fn new() -> QueryCache {
-  process.new_name(name) |> QueryCache
+  query_cache_name
+  |> process.new_name
+  |> QueryCache
 }
 
-pub fn supervised(qc: QueryCache) -> supervision.ChildSpecification(Nil) {
-  supervision.worker(fn() { start(qc) })
+pub fn supervised(
+  query_cache: QueryCache,
+) -> supervision.ChildSpecification(Nil) {
+  supervision.worker(fn() { start(query_cache) })
   |> supervision.restart(supervision.Transient)
 }
 
-pub fn start(qc: QueryCache) -> Result(actor.Started(Nil), actor.StartError) {
+pub fn start(
+  query_cache: QueryCache,
+) -> Result(actor.Started(Nil), actor.StartError) {
   actor.new_with_initialiser(1000, fn(subj) {
     let selector = process.new_selector() |> process.select(subj)
 
@@ -43,31 +47,31 @@ pub fn start(qc: QueryCache) -> Result(actor.Started(Nil), actor.StartError) {
     |> actor.selecting(selector)
     |> Ok
   })
-  |> actor.named(qc.np)
+  |> actor.named(query_cache.name)
   |> actor.on_message(handle_message)
   |> actor.start
 }
 
 pub fn lookup(
-  qc: QueryCache,
+  query_cache: QueryCache,
   query: String,
 ) -> Result(List(Int), internal.PglError) {
-  process.named_subject(qc.np)
+  process.named_subject(query_cache.name)
   |> actor.call(1000, Lookup(_, query))
 }
 
-pub fn insert(qc: QueryCache, query: String, oids: List(Int)) -> Nil {
-  process.named_subject(qc.np)
+pub fn insert(query_cache: QueryCache, query: String, oids: List(Int)) -> Nil {
+  process.named_subject(query_cache.name)
   |> actor.call(1000, Insert(_, query, oids))
 }
 
-pub fn reset(qc: QueryCache) -> Nil {
-  process.named_subject(qc.np)
+pub fn reset(query_cache: QueryCache) -> Nil {
+  process.named_subject(query_cache.name)
   |> actor.call(1000, Reset)
 }
 
-pub fn shutdown(qc: QueryCache) -> Nil {
-  process.named_subject(qc.np) |> process.send(Shutdown)
+pub fn shutdown(query_cache: QueryCache) -> Nil {
+  process.named_subject(query_cache.name) |> process.send(Shutdown)
 }
 
 fn handle_message(
