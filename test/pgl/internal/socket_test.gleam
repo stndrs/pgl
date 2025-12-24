@@ -1,7 +1,5 @@
 import gleam/erlang/port.{type Port}
-import gleam/erlang/process
 import gleam/otp/static_supervisor as supervisor
-import global_value
 import pgl/internal
 import pgl/internal/socket
 
@@ -9,45 +7,35 @@ pub fn connect() {
   let assert Ok(tcp_port) = tcp_listen(0)
   let assert Ok(port_num) = inet_port(tcp_port)
 
-  let builder =
+  let sockets =
     socket.new()
     |> socket.host(internal.default_host)
     |> socket.port(port_num)
+    |> socket.factory
 
-  sockets() |> new_socket(builder)
-}
-
-pub fn new_socket(
-  name: process.Name(_),
-  builder: socket.SocketBuilder,
-) -> socket.Socket {
-  let assert Ok(sock) = socket.connect(name, builder)
+  let assert Ok(_) = supervise(sockets)
+  let assert Ok(sock) = socket.connect(sockets)
 
   sock
 }
 
-pub fn sockets() -> process.Name(_) {
-  use <- global_value.create_with_unique_name("socket_test_factory")
-
-  let name = process.new_name("socket_test_sockets")
-
-  let assert Ok(_) =
-    supervisor.new(supervisor.OneForOne)
-    |> supervisor.add(socket.supervised(name))
-    |> supervisor.start
-
-  name
+pub fn supervise(sockets: socket.Factory) {
+  supervisor.new(supervisor.OneForOne)
+  |> supervisor.add(socket.supervised(sockets))
+  |> supervisor.start
 }
 
 pub fn connect_error_test() {
-  let builder =
+  let sockets =
     socket.new()
     |> socket.host(internal.default_host)
     |> socket.port(1)
+    |> socket.factory
+
+  let assert Ok(_) = supervise(sockets)
 
   let assert Error(internal.PglError("Failed to start connection")) =
-    sockets()
-    |> socket.connect(builder)
+    socket.connect(sockets)
 }
 
 pub fn send_test() {
@@ -58,30 +46,30 @@ pub fn send_test() {
 }
 
 pub fn send_error_test() {
-  let builder =
+  let sockets =
     socket.new()
     |> socket.host(internal.default_host)
     |> socket.port(internal.default_port)
     |> socket.with_send(fn(_, _) { Error(internal.Econnreset) })
+    |> socket.factory
 
-  let sock =
-    sockets()
-    |> new_socket(builder)
+  let assert Ok(_) = supervise(sockets)
+  let assert Ok(sock) = socket.connect(sockets)
 
   let assert Error(internal.SocketError(internal.Econnreset, "Failed to send")) =
     socket.send(sock, <<"bits":utf8>>)
 }
 
 pub fn receive_test() {
-  let builder =
+  let sockets =
     socket.new()
     |> socket.host(internal.default_host)
     |> socket.port(internal.default_port)
     |> socket.with_receive(fn(_, _, _) { Ok(<<"bits":utf8>>) })
+    |> socket.factory
 
-  let sock =
-    sockets()
-    |> new_socket(builder)
+  let assert Ok(_) = supervise(sockets)
+  let assert Ok(sock) = socket.connect(sockets)
 
   let assert Ok(<<"bits":utf8>>) = socket.receive(sock, 0)
 
@@ -89,15 +77,15 @@ pub fn receive_test() {
 }
 
 pub fn receive_error_test() {
-  let builder =
+  let sockets =
     socket.new()
     |> socket.host(internal.default_host)
     |> socket.port(internal.default_port)
     |> socket.with_receive(fn(_, _, _) { Error(internal.Closed) })
+    |> socket.factory
 
-  let sock =
-    sockets()
-    |> new_socket(builder)
+  let assert Ok(_) = supervise(sockets)
+  let assert Ok(sock) = socket.connect(sockets)
 
   let assert Error(internal.SocketError(internal.Closed, "Failed to receive")) =
     socket.receive(sock, 5)

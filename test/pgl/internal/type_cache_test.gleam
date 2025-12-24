@@ -49,17 +49,18 @@ pub fn lookup_many_test() {
 }
 
 fn with_type_cache(next: fn(TypeCache) -> t) {
-  let builder =
+  let sockets =
     socket.new()
     |> socket.host(internal.default_host)
     |> socket.port(internal.default_port)
+    |> socket.factory
 
-  let name = socket_test.sockets()
+  let assert Ok(_) = socket_test.supervise(sockets)
 
   let tc =
     type_cache.new()
     |> type_cache.on_connect(fn() {
-      socket.connect(name, builder)
+      socket.connect(sockets)
       |> result.try(protocol.auth(_, conf()))
     })
 

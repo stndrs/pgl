@@ -7,7 +7,6 @@ import gleam/int
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/otp/actor
-import gleam/otp/factory_supervisor as factory
 import gleam/otp/static_supervisor.{type Supervisor} as supervisor
 import gleam/otp/supervision
 import gleam/result
@@ -287,7 +286,7 @@ pub type TransactionError(error) {
 pub opaque type Db {
   Db(
     pool: process.Name(pool.Msg(Connection, PglError)),
-    sockets: process.Name(factory.Message(socket.SocketBuilder, Socket)),
+    sockets: socket.Factory,
     type_cache: TypeCache,
     query_cache: QueryCache,
     config: Config,
@@ -295,19 +294,19 @@ pub opaque type Db {
 }
 
 pub fn new(config: Config) -> Db {
+  let sockets =
+    socket.new()
+    |> socket.host(config.host)
+    |> socket.port(config.port)
+    |> socket.factory
+
   let pool = process.new_name("pgl_pool")
-  let sockets = process.new_name("pgl_sockets")
   let query_cache = query_cache.new()
 
   let type_cache =
     type_cache.new()
     |> type_cache.on_connect(fn() {
-      let builder =
-        socket.new()
-        |> socket.host(config.host)
-        |> socket.port(config.port)
-
-      use sock <- result.try(socket.connect(sockets, builder))
+      use sock <- result.try(socket.connect(sockets))
 
       config
       |> to_protocol_config
@@ -348,14 +347,9 @@ pub fn supervised(db: Db) -> supervision.ChildSpecification(Supervisor) {
 fn connect(db: Db) -> Result(Connection, internal.PglError) {
   let Db(pool: _, sockets:, config:, type_cache:, query_cache:) = db
 
-  let builder =
-    socket.new()
-    |> socket.host(config.host)
-    |> socket.port(config.port)
-
   let conf = to_protocol_config(config)
 
-  use sock <- result.try(socket.connect(sockets, builder))
+  use sock <- result.try(socket.connect(sockets))
   use sock <- result.map(protocol.auth(sock, conf))
 
   Connection(

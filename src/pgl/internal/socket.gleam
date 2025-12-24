@@ -16,8 +16,8 @@ pub opaque type InternalSocket {
   Ssl(SslSocket)
 }
 
-pub opaque type SocketBuilder {
-  SocketBuilder(
+pub opaque type Builder {
+  Builder(
     host: String,
     port: Int,
     timeout: Int,
@@ -62,8 +62,8 @@ pub opaque type Msg {
   )
 }
 
-pub fn new() -> SocketBuilder {
-  SocketBuilder(
+pub fn new() -> Builder {
+  Builder(
     host: internal.default_host,
     port: internal.default_port,
     timeout: 1000,
@@ -73,16 +73,16 @@ pub fn new() -> SocketBuilder {
   )
 }
 
-pub fn host(builder: SocketBuilder, host: String) -> SocketBuilder {
-  SocketBuilder(..builder, host:)
+pub fn host(builder: Builder, host: String) -> Builder {
+  Builder(..builder, host:)
 }
 
-pub fn port(builder: SocketBuilder, port: Int) -> SocketBuilder {
-  SocketBuilder(..builder, port:)
+pub fn port(builder: Builder, port: Int) -> Builder {
+  Builder(..builder, port:)
 }
 
-pub fn timeout(builder: SocketBuilder, timeout: Int) -> SocketBuilder {
-  SocketBuilder(..builder, timeout:)
+pub fn timeout(builder: Builder, timeout: Int) -> Builder {
+  Builder(..builder, timeout:)
 }
 
 pub type Sender =
@@ -94,19 +94,31 @@ pub type Receiver =
 pub type Disconnector =
   fn(InternalSocket) -> Result(Nil, internal.PosixError)
 
-pub fn with_send(builder: SocketBuilder, send: Sender) -> SocketBuilder {
-  SocketBuilder(..builder, send:)
+pub fn with_send(builder: Builder, send: Sender) -> Builder {
+  Builder(..builder, send:)
 }
 
-pub fn with_receive(builder: SocketBuilder, receive: Receiver) -> SocketBuilder {
-  SocketBuilder(..builder, receive:)
+pub fn with_receive(builder: Builder, receive: Receiver) -> Builder {
+  Builder(..builder, receive:)
 }
 
-pub fn with_shutdown(
-  builder: SocketBuilder,
-  shutdown: Disconnector,
-) -> SocketBuilder {
-  SocketBuilder(..builder, shutdown:)
+pub fn with_shutdown(builder: Builder, shutdown: Disconnector) -> Builder {
+  Builder(..builder, shutdown:)
+}
+
+const socket_factory_name = "pgl_sockets"
+
+pub opaque type Factory {
+  Factory(
+    name: process.Name(factory.Message(Builder, Socket)),
+    builder: Builder,
+  )
+}
+
+pub fn factory(builder: Builder) -> Factory {
+  socket_factory_name
+  |> process.new_name
+  |> Factory(builder:)
 }
 
 /// Assign Key/Value pairs to a Socket's parameters Dict.
@@ -115,12 +127,9 @@ pub fn parameter(sock: Socket, key: String, value: String) -> Socket {
   Socket(..sock, parameters:)
 }
 
-pub fn connect(
-  name: process.Name(factory.Message(SocketBuilder, Socket)),
-  builder: SocketBuilder,
-) -> Result(Socket, internal.PglError) {
-  factory.get_by_name(name)
-  |> factory.start_child(builder)
+pub fn connect(factory: Factory) -> Result(Socket, internal.PglError) {
+  factory.get_by_name(factory.name)
+  |> factory.start_child(factory.builder)
   |> result.map_error(fn(_start_error) {
     internal.PglError("Failed to start connection")
   })
@@ -128,16 +137,15 @@ pub fn connect(
 }
 
 pub fn supervised(
-  name: process.Name(factory.Message(SocketBuilder, Socket)),
-) -> supervision.ChildSpecification(factory.Supervisor(SocketBuilder, Socket)) {
+  factory: Factory,
+) -> supervision.ChildSpecification(factory.Supervisor(Builder, Socket)) {
   factory.worker_child(start_socket)
-  |> factory.named(name)
+  |> factory.named(factory.name)
   |> factory.supervised
 }
 
-fn start_socket(builder: SocketBuilder) -> actor.StartResult(Socket) {
-  let SocketBuilder(host:, port:, timeout:, send:, receive:, shutdown:) =
-    builder
+fn start_socket(builder: Builder) -> actor.StartResult(Socket) {
+  let Builder(host:, port:, timeout:, send:, receive:, shutdown:) = builder
 
   actor.new_with_initialiser(1000, fn(subject) {
     tcp_connect(host, port)
