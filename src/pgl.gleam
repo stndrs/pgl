@@ -226,12 +226,11 @@ fn from_internal_error(err: internal.PglError) -> PglError {
     internal.PostgresError(code:, name:, message:, fields:) -> {
       let fields =
         {
-          use #(field, val) <- list.try_map(dict.to_list(fields))
-          use field1 <- result.map(field_from_bit_array(field))
+          use #(field, val) <- list.map(dict.to_list(fields))
+          let field1 = field_from_bit_array(field)
           #(field1, val)
         }
-        |> result.map(dict.from_list)
-        |> result.lazy_unwrap(fn() { dict.new() })
+        |> dict.from_list
 
       PostgresError(code:, name:, message:, fields:)
     }
@@ -253,26 +252,26 @@ fn from_internal_error(err: internal.PglError) -> PglError {
   }
 }
 
-fn field_from_bit_array(field_type: BitArray) -> Result(Field, Nil) {
+fn field_from_bit_array(field_type: BitArray) -> Field {
   case field_type {
-    <<"S":utf8>> -> Ok(Severity)
-    <<"C":utf8>> -> Ok(Code)
-    <<"M":utf8>> -> Ok(Message)
-    <<"D":utf8>> -> Ok(Detail)
-    <<"H":utf8>> -> Ok(Hint)
-    <<"P":utf8>> -> Ok(Position)
-    <<"p":utf8>> -> Ok(InternalPosition)
-    <<"q":utf8>> -> Ok(InternalQuery)
-    <<"W":utf8>> -> Ok(Where)
-    <<"s":utf8>> -> Ok(Schema)
-    <<"t":utf8>> -> Ok(Table)
-    <<"c":utf8>> -> Ok(Column)
-    <<"d":utf8>> -> Ok(DataType)
-    <<"n":utf8>> -> Ok(Constraint)
-    <<"F":utf8>> -> Ok(File)
-    <<"L":utf8>> -> Ok(Line)
-    <<"R":utf8>> -> Ok(Routine)
-    bits -> Ok(Other(bits))
+    <<"S":utf8>> -> Severity
+    <<"C":utf8>> -> Code
+    <<"M":utf8>> -> Message
+    <<"D":utf8>> -> Detail
+    <<"H":utf8>> -> Hint
+    <<"P":utf8>> -> Position
+    <<"p":utf8>> -> InternalPosition
+    <<"q":utf8>> -> InternalQuery
+    <<"W":utf8>> -> Where
+    <<"s":utf8>> -> Schema
+    <<"t":utf8>> -> Table
+    <<"c":utf8>> -> Column
+    <<"d":utf8>> -> DataType
+    <<"n":utf8>> -> Constraint
+    <<"F":utf8>> -> File
+    <<"L":utf8>> -> Line
+    <<"R":utf8>> -> Routine
+    bits -> Other(bits)
   }
 }
 
