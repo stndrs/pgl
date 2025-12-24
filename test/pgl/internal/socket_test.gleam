@@ -1,7 +1,5 @@
 import gleam/erlang/port.{type Port}
 import gleam/erlang/process
-import gleam/otp/actor
-import gleam/otp/factory_supervisor as factory
 import gleam/otp/static_supervisor as supervisor
 import global_value
 import pgl/internal
@@ -23,11 +21,9 @@ pub fn new_socket(
   name: process.Name(_),
   builder: socket.SocketBuilder,
 ) -> socket.Socket {
-  let assert Ok(started) =
-    factory.get_by_name(name)
-    |> factory.start_child(builder)
+  let assert Ok(sock) = socket.connect(name, builder)
 
-  started.data
+  sock
 }
 
 pub fn sockets() -> process.Name(_) {
@@ -44,11 +40,14 @@ pub fn sockets() -> process.Name(_) {
 }
 
 pub fn connect_error_test() {
-  let assert Error(actor.InitFailed("Failed to start connection")) =
+  let builder =
     socket.new()
     |> socket.host(internal.default_host)
     |> socket.port(1)
-    |> socket.connect
+
+  let assert Error(internal.PglError("Failed to start connection")) =
+    sockets()
+    |> socket.connect(builder)
 }
 
 pub fn send_test() {

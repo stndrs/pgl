@@ -1,5 +1,5 @@
 import gleam/list
-import gleam/otp/factory_supervisor
+import gleam/result
 import pgl/internal
 import pgl/internal/protocol
 import pgl/internal/socket
@@ -49,21 +49,18 @@ pub fn lookup_many_test() {
 }
 
 fn with_type_cache(next: fn(TypeCache) -> t) {
+  let builder =
+    socket.new()
+    |> socket.host(internal.default_host)
+    |> socket.port(internal.default_port)
+
+  let name = socket_test.sockets()
+
   let tc =
     type_cache.new()
     |> type_cache.on_connect(fn() {
-      let builder =
-        socket.new()
-        |> socket.host(internal.default_host)
-        |> socket.port(internal.default_port)
-
-      let name = socket_test.sockets()
-
-      let assert Ok(started) =
-        factory_supervisor.get_by_name(name)
-        |> factory_supervisor.start_child(builder)
-
-      protocol.auth(started.data, conf())
+      socket.connect(name, builder)
+      |> result.try(protocol.auth(_, conf()))
     })
 
   let assert Ok(_) = type_cache.start(tc)

@@ -115,15 +115,27 @@ pub fn parameter(sock: Socket, key: String, value: String) -> Socket {
   Socket(..sock, parameters:)
 }
 
+pub fn connect(
+  name: process.Name(factory.Message(SocketBuilder, Socket)),
+  builder: SocketBuilder,
+) -> Result(Socket, internal.PglError) {
+  factory.get_by_name(name)
+  |> factory.start_child(builder)
+  |> result.map_error(fn(_start_error) {
+    internal.PglError("Failed to start connection")
+  })
+  |> result.map(fn(started) { started.data })
+}
+
 pub fn supervised(
   name: process.Name(factory.Message(SocketBuilder, Socket)),
 ) -> supervision.ChildSpecification(factory.Supervisor(SocketBuilder, Socket)) {
-  factory.worker_child(connect)
+  factory.worker_child(start_socket)
   |> factory.named(name)
   |> factory.supervised
 }
 
-pub fn connect(builder: SocketBuilder) -> actor.StartResult(Socket) {
+fn start_socket(builder: SocketBuilder) -> actor.StartResult(Socket) {
   let SocketBuilder(host:, port:, timeout:, send:, receive:, shutdown:) =
     builder
 

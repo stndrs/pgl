@@ -217,6 +217,7 @@ pub type Field {
   File
   Line
   Routine
+  Other(BitArray)
 }
 
 fn from_internal_error(err: internal.PglError) -> PglError {
@@ -271,7 +272,7 @@ fn field_from_bit_array(field_type: BitArray) -> Result(Field, Nil) {
     <<"F":utf8>> -> Ok(File)
     <<"L":utf8>> -> Ok(Line)
     <<"R":utf8>> -> Ok(Routine)
-    _ -> Error(Nil)
+    bits -> Ok(Other(bits))
   }
 }
 
@@ -297,22 +298,18 @@ pub opaque type Db {
 pub fn new(config: Config) -> Db {
   let factory = process.new_name("pgl_sockets")
 
+  let conf = to_protocol_config(config)
+
+  let builder =
+    socket.new()
+    |> socket.host(config.host)
+    |> socket.port(config.port)
+
   let tc =
     type_cache.new()
     |> type_cache.on_connect(fn() {
-      let conf = to_protocol_config(config)
-
-      let sock =
-        socket.new()
-        |> socket.host(config.host)
-        |> socket.port(config.port)
-
-      factory.get_by_name(factory)
-      |> factory.start_child(sock)
-      |> result.map_error(fn(_start_error) {
-        internal.PglError("Failed to start connection")
-      })
-      |> result.try(fn(started) { protocol.auth(started.data, conf) })
+      socket.connect(factory, builder)
+      |> result.try(protocol.auth(_, conf))
     })
 
   let qc = query_cache.new()
@@ -325,7 +322,9 @@ pub fn start(db: Db) -> actor.StartResult(Supervisor) {
   let pool =
     pool.new()
     |> pool.size(db.config.pool_size)
-    |> pool.on_open(fn() { connect(db) })
+    |> pool.on_open(fn() {
+      connect(db) |> result.map_error(from_internal_error)
+    })
     |> pool.on_close(disconnect)
     |> pool.on_ping(fn(conn) { ping(conn) |> result.replace(Nil) })
 
@@ -345,6 +344,28 @@ pub fn supervised(db: Db) -> supervision.ChildSpecification(Supervisor) {
   supervisor.new(supervisor.OneForOne)
   |> supervisor.add(pool_supervisor)
   |> supervisor.supervised
+}
+
+fn connect(db: Db) -> Result(Connection, internal.PglError) {
+  let Db(pool: _, factory:, config:, tc:, qc:) = db
+
+  let builder =
+    socket.new()
+    |> socket.host(config.host)
+    |> socket.port(config.port)
+
+  let conf = to_protocol_config(config)
+
+  use sock <- result.try(socket.connect(factory, builder))
+  use sock <- result.map(protocol.auth(sock, conf))
+
+  Connection(
+    sock:,
+    savepoint: None,
+    tc:,
+    qc:,
+    rows_as_maps: config.rows_as_maps,
+  )
 }
 
 pub fn with_connection(db: Db, next: fn(Connection) -> t) -> Result(t, PglError) {
@@ -391,7 +412,6 @@ pub opaque type Connection {
     savepoint: Option(Int),
     tc: TypeCache,
     qc: QueryCache,
-    conf: protocol.Config,
     rows_as_maps: Bool,
   )
 }
@@ -423,35 +443,6 @@ fn rows_to_maps(
     #(dynamic.string(col), val)
   }
   |> list.map(dynamic.properties)
-}
-
-fn connect(db: Db) -> Result(Connection, PglError) {
-  let Db(pool: _, factory: _, config:, tc:, qc:) = db
-
-  let conf = to_protocol_config(config)
-
-  let sock =
-    socket.new()
-    |> socket.host(config.host)
-    |> socket.port(config.port)
-
-  factory.get_by_name(db.factory)
-  |> factory.start_child(sock)
-  |> result.map_error(fn(_start_error) {
-    internal.PglError("Failed to start connection")
-  })
-  |> result.try(fn(started) { protocol.auth(started.data, conf) })
-  |> result.map(fn(sock) {
-    Connection(
-      sock:,
-      savepoint: None,
-      tc:,
-      qc:,
-      conf:,
-      rows_as_maps: config.rows_as_maps,
-    )
-  })
-  |> result.map_error(from_internal_error)
 }
 
 /// Shuts down a database connection.

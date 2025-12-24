@@ -1,7 +1,6 @@
 import gleam/dict
 import gleam/dynamic
 import gleam/dynamic/decode.{type Decoder}
-import gleam/erlang/process
 import gleam/int
 import gleam/list
 import gleam/order
@@ -261,8 +260,6 @@ fn connect(next: fn(pgl.Connection) -> t) {
 // }
 
 fn with_setup_conn(db: pgl.Db, next: fn(pgl.Connection) -> t) {
-  use <- process.spawn_unlinked()
-
   use conn <- pgl.with_connection(db)
 
   let assert Ok(_) = pgl.exec(drop_table_sql, conn)
@@ -271,8 +268,16 @@ fn with_setup_conn(db: pgl.Db, next: fn(pgl.Connection) -> t) {
   next(conn)
 }
 
+fn with_conn(next: fn(pgl.Connection) -> t) {
+  let db = global_pool()
+
+  use conn <- pgl.with_connection(db)
+
+  next(conn)
+}
+
 pub fn ping_test() {
-  use conn <- connect()
+  use conn <- with_conn()
 
   let assert Ok(_) = pgl.ping(conn)
 }
@@ -409,41 +414,37 @@ pub fn pipeline_multiple_different_queries_test() {
 }
 
 pub fn pipeline_dependent_queries_test() {
-  let db = global_pool()
-
-  use <- process.spawn_unlinked()
-
-  let drop1 = "DROP TABLE IF EXISTS users;"
+  let drop1 = "DROP TABLE IF EXISTS new_users;"
   let drop2 = "DROP TABLE IF EXISTS posts;"
   let drop3 = "DROP TABLE IF EXISTS comments;"
   let drop4 = "DROP TABLE IF EXISTS tags;"
 
   let create1 =
-    "CREATE TABLE IF NOT EXISTS users (
-    id SERIAL PRIMARY KEY,
-    name VARCHAR(50) NOT NULL
-  );"
+    "CREATE TABLE IF NOT EXISTS new_users (
+     id SERIAL PRIMARY KEY,
+     name VARCHAR(50) NOT NULL
+   );"
   let create2 =
     "CREATE TABLE IF NOT EXISTS posts (
-    id SERIAL PRIMARY KEY,
-    user_id INTEGER NOT NULL,
-    title TEXT NOT NULL,
-    content TEXT NOT NULL
-  );"
+     id SERIAL PRIMARY KEY,
+     user_id INTEGER NOT NULL,
+     title TEXT NOT NULL,
+     content TEXT NOT NULL
+   );"
   let create3 =
     "CREATE TABLE IF NOT EXISTS comments (
-    id SERIAL PRIMARY KEY,
-    post_id INTEGER NOT NULL,
-    content TEXT NOT NULL
-  );"
+     id SERIAL PRIMARY KEY,
+     post_id INTEGER NOT NULL,
+     content TEXT NOT NULL
+   );"
   let create4 =
     "CREATE TABLE IF NOT EXISTS tags (
-    id SERIAL PRIMARY KEY,
-    post_id INTEGER NOT NULL,
-    name VARCHAR(20) NOT NULL
-  );"
+     id SERIAL PRIMARY KEY,
+     post_id INTEGER NOT NULL,
+     name VARCHAR(20) NOT NULL
+   );"
 
-  use conn <- pgl.with_connection(db)
+  use conn <- with_conn()
 
   let assert Ok(_) = pgl.exec(drop1, conn)
   let assert Ok(_) = pgl.exec(drop2, conn)
@@ -457,7 +458,7 @@ pub fn pipeline_dependent_queries_test() {
 
   // create users
 
-  let create_user_sql = "INSERT INTO users (name) VALUES ($1) RETURNING id"
+  let create_user_sql = "INSERT INTO new_users (name) VALUES ($1) RETURNING id"
 
   let q1 = pgl.Query(create_user_sql, params: [pg_value.text("Jim")])
   let q2 = pgl.Query(create_user_sql, params: [pg_value.text("Will")])
@@ -672,7 +673,7 @@ pub fn selecting_rows_test() {
 }
 
 pub fn varchar_encoding_test() {
-  use conn <- connect()
+  use conn <- with_conn()
 
   let sql = "SELECT $1::VARCHAR, $2::VARCHAR, $3::VARCHAR"
   let params = [
@@ -697,7 +698,7 @@ pub fn varchar_encoding_test() {
 }
 
 pub fn null_encoding_test() {
-  use conn <- connect()
+  use conn <- with_conn()
 
   let sql = "SELECT $1::TEXT, $1 IS NULL, $2::INT"
   let params = [pg_value.null, pg_value.int(42)]
@@ -714,7 +715,7 @@ pub fn null_encoding_test() {
 }
 
 pub fn interval_encoding_test() {
-  use conn <- connect()
+  use conn <- with_conn()
 
   let sql = "SELECT 'P14MT86430S'::INTERVAL"
 
@@ -734,7 +735,7 @@ pub fn interval_encoding_test() {
 }
 
 pub fn interval_roundtrip_test() {
-  use conn <- connect()
+  use conn <- with_conn()
 
   let sql = "SELECT $1::INTERVAL"
 
@@ -759,7 +760,7 @@ pub fn interval_roundtrip_test() {
 }
 
 pub fn array_encoding_test() {
-  use conn <- connect()
+  use conn <- with_conn()
 
   let sql =
     "SELECT ARRAY['howdy', 'postgres']::TEXT[], ARRAY[1, 2, 3]::INT[], ARRAY[]::TEXT[]"
@@ -819,7 +820,7 @@ pub fn mixed_types_with_encoding_test() {
 }
 
 pub fn error_handling_test() {
-  use conn <- connect()
+  use conn <- with_conn()
 
   let sql = "SELECT * FROM non_existent_table"
   let params = []
@@ -833,7 +834,7 @@ pub fn error_handling_test() {
 }
 
 pub fn invalid_sql_test() {
-  use conn <- connect()
+  use conn <- with_conn()
   let sql = "select       select"
 
   let assert Error(pgl.PostgresError(code:, name:, message:, fields: _)) =
@@ -873,7 +874,7 @@ pub fn insert_constraint_error_test() {
 }
 
 pub fn select_from_unknown_table_test() {
-  use conn <- connect()
+  use conn <- with_conn()
   let sql = "SELECT * FROM unknown"
 
   let assert Error(pgl.PostgresError(code:, name:, message:, fields: _)) =
@@ -885,7 +886,7 @@ pub fn select_from_unknown_table_test() {
 }
 
 pub fn insert_with_incorrect_type_test() {
-  use conn <- connect()
+  use conn <- with_conn()
 
   let assert Error(pgl.PostgresError(code:, name:, message:, fields: _)) =
     insert_into_users(["true, true, true, true"])
