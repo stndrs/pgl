@@ -1,5 +1,9 @@
 import gleam/list
+import gleam/otp/factory_supervisor
+import pgl/internal
 import pgl/internal/protocol
+import pgl/internal/socket
+import pgl/internal/socket_test
 import pgl/internal/type_cache.{type TypeCache}
 
 fn conf() {
@@ -12,17 +16,15 @@ fn conf() {
 pub fn load_test() {
   use tc <- with_type_cache()
 
-  let assert Ok(_) = type_cache.load(tc, conf())
+  let assert Ok(_) = type_cache.load(tc)
 }
 
 pub fn lookup_test() {
-  let conf = conf()
-
   use tc <- with_type_cache()
 
-  let assert Ok(_) = type_cache.load(tc, conf)
+  let assert Ok(_) = type_cache.load(tc)
 
-  let assert Ok(result) = type_cache.lookup(tc, [23], conf)
+  let assert Ok(result) = type_cache.lookup(tc, [23])
   let assert Ok(ti) = list.first(result)
 
   let assert 23 = ti.oid
@@ -30,11 +32,9 @@ pub fn lookup_test() {
 }
 
 pub fn lookup_many_test() {
-  let conf = conf()
-
   use tc <- with_type_cache()
 
-  let assert Ok(_) = type_cache.load(tc, conf)
+  let assert Ok(_) = type_cache.load(tc)
 
   let oids = [
     23,
@@ -43,13 +43,28 @@ pub fn lookup_many_test() {
     16,
   ]
 
-  let assert Ok(result) = type_cache.lookup(tc, oids, conf)
+  let assert Ok(result) = type_cache.lookup(tc, oids)
 
   let assert 4 = result |> list.length
 }
 
 fn with_type_cache(next: fn(TypeCache) -> t) {
-  let tc = type_cache.new()
+  let tc =
+    type_cache.new()
+    |> type_cache.on_connect(fn() {
+      let builder =
+        socket.new()
+        |> socket.host(internal.default_host)
+        |> socket.port(internal.default_port)
+
+      let name = socket_test.sockets()
+
+      let assert Ok(started) =
+        factory_supervisor.get_by_name(name)
+        |> factory_supervisor.start_child(builder)
+
+      protocol.auth(started.data, conf())
+    })
 
   let assert Ok(_) = type_cache.start(tc)
 

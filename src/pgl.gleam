@@ -295,14 +295,28 @@ pub opaque type Db {
 }
 
 pub fn new(config: Config) -> Db {
+  let factory = process.new_name("pgl_sockets")
+
   let tc =
     type_cache.new()
-    |> type_cache.host(config.host)
-    |> type_cache.port(config.port)
+    |> type_cache.on_connect(fn() {
+      let conf = to_protocol_config(config)
+
+      let sock =
+        socket.new()
+        |> socket.host(config.host)
+        |> socket.port(config.port)
+
+      factory.get_by_name(factory)
+      |> factory.start_child(sock)
+      |> result.map_error(fn(_start_error) {
+        internal.PglError("Failed to start connection")
+      })
+      |> result.try(fn(started) { protocol.auth(started.data, conf) })
+    })
 
   let qc = query_cache.new()
   let pool = process.new_name("pgl_pool")
-  let factory = process.new_name("pgl_sockets")
 
   Db(pool:, factory:, config:, tc:, qc:)
 }
@@ -485,7 +499,7 @@ pub fn pipeline(
       let Query(sql, params) = query
 
       use oids <- result.try(query_cache.lookup(conn.qc, sql))
-      use info <- result.map(type_cache.lookup(conn.tc, oids, conn.conf))
+      use info <- result.map(type_cache.lookup(conn.tc, oids))
 
       encode.cached(sql, params, info, pg_value.encode)
     })
@@ -541,7 +555,7 @@ fn encode_from_cache(
   conn: Connection,
 ) -> Result(encode.Query(pg_value.Value, TypeInfo), internal.PglError) {
   use oids <- result.try(query_cache.lookup(conn.qc, sql))
-  use info <- result.map(type_cache.lookup(conn.tc, oids, conn.conf))
+  use info <- result.map(type_cache.lookup(conn.tc, oids))
 
   encode.cached(sql, params, info, pg_value.encode)
   |> encode.with_sync
@@ -554,7 +568,7 @@ fn on_param_description(
   conn: Connection,
 ) -> Result(BitArray, internal.PglError) {
   query_cache.insert(conn.qc, sql, oids)
-  use info <- result.map(type_cache.lookup(conn.tc, oids, conn.conf))
+  use info <- result.map(type_cache.lookup(conn.tc, oids))
 
   encode.cached(sql, params, info, pg_value.encode)
   |> encode.with_sync
@@ -566,7 +580,7 @@ fn decode_row(
   oids: List(Int),
   conn: Connection,
 ) -> Result(List(Dynamic), internal.PglError) {
-  use type_info <- result.try(type_cache.lookup(conn.tc, oids, conn.conf))
+  use type_info <- result.try(type_cache.lookup(conn.tc, oids))
 
   decode_row_values(values, type_info)
 }

@@ -16,7 +16,10 @@ import pgl/internal/socket.{type Socket}
 import pgl/internal/store.{type Store}
 
 pub opaque type TypeCache {
-  TypeCache(np: process.Name(Message), host: String, port: Int)
+  TypeCache(
+    np: process.Name(Message),
+    handle_connect: fn() -> Result(Socket, internal.PglError),
+  )
 }
 
 pub opaque type Message {
@@ -32,16 +35,16 @@ const name = "pgl_type_cache"
 
 pub fn new() -> TypeCache {
   let np = process.new_name(name)
+  let handle_connect = fn() { panic as "TypeCache connect not configured" }
 
-  TypeCache(np:, host: internal.default_host, port: internal.default_port)
+  TypeCache(np:, handle_connect:)
 }
 
-pub fn host(tc: TypeCache, host: String) -> TypeCache {
-  TypeCache(..tc, host:)
-}
-
-pub fn port(tc: TypeCache, port: Int) -> TypeCache {
-  TypeCache(..tc, port:)
+pub fn on_connect(
+  tc: TypeCache,
+  handle_connect: fn() -> Result(Socket, internal.PglError),
+) {
+  TypeCache(..tc, handle_connect:)
 }
 
 const table_name = "pgl_type_cache_table"
@@ -66,36 +69,20 @@ pub fn supervised(tc: TypeCache) -> supervision.ChildSpecification(Nil) {
   |> supervision.restart(supervision.Transient)
 }
 
-pub fn load(
-  tc: TypeCache,
-  conf: protocol.Config,
-) -> Result(Nil, internal.PglError) {
-  let socket_builder =
-    socket.new()
-    |> socket.host(tc.host)
-    |> socket.port(tc.port)
+pub fn load(tc: TypeCache) -> Result(Nil, internal.PglError) {
+  use sock <- result.try(tc.handle_connect())
 
-  socket.connect(socket_builder)
-  |> result.map_error(fn(_) {
-    internal.PglError("(pgl/type_cache.load) Failed to start connection")
-  })
-  |> result.try(fn(started) { protocol.auth(started.data, conf) })
-  |> result.try(fn(sock) {
-    let res = process.named_subject(tc.np) |> actor.call(1000, Load(_, sock))
-
-    let _ = socket.shutdown(sock)
-
-    res
-  })
+  let res = process.named_subject(tc.np) |> actor.call(1000, Load(_, sock))
+  let _ = socket.shutdown(sock)
+  res
 }
 
 pub fn lookup(
   tc: TypeCache,
   oids: List(Int),
-  config: protocol.Config,
 ) -> Result(List(TypeInfo), internal.PglError) {
   use <- result.lazy_or(do_lookup(tc, oids))
-  use _ <- result.try(load(tc, config))
+  use _ <- result.try(load(tc))
 
   do_lookup(tc, oids)
 }
