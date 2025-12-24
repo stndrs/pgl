@@ -288,33 +288,33 @@ pub opaque type Db {
   Db(
     pool: process.Name(pool.Msg(Connection, PglError)),
     sockets: process.Name(factory.Message(socket.SocketBuilder, Socket)),
+    type_cache: TypeCache,
+    query_cache: QueryCache,
     config: Config,
-    tc: TypeCache,
-    qc: QueryCache,
   )
 }
 
 pub fn new(config: Config) -> Db {
+  let pool = process.new_name("pgl_pool")
   let sockets = process.new_name("pgl_sockets")
+  let query_cache = query_cache.new()
 
-  let conf = to_protocol_config(config)
-
-  let builder =
-    socket.new()
-    |> socket.host(config.host)
-    |> socket.port(config.port)
-
-  let tc =
+  let type_cache =
     type_cache.new()
     |> type_cache.on_connect(fn() {
-      socket.connect(sockets, builder)
-      |> result.try(protocol.auth(_, conf))
+      let builder =
+        socket.new()
+        |> socket.host(config.host)
+        |> socket.port(config.port)
+
+      use sock <- result.try(socket.connect(sockets, builder))
+
+      config
+      |> to_protocol_config
+      |> protocol.auth(sock, _)
     })
 
-  let qc = query_cache.new()
-  let pool = process.new_name("pgl_pool")
-
-  Db(pool:, sockets:, config:, tc:, qc:)
+  Db(pool:, sockets:, type_cache:, query_cache:, config:)
 }
 
 pub fn start(db: Db) -> actor.StartResult(Supervisor) {
@@ -328,8 +328,8 @@ pub fn start(db: Db) -> actor.StartResult(Supervisor) {
     |> pool.on_ping(fn(conn) { ping(conn) |> result.replace(Nil) })
 
   supervisor.new(supervisor.OneForOne)
-  |> supervisor.add(type_cache.supervised(db.tc))
-  |> supervisor.add(query_cache.supervised(db.qc))
+  |> supervisor.add(type_cache.supervised(db.type_cache))
+  |> supervisor.add(query_cache.supervised(db.query_cache))
   |> supervisor.add(socket.supervised(db.sockets))
   |> supervisor.add(pool.supervised(pool, db.pool, 1000))
   |> supervisor.start
@@ -346,7 +346,7 @@ pub fn supervised(db: Db) -> supervision.ChildSpecification(Supervisor) {
 }
 
 fn connect(db: Db) -> Result(Connection, internal.PglError) {
-  let Db(pool: _, sockets:, config:, tc:, qc:) = db
+  let Db(pool: _, sockets:, config:, type_cache:, query_cache:) = db
 
   let builder =
     socket.new()
@@ -361,8 +361,8 @@ fn connect(db: Db) -> Result(Connection, internal.PglError) {
   Connection(
     sock:,
     savepoint: None,
-    tc:,
-    qc:,
+    type_cache:,
+    query_cache:,
     rows_as_maps: config.rows_as_maps,
   )
 }
@@ -409,8 +409,8 @@ pub opaque type Connection {
   Connection(
     sock: Socket,
     savepoint: Option(Int),
-    tc: TypeCache,
-    qc: QueryCache,
+    type_cache: TypeCache,
+    query_cache: QueryCache,
     rows_as_maps: Bool,
   )
 }
@@ -488,8 +488,8 @@ pub fn pipeline(
     |> list.try_map(fn(query) {
       let Query(sql, params) = query
 
-      use oids <- result.try(query_cache.lookup(conn.qc, sql))
-      use info <- result.map(type_cache.lookup(conn.tc, oids))
+      use oids <- result.try(query_cache.lookup(conn.query_cache, sql))
+      use info <- result.map(type_cache.lookup(conn.type_cache, oids))
 
       encode.cached(sql, params, info, pg_value.encode)
     })
@@ -544,8 +544,8 @@ fn encode_from_cache(
   params: List(pg_value.Value),
   conn: Connection,
 ) -> Result(encode.Query(pg_value.Value, TypeInfo), internal.PglError) {
-  use oids <- result.try(query_cache.lookup(conn.qc, sql))
-  use info <- result.map(type_cache.lookup(conn.tc, oids))
+  use oids <- result.try(query_cache.lookup(conn.query_cache, sql))
+  use info <- result.map(type_cache.lookup(conn.type_cache, oids))
 
   encode.cached(sql, params, info, pg_value.encode)
   |> encode.with_sync
@@ -557,8 +557,8 @@ fn on_param_description(
   oids: List(Int),
   conn: Connection,
 ) -> Result(BitArray, internal.PglError) {
-  query_cache.insert(conn.qc, sql, oids)
-  use info <- result.map(type_cache.lookup(conn.tc, oids))
+  query_cache.insert(conn.query_cache, sql, oids)
+  use info <- result.map(type_cache.lookup(conn.type_cache, oids))
 
   encode.cached(sql, params, info, pg_value.encode)
   |> encode.with_sync
@@ -570,7 +570,7 @@ fn decode_row(
   oids: List(Int),
   conn: Connection,
 ) -> Result(List(Dynamic), internal.PglError) {
-  use type_info <- result.try(type_cache.lookup(conn.tc, oids))
+  use type_info <- result.try(type_cache.lookup(conn.type_cache, oids))
 
   decode_row_values(values, type_info)
 }
@@ -582,7 +582,7 @@ fn decode_row_values(
   list.strict_zip(values, infos)
   |> result.map_error(fn(_) {
     internal.DecodingError
-    |> internal.ProtocolError(message: "Mismatched values and infos")
+    |> internal.ProtocolError(message: "Mismatype_cachehed values and infos")
   })
   |> result.try(fn(vals_infos) {
     list.try_map(vals_infos, fn(val_info) {
