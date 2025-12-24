@@ -287,7 +287,7 @@ pub type TransactionError(error) {
 pub opaque type Db {
   Db(
     pool: process.Name(pool.Msg(Connection, PglError)),
-    factory: process.Name(factory.Message(socket.SocketBuilder, Socket)),
+    sockets: process.Name(factory.Message(socket.SocketBuilder, Socket)),
     config: Config,
     tc: TypeCache,
     qc: QueryCache,
@@ -295,7 +295,7 @@ pub opaque type Db {
 }
 
 pub fn new(config: Config) -> Db {
-  let factory = process.new_name("pgl_sockets")
+  let sockets = process.new_name("pgl_sockets")
 
   let conf = to_protocol_config(config)
 
@@ -307,14 +307,14 @@ pub fn new(config: Config) -> Db {
   let tc =
     type_cache.new()
     |> type_cache.on_connect(fn() {
-      socket.connect(factory, builder)
+      socket.connect(sockets, builder)
       |> result.try(protocol.auth(_, conf))
     })
 
   let qc = query_cache.new()
   let pool = process.new_name("pgl_pool")
 
-  Db(pool:, factory:, config:, tc:, qc:)
+  Db(pool:, sockets:, config:, tc:, qc:)
 }
 
 pub fn start(db: Db) -> actor.StartResult(Supervisor) {
@@ -330,7 +330,7 @@ pub fn start(db: Db) -> actor.StartResult(Supervisor) {
   supervisor.new(supervisor.OneForOne)
   |> supervisor.add(type_cache.supervised(db.tc))
   |> supervisor.add(query_cache.supervised(db.qc))
-  |> supervisor.add(socket.supervised(db.factory))
+  |> supervisor.add(socket.supervised(db.sockets))
   |> supervisor.add(pool.supervised(pool, db.pool, 1000))
   |> supervisor.start
 }
@@ -346,7 +346,7 @@ pub fn supervised(db: Db) -> supervision.ChildSpecification(Supervisor) {
 }
 
 fn connect(db: Db) -> Result(Connection, internal.PglError) {
-  let Db(pool: _, factory:, config:, tc:, qc:) = db
+  let Db(pool: _, sockets:, config:, tc:, qc:) = db
 
   let builder =
     socket.new()
@@ -355,7 +355,7 @@ fn connect(db: Db) -> Result(Connection, internal.PglError) {
 
   let conf = to_protocol_config(config)
 
-  use sock <- result.try(socket.connect(factory, builder))
+  use sock <- result.try(socket.connect(sockets, builder))
   use sock <- result.map(protocol.auth(sock, conf))
 
   Connection(
