@@ -1,8 +1,10 @@
 name = "pgl"
-version = "0.1.0"
-description = "Postgres driver written in gleam"
+version = "1.0.0"
 
+description = "A Postgres driver written in gleam"
+licences = ["MIT"]
 repository = { type = "github", user = "stndrs", repo = "pgl" }
+target = "erlang"
 
 internal_modules = [
   "pgl/internal/*",
@@ -16,8 +18,8 @@ gleam_erlang = ">= 1.0.0 and < 2.0.0"
 gleam_otp = ">= 1.0.0 and < 2.0.0"
 gleam_time = ">= 1.2.0 and < 2.0.0"
 exception = ">= 2.1.0 and < 3.0.0"
-db_pool = { git = "https://github.com/stndrs/db_pool.git", ref = "main" }
 pg_value = ">= 1.0.0 and < 2.0.0"
+db_pool = ">= 1.0.0 and < 2.0.0"
 
 [dev-dependencies]
 gleeunit = "~> 1.0"

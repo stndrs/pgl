@@ -1,4 +1,4 @@
-import db/pool
+import db_pool
 import exception
 import gleam/dict.{type Dict}
 import gleam/dynamic.{type Dynamic}
@@ -185,6 +185,7 @@ fn try_option(maybe: Option(a), next: fn(a) -> Result(b, Nil)) -> Result(b, Nil)
 
 pub type PglError {
   PglError(message: String)
+  ConnectionTimeout
   AuthenticationError(message: String)
   ProtocolError(message: String)
   SocketError(message: String)
@@ -285,7 +286,7 @@ pub type TransactionError(error) {
 
 pub opaque type Db {
   Db(
-    pool: process.Name(pool.Msg(Connection, PglError)),
+    pool: process.Name(db_pool.Message(Connection, PglError)),
     sockets: socket.Factory,
     type_cache: TypeCache,
     query_cache: QueryCache,
@@ -318,19 +319,23 @@ pub fn new(config: Config) -> Db {
 
 pub fn start(db: Db) -> actor.StartResult(Supervisor) {
   let pool =
-    pool.new()
-    |> pool.size(db.config.pool_size)
-    |> pool.on_open(fn() {
+    db_pool.new()
+    |> db_pool.size(db.config.pool_size)
+    |> db_pool.on_open(fn() {
       connect(db) |> result.map_error(from_internal_error)
     })
-    |> pool.on_close(disconnect)
-    |> pool.on_ping(fn(conn) { ping(conn) |> result.replace(Nil) })
+    |> db_pool.on_close(disconnect)
+    |> db_pool.on_interval(fn(conn) {
+      let _ = ping(conn)
+
+      Nil
+    })
 
   supervisor.new(supervisor.OneForOne)
   |> supervisor.add(type_cache.supervised(db.type_cache))
   |> supervisor.add(query_cache.supervised(db.query_cache))
   |> supervisor.add(socket.supervised(db.sockets))
-  |> supervisor.add(pool.supervised(pool, db.pool, 1000))
+  |> supervisor.add(db_pool.supervised(pool, db.pool, 1000))
   |> supervisor.start
 }
 
@@ -376,19 +381,28 @@ pub fn with_connection(db: Db, next: fn(Connection) -> t) -> Result(t, PglError)
 pub fn checkout(db: Db, caller: Pid) -> Result(Connection, PglError) {
   db.pool
   |> process.named_subject
-  |> pool.checkout(caller, 500)
+  |> db_pool.checkout(caller, 500)
+  |> result.map_error(pool_error_to_pgl_error)
+}
+
+fn pool_error_to_pgl_error(err: db_pool.PoolError(PglError)) -> PglError {
+  case err {
+    db_pool.ConnectionError(err) -> err
+    db_pool.ConnectionTimeout -> ConnectionTimeout
+  }
 }
 
 pub fn checkin(db: Db, conn: Connection, caller: Pid) -> Nil {
   db.pool
   |> process.named_subject
-  |> pool.checkin(conn, caller)
+  |> db_pool.checkin(conn, caller)
 }
 
 pub fn shutdown(db: Db) -> Result(Nil, PglError) {
   db.pool
   |> process.named_subject
-  |> pool.shutdown(500)
+  |> db_pool.shutdown(500)
+  |> result.map_error(pool_error_to_pgl_error)
 }
 
 pub fn ping(conn: Connection) -> Result(Connection, PglError) {
