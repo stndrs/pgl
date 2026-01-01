@@ -2,23 +2,16 @@
 
 `pgl` is a PostgreSQL client written in Gleam.
 
-**Note:** This package is still in early development and has limitations and rough edges.
-
 ## Features
 
 - Implementation of PostgreSQL wire protocol
 - SSL support
 - [`SCRAM-SHA-256` Authentication](https://www.postgresql.org/docs/current/sasl-authentication.html#SASL-SCRAM-SHA-256)
 - Connection pooling provided by [`db_pool`](https://github.com/stndrs/db_pool)
-- PostgreSQL data types provided by [`pgl_types`](https://github.com/stndrs/pgl_types)
+- PostgreSQL data types provided by [`pg_value`](https://github.com/stndrs/pg_value)
 - Transaction support
 - Savepoint support
 - [Pipelining](https://www.postgresql.org/docs/current/protocol-flow.html#PROTOCOL-FLOW-PIPELINING)
-
-## Limitations
-
-- [`db_pool`](https://github.com/stndrs/db_pool)'s connection pool algorithm has room for improvement. It works but is fairly simple at the moment.
-- [`pgl_types`](https://github.com/stndrs/pgl_types) supports commonly used types but does not yet support as many types as other PostgreSQL libraries.
 
 ## Example
 
