@@ -569,6 +569,12 @@ fn extended(conn: Connection) -> protocol.Extended(pg_value.Value) {
   |> protocol.on_decode_row(fn(vals, oids) { decode_row(vals, oids, conn) })
   |> protocol.on_param_description(fn(sql, params, oids) {
     on_param_description(sql, params, oids, conn)
+    |> result.map_error(fn(_) {
+      internal.ProtocolError(
+        kind: internal.ProcessingError,
+        message: "Failed to describe statement parameters",
+      )
+    })
   })
 }
 
@@ -576,7 +582,7 @@ fn encode_from_cache(
   sql: String,
   params: List(pg_value.Value),
   conn: Connection,
-) -> Result(encode.Query(pg_value.Value, TypeInfo), internal.InternalError) {
+) -> Result(encode.Query(pg_value.Value, TypeInfo), Nil) {
   use oids <- result.try(query_cache.lookup(conn.query_cache, sql))
   use info <- result.map(type_cache.lookup(conn.type_cache, oids))
 
@@ -589,7 +595,7 @@ fn on_param_description(
   params: List(pg_value.Value),
   oids: List(Int),
   conn: Connection,
-) -> Result(BitArray, internal.InternalError) {
+) -> Result(BitArray, Nil) {
   query_cache.insert(conn.query_cache, sql, oids)
   use info <- result.map(type_cache.lookup(conn.type_cache, oids))
 
@@ -603,9 +609,14 @@ fn decode_row(
   oids: List(Int),
   conn: Connection,
 ) -> Result(List(Dynamic), internal.InternalError) {
-  use type_info <- result.try(type_cache.lookup(conn.type_cache, oids))
-
-  decode_row_values(values, type_info)
+  type_cache.lookup(conn.type_cache, oids)
+  |> result.map_error(fn(_) {
+    internal.ProtocolError(
+      kind: internal.DecodingError,
+      message: "Failed to decode row",
+    )
+  })
+  |> result.try(decode_row_values(values, _))
 }
 
 fn decode_row_values(

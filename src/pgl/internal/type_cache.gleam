@@ -23,14 +23,8 @@ pub opaque type TypeCache {
 }
 
 pub opaque type Message {
-  Load(
-    client: process.Subject(Result(Nil, internal.InternalError)),
-    sock: Socket,
-  )
-  Lookup(
-    client: process.Subject(Result(List(TypeInfo), internal.InternalError)),
-    oids: List(Int),
-  )
+  Load(client: process.Subject(Result(Nil, Nil)), sock: Socket)
+  Lookup(client: process.Subject(Result(List(TypeInfo), Nil)), oids: List(Int))
   Shutdown
 }
 
@@ -73,30 +67,35 @@ pub fn supervised(type_cache: TypeCache) -> supervision.ChildSpecification(Nil) 
   |> supervision.restart(supervision.Transient)
 }
 
-pub fn load(type_cache: TypeCache) -> Result(Nil, internal.InternalError) {
-  use sock <- result.try(type_cache.handle_connect())
+pub fn load(type_cache: TypeCache) -> Result(Nil, Nil) {
+  type_cache.handle_connect()
+  |> result.map_error(fn(_) { Nil })
+  |> result.try(fn(sock) {
+    let res =
+      type_cache.name
+      |> process.named_subject
+      |> actor.call(1000, Load(_, sock))
 
-  let res =
-    process.named_subject(type_cache.name) |> actor.call(1000, Load(_, sock))
-  let _ = socket.shutdown(sock)
-  res
+    let _ = socket.shutdown(sock)
+    res
+  })
 }
 
 pub fn lookup(
   type_cache: TypeCache,
   oids: List(Int),
-) -> Result(List(TypeInfo), internal.InternalError) {
-  use <- result.lazy_or(do_lookup(type_cache, oids))
-  use _ <- result.try(load(type_cache))
+) -> Result(List(TypeInfo), Nil) {
+  let do_lookup = fn(oids) {
+    type_cache.name
+    |> process.named_subject
+    |> actor.call(1000, Lookup(_, oids))
+  }
 
-  do_lookup(type_cache, oids)
-}
-
-fn do_lookup(
-  type_cache: TypeCache,
-  oids: List(Int),
-) -> Result(List(TypeInfo), internal.InternalError) {
-  process.named_subject(type_cache.name) |> actor.call(1000, Lookup(_, oids))
+  do_lookup(oids)
+  |> result.lazy_or(fn() {
+    load(type_cache)
+    |> result.try(fn(_) { do_lookup(oids) })
+  })
 }
 
 pub fn shutdown(type_cache: TypeCache) -> Nil {
@@ -117,7 +116,7 @@ fn handle_message(
 fn handle_load(
   store: Store(Int, TypeInfo),
   sock: Socket,
-  client: process.Subject(Result(Nil, internal.InternalError)),
+  client: process.Subject(Result(Nil, Nil)),
 ) -> actor.Next(Store(Int, TypeInfo), a) {
   {
     let packet = encode.query(bootstrap_sql)
@@ -137,12 +136,10 @@ fn handle_load(
 fn handle_lookup(
   store: Store(Int, TypeInfo),
   oids: List(Int),
-  client: process.Subject(Result(List(TypeInfo), internal.InternalError)),
+  client: process.Subject(Result(List(TypeInfo), Nil)),
 ) -> actor.Next(Store(Int, TypeInfo), a) {
-  list.try_map(oids, store.lookup(store, _))
-  |> result.replace_error(internal.InternalError(
-    "Failed to find type info for OIDs",
-  ))
+  oids
+  |> list.try_map(store.lookup(store, _))
   |> actor.send(client, _)
 
   actor.continue(store)

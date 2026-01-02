@@ -18,21 +18,16 @@ pub fn insert(store: Store(a, b), key: a, value: b) -> #(a, b) {
   ets_insert_(store.name, #(key, value))
 }
 
-pub fn lookup(store: Store(a, b), key: a) -> Result(b, StoreError) {
+pub fn lookup(store: Store(a, b), key: a) -> Result(b, Nil) {
   ets_lookup_(store.name, key)
   |> dict.from_list
   |> dict.get(key)
-  |> result.replace_error(StoreError("key not found"))
 }
 
 pub fn delete(store: Store(a, b)) -> Nil {
   ets_delete_(store.name)
 
   Nil
-}
-
-pub type StoreError {
-  StoreError(message: String)
 }
 
 @external(erlang, "pgl_ffi", "unique_int")

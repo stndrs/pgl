@@ -1,5 +1,4 @@
 import exception
-import pgl/internal
 import pgl/internal/query_cache
 
 pub fn lookup_empty_test() {
@@ -7,8 +6,7 @@ pub fn lookup_empty_test() {
 
   let assert Ok(_) = query_cache.start(qc)
 
-  let assert Error(internal.InternalError("SQL query not found in cache")) =
-    query_cache.lookup(qc, "SELECT * FROM users")
+  let assert Error(Nil) = query_cache.lookup(qc, "SELECT * FROM users")
 
   query_cache.shutdown(qc)
 }

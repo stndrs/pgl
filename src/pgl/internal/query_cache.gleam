@@ -1,8 +1,6 @@
 import gleam/erlang/process
 import gleam/otp/actor
 import gleam/otp/supervision
-import gleam/result
-import pgl/internal
 import pgl/internal/store.{type Store}
 
 pub opaque type QueryCache {
@@ -10,10 +8,7 @@ pub opaque type QueryCache {
 }
 
 type Message {
-  Lookup(
-    client: process.Subject(Result(List(Int), internal.InternalError)),
-    query: String,
-  )
+  Lookup(client: process.Subject(Result(List(Int), Nil)), query: String)
   Insert(client: process.Subject(Nil), query: String, desc: List(Int))
   Reset(client: process.Subject(Nil))
   Shutdown
@@ -52,10 +47,7 @@ pub fn start(
   |> actor.start
 }
 
-pub fn lookup(
-  query_cache: QueryCache,
-  query: String,
-) -> Result(List(Int), internal.InternalError) {
+pub fn lookup(query_cache: QueryCache, query: String) -> Result(List(Int), Nil) {
   process.named_subject(query_cache.name)
   |> actor.call(1000, Lookup(_, query))
 }
@@ -81,9 +73,6 @@ fn handle_message(
   case msg {
     Lookup(client, query) -> {
       store.lookup(store, query)
-      |> result.replace_error(internal.InternalError(
-        "SQL query not found in cache",
-      ))
       |> actor.send(client, _)
 
       actor.continue(store)
