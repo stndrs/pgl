@@ -179,7 +179,6 @@ pub fn default_values_test() {
   let assert "" = conf.username
   let assert "" = conf.password
   let assert "" = conf.database
-  let assert 500 = conf.connect_timeout
   let assert pgl.SslDisabled = conf.ssl
 }
 

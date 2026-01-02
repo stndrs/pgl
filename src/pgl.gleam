@@ -33,18 +33,8 @@ pub type Config {
     database: String,
     ssl: Ssl,
     rows_as_maps: Bool,
-    // pool config
-    connect_timeout: Int,
     pool_size: Int,
   )
-}
-
-fn to_protocol_config(conf: Config) -> protocol.Config {
-  protocol.config
-  |> protocol.application(conf.application)
-  |> protocol.username(conf.username)
-  |> protocol.password(conf.password)
-  |> protocol.database(conf.database)
 }
 
 pub const default = Config(
@@ -56,7 +46,6 @@ pub const default = Config(
   database: "",
   ssl: SslDisabled,
   rows_as_maps: False,
-  connect_timeout: 500,
   pool_size: 1,
 )
 
@@ -114,40 +103,44 @@ pub fn from_url(url: String) -> Result(Config, Nil) {
 }
 
 fn options_from_uri(uri: Uri) -> Result(Config, Nil) {
-  use scheme <- try_option(uri.scheme)
-
-  case scheme {
-    "postgres" | "postgresql" -> Ok(default)
-    _ -> Error(Nil)
-  }
+  uri.scheme
+  |> option.map(fn(scheme) {
+    case scheme {
+      "postgres" | "postgresql" -> Ok(default)
+      _ -> Error(Nil)
+    }
+  })
+  |> option.lazy_unwrap(fn() { Error(Nil) })
 }
 
 fn apply_user_info(conf: Config, uri: Uri) -> Result(Config, Nil) {
-  use user_info <- try_option(uri.userinfo)
-
-  case string.split(user_info, ":") {
-    [user] -> Ok(username(conf, user))
-    [user, pass] -> {
-      conf
-      |> username(user)
-      |> password(pass)
-      |> Ok
+  uri.userinfo
+  |> option.map(fn(user_info) {
+    case string.split(user_info, ":") {
+      [user] -> Ok(username(conf, user))
+      [user, pass] -> {
+        conf
+        |> username(user)
+        |> password(pass)
+        |> Ok
+      }
+      _ -> Error(Nil)
     }
-    _ -> Error(Nil)
-  }
+  })
+  |> option.unwrap(Error(Nil))
 }
 
 fn apply_host(conf: Config, uri: Uri) -> Result(Config, Nil) {
-  use h <- try_option(uri.host)
-
-  Ok(host(conf, h))
+  case uri.host {
+    Some(val) -> Ok(host(conf, val))
+    None -> Error(Nil)
+  }
 }
 
 fn apply_port(conf: Config, uri: Uri) -> Result(Config, Nil) {
-  case uri.port {
-    Some(p) -> port(conf, p)
-    None -> conf
-  }
+  uri.port
+  |> option.map(port(conf, _))
+  |> option.unwrap(conf)
   |> Ok
 }
 
@@ -174,13 +167,6 @@ fn apply_ssl_mode(conf: Config, uri: Uri) -> Result(Config, Nil) {
     }
   }
   |> result.map(ssl(conf, _))
-}
-
-fn try_option(maybe: Option(a), next: fn(a) -> Result(b, Nil)) -> Result(b, Nil) {
-  case maybe {
-    Some(val) -> next(val)
-    None -> Error(Nil)
-  }
 }
 
 pub type PglError {
@@ -277,8 +263,7 @@ fn field_from_bit_array(field_type: BitArray) -> Field {
 
 pub type TransactionError(error) {
   RollbackError(cause: error)
-  NotInTransaction(message: String)
-  FailedTransaction(message: String, cause: PglError)
+  NotInTransaction
   TransactionError
 }
 
@@ -306,13 +291,7 @@ pub fn new(config: Config) -> Db {
 
   let type_cache =
     type_cache.new()
-    |> type_cache.on_connect(fn() {
-      use sock <- result.try(socket.connect(sockets))
-
-      config
-      |> to_protocol_config
-      |> protocol.auth(sock, _)
-    })
+    |> type_cache.on_connect(fn() { authenticated_connection(config, sockets) })
 
   Db(pool:, sockets:, type_cache:, query_cache:, config:)
 }
@@ -352,10 +331,7 @@ pub fn supervised(db: Db) -> supervision.ChildSpecification(Supervisor) {
 fn connect(db: Db) -> Result(Connection, internal.PglError) {
   let Db(pool: _, sockets:, config:, type_cache:, query_cache:) = db
 
-  let conf = to_protocol_config(config)
-
-  use sock <- result.try(socket.connect(sockets))
-  use sock <- result.map(protocol.auth(sock, conf))
+  use sock <- result.map(authenticated_connection(config, sockets))
 
   Connection(
     sock:,
@@ -364,6 +340,21 @@ fn connect(db: Db) -> Result(Connection, internal.PglError) {
     query_cache:,
     rows_as_maps: config.rows_as_maps,
   )
+}
+
+fn authenticated_connection(
+  config: Config,
+  sockets: socket.Factory,
+) -> Result(Socket, internal.PglError) {
+  let conf =
+    protocol.config
+    |> protocol.application(config.application)
+    |> protocol.username(config.username)
+    |> protocol.password(config.password)
+    |> protocol.database(config.database)
+
+  use sock <- result.try(socket.connect(sockets))
+  protocol.auth(sock, conf)
 }
 
 pub fn with_connection(db: Db, next: fn(Connection) -> t) -> Result(t, PglError) {
@@ -667,14 +658,14 @@ pub fn savepoint(
       Error(err) -> err
     }
   })
-  |> result.try(fn(res) { release(conn1) |> result.replace(res) })
+  |> result.try(fn(res) { release_savepoint(conn1) |> result.replace(res) })
 }
 
 fn rollback_and_release(
   conn: Connection,
 ) -> Result(Connection, TransactionError(error)) {
   rollback(conn)
-  |> result.try(release)
+  |> result.try(release_savepoint)
 }
 
 const savepoint_name = "pgl_savepoint"
@@ -701,25 +692,22 @@ fn set_savepoint(conn: Connection, savepoint: Int) -> Connection {
   Connection(..conn, savepoint: Some(savepoint))
 }
 
-pub fn release(conn: Connection) -> Result(Connection, TransactionError(error)) {
-  case conn.savepoint {
-    Some(num) -> release_savepoint(num, conn)
-    None -> Error(NotInTransaction(""))
-  }
-}
-
-fn release_savepoint(
-  num: Int,
+pub fn release_savepoint(
   conn: Connection,
 ) -> Result(Connection, TransactionError(error)) {
-  let statement =
-    "RELEASE SAVEPOINT " <> savepoint_name <> int.to_string(num - 1)
+  case conn.savepoint {
+    Some(num) -> {
+      let statement =
+        "RELEASE SAVEPOINT " <> savepoint_name <> int.to_string(num - 1)
 
-  let packet = encode.query(statement)
+      let packet = encode.query(statement)
 
-  protocol.simple(packet, conn.sock)
-  |> result.replace(conn)
-  |> result.replace_error(TransactionError)
+      protocol.simple(packet, conn.sock)
+      |> result.replace(conn)
+      |> result.replace_error(TransactionError)
+    }
+    None -> Error(NotInTransaction)
+  }
 }
 
 fn rollback_savepoint(
