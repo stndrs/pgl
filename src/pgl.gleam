@@ -288,7 +288,7 @@ fn field_from_bit_array(field_type: BitArray) -> Field {
 pub type TransactionError(error) {
   RollbackError(cause: error)
   NotInTransaction
-  TransactionError
+  TransactionError(message: String)
 }
 
 // ---------- Pool ---------- //
@@ -670,7 +670,11 @@ pub fn begin(conn: Connection) -> Result(Connection, TransactionError(error)) {
 
   protocol.simple(packet, conn.sock)
   |> result.replace(conn)
-  |> result.replace_error(TransactionError)
+  |> result.map_error(fn(err) {
+    err
+    |> internal.error_to_string
+    |> TransactionError
+  })
 }
 
 /// Commits a transaction
@@ -679,7 +683,11 @@ pub fn commit(conn: Connection) -> Result(Connection, TransactionError(error)) {
 
   protocol.simple(packet, conn.sock)
   |> result.replace(conn)
-  |> result.replace_error(TransactionError)
+  |> result.map_error(fn(err) {
+    err
+    |> internal.error_to_string
+    |> TransactionError
+  })
 }
 
 /// Rolls back a transaction
@@ -691,7 +699,11 @@ pub fn rollback(conn: Connection) -> Result(Connection, TransactionError(error))
 
       protocol.simple(packet, conn.sock)
       |> result.replace(conn)
-      |> result.replace_error(TransactionError)
+      |> result.map_error(fn(err) {
+        err
+        |> internal.error_to_string
+        |> TransactionError
+      })
     }
   }
 }
@@ -736,7 +748,11 @@ fn next_savepoint(
 
   protocol.simple(packet, conn.sock)
   |> result.map(fn(_) { set_savepoint(conn, savepoint) })
-  |> result.replace_error(TransactionError)
+  |> result.map_error(fn(err) {
+    err
+    |> internal.error_to_string
+    |> TransactionError
+  })
 }
 
 fn set_savepoint(conn: Connection, savepoint: Int) -> Connection {
@@ -755,7 +771,11 @@ pub fn release_savepoint(
 
       protocol.simple(packet, conn.sock)
       |> result.replace(conn)
-      |> result.replace_error(TransactionError)
+      |> result.map_error(fn(err) {
+        err
+        |> internal.error_to_string
+        |> TransactionError
+      })
     }
     None -> Error(NotInTransaction)
   }
@@ -776,5 +796,9 @@ fn rollback_savepoint(
 
   protocol.simple(packet, conn.sock)
   |> result.replace(conn)
-  |> result.replace_error(TransactionError)
+  |> result.map_error(fn(err) {
+    err
+    |> internal.error_to_string
+    |> TransactionError
+  })
 }
