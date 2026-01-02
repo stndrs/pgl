@@ -251,7 +251,7 @@ fn global_pool_rows_as_maps() -> pgl.Db {
     "postgres://postgres:postgres@127.0.0.1/gleam_pgl_test"
     |> pgl.from_url
 
-  let conf = pgl.rows_as_maps(conf, True)
+  let conf = pgl.rows_as_dict(conf, True)
 
   let db = pgl.new(conf)
 

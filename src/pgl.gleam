@@ -33,7 +33,7 @@ pub type Config {
     database: String,
     connection_parameters: List(#(String, String)),
     ssl: Ssl,
-    rows_as_maps: Bool,
+    rows_as_dict: Bool,
     pool_size: Int,
   )
 }
@@ -47,7 +47,7 @@ pub const default = Config(
   database: "",
   connection_parameters: [],
   ssl: SslDisabled,
-  rows_as_maps: False,
+  rows_as_dict: False,
   pool_size: 1,
 )
 
@@ -57,30 +57,37 @@ pub type Ssl {
   SslUnverified
 }
 
+/// Name of the application connecting to the database
 pub fn application(conf: Config, application: String) -> Config {
   Config(..conf, application:)
 }
 
+/// The database server hostname
 pub fn host(conf: Config, host: String) -> Config {
   Config(..conf, host:)
 }
 
+/// The port on which the database server is listening
 pub fn port(conf: Config, port: Int) -> Config {
   Config(..conf, port:)
 }
 
+/// The username to connect to the database as
 pub fn username(conf: Config, username: String) -> Config {
   Config(..conf, username:)
 }
 
+/// The password of the user
 pub fn password(conf: Config, password: String) -> Config {
   Config(..conf, password:)
 }
 
+/// The name of the database to use
 pub fn database(conf: Config, database: String) -> Config {
   Config(..conf, database:)
 }
 
+/// Sets other postgres connection parameters
 pub fn connection_parameter(
   conf: Config,
   name name: String,
@@ -92,18 +99,22 @@ pub fn connection_parameter(
   Config(..conf, connection_parameters:)
 }
 
+/// Whether SSL should be used
 pub fn ssl(conf: Config, ssl: Ssl) -> Config {
   Config(..conf, ssl:)
 }
 
-pub fn rows_as_maps(conf: Config, rows_as_maps: Bool) -> Config {
-  Config(..conf, rows_as_maps:)
+/// Configures rows to be returns as `Dict` rather than n-tuples
+pub fn rows_as_dict(conf: Config, rows_as_dict: Bool) -> Config {
+  Config(..conf, rows_as_dict:)
 }
 
+/// Sets the size of the connection pool
 pub fn pool_size(conf: Config, pool_size: Int) -> Config {
   Config(..conf, pool_size:)
 }
 
+/// Build a `Config` from a connection url
 pub fn from_url(url: String) -> Result(Config, Nil) {
   use uri <- result.try(uri.parse(url))
   use conf <- result.try(options_from_uri(uri))
@@ -351,7 +362,7 @@ fn connect(db: Db) -> Result(Connection, internal.PglError) {
     savepoint: None,
     type_cache:,
     query_cache:,
-    rows_as_maps: config.rows_as_maps,
+    rows_as_dict: config.rows_as_dict,
   )
 }
 
@@ -439,17 +450,17 @@ pub opaque type Connection {
     savepoint: Option(Int),
     type_cache: TypeCache,
     query_cache: QueryCache,
-    rows_as_maps: Bool,
+    rows_as_dict: Bool,
   )
 }
 
 fn to_queried(
   ext: protocol.Extended(pg_value.Value),
-  rows_as_maps: Bool,
+  rows_as_dict: Bool,
 ) -> Result(Queried, PglError) {
   let values = list.reverse(ext.values)
 
-  case rows_as_maps {
+  case rows_as_dict {
     True -> rows_to_maps(ext.fields, values)
     False -> Ok(list.map(values, dynamic.array))
   }
@@ -498,7 +509,7 @@ pub fn query(
 ) -> Result(Queried, PglError) {
   extended_query(sql, params, conn)
   |> result.map_error(from_internal_error)
-  |> result.try(to_queried(_, conn.rows_as_maps))
+  |> result.try(to_queried(_, conn.rows_as_dict))
 }
 
 pub fn pipeline(
@@ -527,7 +538,7 @@ pub fn pipeline(
   |> result.try(fn(exts) {
     use ext <- list.try_map(exts)
 
-    to_queried(ext, conn.rows_as_maps)
+    to_queried(ext, conn.rows_as_dict)
   })
 }
 
