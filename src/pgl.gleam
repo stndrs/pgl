@@ -230,9 +230,9 @@ pub type Field {
   Other(BitArray)
 }
 
-fn from_internal_error(err: internal.PglError) -> PglError {
+fn from_internal_error(err: internal.InternalError) -> PglError {
   case err {
-    internal.PglError(message:) -> PglError(message:)
+    internal.InternalError(message:) -> PglError(message:)
     internal.PostgresError(code:, name:, message:, fields:) -> {
       let fields =
         {
@@ -352,7 +352,7 @@ pub fn supervised(db: Db) -> supervision.ChildSpecification(Supervisor) {
   |> supervisor.supervised
 }
 
-fn connect(db: Db) -> Result(Connection, internal.PglError) {
+fn connect(db: Db) -> Result(Connection, internal.InternalError) {
   let Db(pool: _, sockets:, config:, type_cache:, query_cache:) = db
 
   use sock <- result.map(authenticated_connection(config, sockets))
@@ -374,7 +374,7 @@ fn disconnect(conn: Connection) -> Result(Nil, PglError) {
 fn authenticated_connection(
   config: Config,
   sockets: socket.Factory,
-) -> Result(Socket, internal.PglError) {
+) -> Result(Socket, internal.InternalError) {
   let conf =
     protocol.config
     |> protocol.application(config.application)
@@ -454,20 +454,6 @@ pub opaque type Connection {
   )
 }
 
-fn to_queried(
-  ext: protocol.Extended(pg_value.Value),
-  rows_as_dict: Bool,
-) -> Result(Queried, PglError) {
-  let values = list.reverse(ext.values)
-
-  case rows_as_dict {
-    True -> rows_to_maps(ext.fields, values)
-    False -> Ok(list.map(values, dynamic.array))
-  }
-  |> result.map(Queried(count: ext.count, fields: ext.fields, rows: _))
-  |> result.map_error(fn(_) { PglError("Failed to process queried rows") })
-}
-
 fn rows_to_maps(
   fields: List(String),
   values: List(List(Dynamic)),
@@ -542,6 +528,20 @@ pub fn pipeline(
   })
 }
 
+fn to_queried(
+  ext: protocol.Extended(pg_value.Value),
+  rows_as_dict: Bool,
+) -> Result(Queried, PglError) {
+  let values = list.reverse(ext.values)
+
+  case rows_as_dict {
+    True -> rows_to_maps(ext.fields, values)
+    False -> Ok(list.map(values, dynamic.array))
+  }
+  |> result.map(Queried(count: ext.count, fields: ext.fields, rows: _))
+  |> result.map_error(fn(_) { PglError("Failed to process queried rows") })
+}
+
 /// Perform a query with the given SQL string. This function does not accept
 /// any parameters and will send the SQL string as is to the postgres database
 /// server.
@@ -555,7 +555,7 @@ fn extended_query(
   sql: String,
   params: List(pg_value.Value),
   conn: Connection,
-) -> Result(protocol.Extended(pg_value.Value), internal.PglError) {
+) -> Result(protocol.Extended(pg_value.Value), internal.InternalError) {
   let message =
     encode_from_cache(sql, params, conn)
     |> result.lazy_unwrap(fn() { encode.uncached(sql, params) })
@@ -576,7 +576,7 @@ fn encode_from_cache(
   sql: String,
   params: List(pg_value.Value),
   conn: Connection,
-) -> Result(encode.Query(pg_value.Value, TypeInfo), internal.PglError) {
+) -> Result(encode.Query(pg_value.Value, TypeInfo), internal.InternalError) {
   use oids <- result.try(query_cache.lookup(conn.query_cache, sql))
   use info <- result.map(type_cache.lookup(conn.type_cache, oids))
 
@@ -589,7 +589,7 @@ fn on_param_description(
   params: List(pg_value.Value),
   oids: List(Int),
   conn: Connection,
-) -> Result(BitArray, internal.PglError) {
+) -> Result(BitArray, internal.InternalError) {
   query_cache.insert(conn.query_cache, sql, oids)
   use info <- result.map(type_cache.lookup(conn.type_cache, oids))
 
@@ -602,7 +602,7 @@ fn decode_row(
   values: List(BitArray),
   oids: List(Int),
   conn: Connection,
-) -> Result(List(Dynamic), internal.PglError) {
+) -> Result(List(Dynamic), internal.InternalError) {
   use type_info <- result.try(type_cache.lookup(conn.type_cache, oids))
 
   decode_row_values(values, type_info)
@@ -611,11 +611,11 @@ fn decode_row(
 fn decode_row_values(
   values: List(BitArray),
   infos: List(TypeInfo),
-) -> Result(List(Dynamic), internal.PglError) {
+) -> Result(List(Dynamic), internal.InternalError) {
   list.strict_zip(values, infos)
   |> result.map_error(fn(_) {
     internal.DecodingError
-    |> internal.ProtocolError(message: "Mismatype_cachehed values and infos")
+    |> internal.ProtocolError(message: "Mismatched values and infos")
   })
   |> result.try(fn(vals_infos) {
     list.try_map(vals_infos, fn(val_info) {

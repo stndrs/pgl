@@ -61,7 +61,10 @@ pub fn ssl(conf: Config, ssl: Option(Bool)) -> Config {
 
 // ---------- Auth flow ---------- //
 
-pub fn auth(sock: Socket, conf: Config) -> Result(Socket, internal.PglError) {
+pub fn auth(
+  sock: Socket,
+  conf: Config,
+) -> Result(Socket, internal.InternalError) {
   sock
   |> ssl_upgrade(conf.ssl)
   |> result.try(setup(_, conf))
@@ -72,7 +75,7 @@ pub fn auth(sock: Socket, conf: Config) -> Result(Socket, internal.PglError) {
 pub fn ssl_upgrade(
   sock: Socket,
   ssl: Option(Bool),
-) -> Result(Socket, internal.PglError) {
+) -> Result(Socket, internal.InternalError) {
   case ssl {
     Some(verified) -> do_ssl_upgrade(sock, verified:)
     None -> Ok(sock)
@@ -82,7 +85,7 @@ pub fn ssl_upgrade(
 fn do_ssl_upgrade(
   sock: Socket,
   verified verified: Bool,
-) -> Result(Socket, internal.PglError) {
+) -> Result(Socket, internal.InternalError) {
   use sock <- result.try(socket.send(sock, encode.ssl_request()))
 
   case socket.receive(sock, 1) {
@@ -101,7 +104,7 @@ fn do_ssl_upgrade(
   }
 }
 
-fn setup(sock: Socket, conf: Config) -> Result(Socket, internal.PglError) {
+fn setup(sock: Socket, conf: Config) -> Result(Socket, internal.InternalError) {
   let message =
     [
       #("user", conf.username),
@@ -123,7 +126,7 @@ fn auth_flow(
   sock: Socket,
   conf: Config,
   prev: BitArray,
-) -> Result(BitArray, internal.PglError) {
+) -> Result(BitArray, internal.InternalError) {
   use msg <- result.try(receive_message(sock))
 
   case msg {
@@ -166,7 +169,7 @@ fn auth_sasl(
   sock: Socket,
   methods: List(String),
   conf: Config,
-) -> Result(BitArray, internal.PglError) {
+) -> Result(BitArray, internal.InternalError) {
   case methods {
     ["SCRAM-SHA-256"] -> {
       let client_nonce = scram.get_nonce(16)
@@ -188,7 +191,7 @@ fn auth_sasl(
 
 fn handle_error_response(
   fields: Dict(BitArray, String),
-) -> Result(a, internal.PglError) {
+) -> Result(a, internal.InternalError) {
   let code = dict.get(fields, <<"C":utf8>>) |> result.unwrap("")
   let message = dict.get(fields, <<"M":utf8>>) |> result.unwrap("")
   let name = internal.pg_error_code_name(code) |> result.unwrap("")
@@ -202,7 +205,7 @@ fn auth_sasl_continue(
   conf: Config,
   server_first: BitArray,
   client_nonce: BitArray,
-) -> Result(BitArray, internal.PglError) {
+) -> Result(BitArray, internal.InternalError) {
   scram.parse_server_first(server_first, client_nonce)
   |> result.try(fn(sf) {
     let user = <<conf.username:utf8>>
@@ -221,7 +224,7 @@ fn auth_sasl_continue(
 fn auth_sasl_final(
   server_final: BitArray,
   server_signature: BitArray,
-) -> Result(BitArray, internal.PglError) {
+) -> Result(BitArray, internal.InternalError) {
   use srv_final <- result.try(scram.parse_server_final(server_final))
 
   case srv_final == server_signature {
@@ -246,7 +249,7 @@ type Row =
 pub fn simple(
   packet: BitArray,
   sock: Socket,
-) -> Result(List(Row), internal.PglError) {
+) -> Result(List(Row), internal.InternalError) {
   use sock <- result.try(socket.send(sock, packet))
 
   simple_flow(sock, [])
@@ -255,7 +258,7 @@ pub fn simple(
 fn simple_flow(
   sock: Socket,
   acc: List(Row),
-) -> Result(List(Row), internal.PglError) {
+) -> Result(List(Row), internal.InternalError) {
   use msg <- result.try(receive_message(sock))
 
   case msg {
@@ -266,22 +269,28 @@ fn simple_flow(
     internal.NotificationResponse(_, _, _) -> simple_flow(sock, acc)
     internal.ReadyForQuery(status: _) -> Ok(acc)
     internal.RowDescription(_, _) -> simple_flow(sock, acc)
-    _ -> Error(internal.PglError("Unexpected message in simple flow"))
+    _ -> {
+      internal.ProtocolError(
+        kind: internal.MessageError,
+        message: "Unexpected message in simple flow",
+      )
+      |> Error
+    }
   }
 }
 
 // ---------- Ping ---------- //
 
-pub fn ping(sock: Socket) -> Result(Socket, internal.PglError) {
+pub fn ping(sock: Socket) -> Result(Socket, internal.InternalError) {
   encode.sync()
   |> socket.send(sock, _)
   |> flush(sock)
 }
 
 fn flush(
-  res: Result(b, internal.PglError),
+  res: Result(b, internal.InternalError),
   sock: Socket,
-) -> Result(b, internal.PglError) {
+) -> Result(b, internal.InternalError) {
   use msg <- result.try(receive_message(sock))
 
   case msg {
@@ -291,7 +300,7 @@ fn flush(
   }
 }
 
-fn sync(sock: Socket) -> Result(Socket, internal.PglError) {
+fn sync(sock: Socket) -> Result(Socket, internal.InternalError) {
   encode.sync()
   |> socket.send(sock, _)
   |> result.try(receive_message)
@@ -303,10 +312,10 @@ fn sync(sock: Socket) -> Result(Socket, internal.PglError) {
 // https://www.postgresql.org/docs/current/protocol-flow.html#PROTOCOL-FLOW-EXT-QUERY
 
 pub type HandleParamDescription(v) =
-  fn(String, List(v), List(Int)) -> Result(BitArray, internal.PglError)
+  fn(String, List(v), List(Int)) -> Result(BitArray, internal.InternalError)
 
 pub type HandleDecodeRow =
-  fn(Row, List(Int)) -> Result(List(Dynamic), internal.PglError)
+  fn(Row, List(Int)) -> Result(List(Dynamic), internal.InternalError)
 
 pub type Extended(v) {
   Extended(
@@ -321,12 +330,12 @@ pub type Extended(v) {
 }
 
 pub fn extended() -> Extended(v) {
-  let default = internal.PglError("Extended(v) flow not configured")
-
   Extended(
     needs_sync: False,
-    handle_decode_row: fn(_, _) { Error(default) },
-    handle_param_description: fn(_, _, _) { Error(default) },
+    handle_decode_row: fn(_, _) { panic as "Extended flow not configured" },
+    handle_param_description: fn(_, _, _) {
+      panic as "Extended flow not configured"
+    },
     descriptions: [],
     fields: [],
     values: [],
@@ -352,7 +361,7 @@ pub fn process(
   flow: Extended(v),
   query: encode.Query(v, t),
   sock: Socket,
-) -> Result(Extended(v), internal.PglError) {
+) -> Result(Extended(v), internal.InternalError) {
   let needs_sync = encode.needs_sync(query)
   let packet = encode.to_bit_array(query)
   let flow = Extended(..flow, needs_sync:)
@@ -361,9 +370,16 @@ pub fn process(
   use sock <- result.try(socket.send(sock, packet))
   use pl <- result.try(do_pipeline(pl, flow, [query], sock))
 
-  pl.acc
-  |> list.first
-  |> result.map_error(fn(_) { internal.PglError("missing rows") })
+  case pl.acc {
+    [extended] -> Ok(extended)
+    _ -> {
+      internal.ProtocolError(
+        kind: internal.ProcessingError,
+        message: "Missing rows",
+      )
+      |> Error
+    }
+  }
 }
 
 fn handle_row_description(
@@ -379,7 +395,7 @@ fn handle_data_row(
   row: Row,
   rows: Extended(v),
   with decode_row: HandleDecodeRow,
-) -> Result(Extended(v), internal.PglError) {
+) -> Result(Extended(v), internal.InternalError) {
   let oids = list.map(rows.descriptions, fn(d) { d.data_type_oid })
 
   use values <- result.map(decode_row(row, oids))
@@ -389,7 +405,9 @@ fn handle_data_row(
   Extended(..rows, values:)
 }
 
-fn receive_message(sock: Socket) -> Result(internal.Message, internal.PglError) {
+fn receive_message(
+  sock: Socket,
+) -> Result(internal.Message, internal.InternalError) {
   use data <- result.try(socket.receive(sock, internal.header_size))
 
   case data {
@@ -442,7 +460,7 @@ pub fn batch_process(
   extended: Extended(v),
   queries: List(encode.Query(v, t)),
   sock: Socket,
-) -> Result(List(Extended(v)), internal.PglError) {
+) -> Result(List(Extended(v)), internal.InternalError) {
   let packet =
     queries
     |> list.map(encode.to_bit_array)
@@ -462,7 +480,7 @@ fn do_pipeline(
   ext: Extended(v),
   queries: List(encode.Query(v, t)),
   sock: Socket,
-) -> Result(Pipeline(v), internal.PglError) {
+) -> Result(Pipeline(v), internal.InternalError) {
   use msg <- result.try(receive_message(sock))
 
   case msg {
@@ -517,19 +535,23 @@ fn do_pipeline(
       sync(sock)
       |> result.try_recover(Error)
       |> result.try(fn(_) {
-        Error(internal.PglError("Unexpected message in flow"))
+        internal.ProtocolError(
+          kind: internal.MessageError,
+          message: "Unexpected message in flow",
+        )
+        |> Error
       })
     }
   }
 }
 
 fn error_response_cleanup(
-  err: Result(a, internal.PglError),
+  err: Result(a, internal.InternalError),
   needs_sync: Bool,
   syncs: Int,
   ready: Int,
   sock: Socket,
-) -> Result(a, internal.PglError) {
+) -> Result(a, internal.InternalError) {
   let err = case needs_sync {
     False -> flush(err, sock)
     True ->
@@ -565,7 +587,7 @@ fn next_param_description(
   ext: Extended(v),
   oids: List(Int),
   sock: Socket,
-) -> Result(Pipeline(v), internal.PglError) {
+) -> Result(Pipeline(v), internal.InternalError) {
   let sql = query.sql
   let params = query.params
 

@@ -41,7 +41,7 @@ pub opaque type Socket {
 
 pub opaque type Msg {
   SslUpgrade(
-    client: Subject(Result(Nil, internal.PglError)),
+    client: Subject(Result(Nil, internal.InternalError)),
     host: String,
     verified: Bool,
   )
@@ -127,11 +127,11 @@ pub fn parameter(sock: Socket, key: String, value: String) -> Socket {
   Socket(..sock, parameters:)
 }
 
-pub fn connect(factory: Factory) -> Result(Socket, internal.PglError) {
+pub fn connect(factory: Factory) -> Result(Socket, internal.InternalError) {
   factory.get_by_name(factory.name)
   |> factory.start_child(factory.builder)
   |> result.map_error(fn(_start_error) {
-    internal.PglError("Failed to start connection")
+    internal.InternalError("Failed to start connection")
   })
   |> result.map(fn(started) { started.data })
 }
@@ -177,7 +177,7 @@ fn start_socket(builder: Builder) -> actor.StartResult(Socket) {
 pub fn to_ssl(
   socket: Socket,
   verified verified: Bool,
-) -> Result(Socket, internal.PglError) {
+) -> Result(Socket, internal.InternalError) {
   actor.call(socket.subject, 1000, SslUpgrade(_, socket.host, verified))
   |> result.replace(socket)
 }
@@ -185,7 +185,7 @@ pub fn to_ssl(
 pub fn send(
   socket: Socket,
   payload: BitArray,
-) -> Result(Socket, internal.PglError) {
+) -> Result(Socket, internal.InternalError) {
   actor.call(socket.subject, 1000, Send(_, socket.send, payload))
   |> result.map_error(fn(code) {
     internal.SocketError(code:, message: "Failed to send")
@@ -193,7 +193,10 @@ pub fn send(
   |> result.replace(socket)
 }
 
-pub fn receive(conn: Socket, length: Int) -> Result(BitArray, internal.PglError) {
+pub fn receive(
+  conn: Socket,
+  length: Int,
+) -> Result(BitArray, internal.InternalError) {
   actor.call(conn.subject, conn.timeout, Receive(
     _,
     conn.receive,
@@ -205,7 +208,7 @@ pub fn receive(conn: Socket, length: Int) -> Result(BitArray, internal.PglError)
   })
 }
 
-pub fn shutdown(conn: Socket) -> Result(Nil, internal.PglError) {
+pub fn shutdown(conn: Socket) -> Result(Nil, internal.InternalError) {
   actor.call(conn.subject, 1000, Shutdown(_, conn.shutdown))
   |> result.map_error(fn(code) {
     internal.SocketError(code:, message: "Failed to shutdown")
@@ -258,7 +261,7 @@ fn tcp_to_ssl(
   socket: InternalSocket,
   host: String,
   verified: Bool,
-) -> Result(InternalSocket, internal.PglError) {
+) -> Result(InternalSocket, internal.InternalError) {
   case socket {
     Tcp(sock) -> {
       sock
@@ -275,7 +278,7 @@ fn tcp_to_ssl(
 fn tcp_connect(
   host: String,
   port: Int,
-) -> Result(InternalSocket, internal.PglError) {
+) -> Result(InternalSocket, internal.InternalError) {
   host
   |> charlist.from_string
   |> tcp_connect_(port)

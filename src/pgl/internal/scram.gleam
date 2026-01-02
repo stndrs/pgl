@@ -90,7 +90,7 @@ pub fn client_final(
 pub fn parse_server_first(
   server_first: BitArray,
   client_nonce: BitArray,
-) -> Result(ServerFirst, internal.PglError) {
+) -> Result(ServerFirst, internal.InternalError) {
   let parts =
     bit_array.to_string(server_first)
     |> result.map(string.split(_, on: ","))
@@ -123,7 +123,7 @@ pub fn parse_server_first(
 
 pub fn parse_server_final(
   server_final: BitArray,
-) -> Result(BitArray, internal.PglError) {
+) -> Result(BitArray, internal.InternalError) {
   case server_final {
     // https://datatracker.ietf.org/doc/html/rfc5802 - p. 17
     <<"v=":utf8, final:bits>> -> {

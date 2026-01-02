@@ -10,7 +10,7 @@ import pgl/internal
 pub fn message(
   code: BitArray,
   payload: BitArray,
-) -> Result(internal.Message, internal.PglError) {
+) -> Result(internal.Message, internal.InternalError) {
   case code {
     <<"1":utf8>> -> parse_complete(payload)
     <<"2":utf8>> -> bind_complete(payload)
@@ -43,7 +43,7 @@ pub fn message(
 
 fn close_complete(
   payload: BitArray,
-) -> Result(internal.Message, internal.PglError) {
+) -> Result(internal.Message, internal.InternalError) {
   case payload {
     <<>> -> Ok(internal.CloseComplete)
     _bits -> {
@@ -56,7 +56,7 @@ fn close_complete(
 
 fn empty_query_response(
   payload: BitArray,
-) -> Result(internal.Message, internal.PglError) {
+) -> Result(internal.Message, internal.InternalError) {
   case payload {
     <<>> -> Ok(internal.EmptyQueryResponse)
     _bits -> {
@@ -69,7 +69,9 @@ fn empty_query_response(
   }
 }
 
-fn copy_done(payload: BitArray) -> Result(internal.Message, internal.PglError) {
+fn copy_done(
+  payload: BitArray,
+) -> Result(internal.Message, internal.InternalError) {
   case payload {
     <<>> -> Ok(internal.CopyDone)
     _bits -> {
@@ -82,7 +84,7 @@ fn copy_done(payload: BitArray) -> Result(internal.Message, internal.PglError) {
 
 fn portal_suspended(
   payload: BitArray,
-) -> Result(internal.Message, internal.PglError) {
+) -> Result(internal.Message, internal.InternalError) {
   case payload {
     <<>> -> Ok(internal.PortalSuspended)
     _bits -> {
@@ -95,11 +97,13 @@ fn portal_suspended(
   }
 }
 
-fn copy_data(data: BitArray) -> Result(internal.Message, internal.PglError) {
+fn copy_data(data: BitArray) -> Result(internal.Message, internal.InternalError) {
   Ok(internal.CopyData(data:))
 }
 
-fn data_row(payload: BitArray) -> Result(internal.Message, internal.PglError) {
+fn data_row(
+  payload: BitArray,
+) -> Result(internal.Message, internal.InternalError) {
   case payload {
     <<columns:int-size(16), rest:bits>> -> {
       data_row_values(rest, columns, [])
@@ -117,7 +121,7 @@ fn data_row_values(
   payload: BitArray,
   columns: Int,
   acc: List(BitArray),
-) -> Result(List(BitArray), internal.PglError) {
+) -> Result(List(BitArray), internal.InternalError) {
   case columns > 0 {
     False -> Ok(list.reverse(acc))
     True -> {
@@ -141,7 +145,7 @@ fn data_row_values(
 
 fn backend_key_data(
   payload: BitArray,
-) -> Result(internal.Message, internal.PglError) {
+) -> Result(internal.Message, internal.InternalError) {
   case payload {
     <<proc_id:int-size(32), secret:int-size(32)>> ->
       Ok(internal.BackendKeyData(proc_id:, secret:))
@@ -157,7 +161,7 @@ fn backend_key_data(
 
 fn parameter_status(
   payload: BitArray,
-) -> Result(internal.Message, internal.PglError) {
+) -> Result(internal.Message, internal.InternalError) {
   payload
   |> bit_array.to_string
   |> result.map_error(fn(_) {
@@ -180,7 +184,7 @@ fn parameter_status(
 
 fn authentication(
   payload: BitArray,
-) -> Result(internal.Message, internal.PglError) {
+) -> Result(internal.Message, internal.InternalError) {
   case payload {
     <<0:int-size(32)>> -> Ok(internal.AuthenticationOk)
     <<2:int-size(32)>> -> Ok(internal.AuthenticationKerberosV5)
@@ -210,7 +214,7 @@ fn authentication(
 
 fn sasl_methods(
   methods_bin: BitArray,
-) -> Result(List(String), internal.PglError) {
+) -> Result(List(String), internal.InternalError) {
   case bit_array.byte_size(methods_bin) {
     0 -> Ok([])
     _ -> sasl_methods_inner(methods_bin)
@@ -219,7 +223,7 @@ fn sasl_methods(
 
 fn sasl_methods_inner(
   binary: BitArray,
-) -> Result(List(String), internal.PglError) {
+) -> Result(List(String), internal.InternalError) {
   case binary {
     <<"SCRAM-SHA-256":utf8, _rest:bits>> -> Ok(["SCRAM-SHA-256"])
     _ ->
@@ -232,7 +236,7 @@ fn sasl_methods_inner(
 
 fn bind_complete(
   payload: BitArray,
-) -> Result(internal.Message, internal.PglError) {
+) -> Result(internal.Message, internal.InternalError) {
   case payload {
     <<>> -> Ok(internal.BindComplete)
     _bits -> {
@@ -245,21 +249,21 @@ fn bind_complete(
 
 fn error_response(
   payload: BitArray,
-) -> Result(internal.Message, internal.PglError) {
+) -> Result(internal.Message, internal.InternalError) {
   error_and_notice_message_fields(payload, dict.new())
   |> result.map(internal.ErrorResponse)
 }
 
 fn notice_response(
   payload: BitArray,
-) -> Result(internal.Message, internal.PglError) {
+) -> Result(internal.Message, internal.InternalError) {
   error_and_notice_message_fields(payload, dict.new())
   |> result.map(internal.NoticeResponse)
 }
 
 fn command_complete(
   payload: BitArray,
-) -> Result(internal.Message, internal.PglError) {
+) -> Result(internal.Message, internal.InternalError) {
   let len = bit_array.byte_size(payload) - 1
 
   bit_array.slice(payload, at: 0, take: len)
@@ -292,7 +296,7 @@ fn num_rows_from_command(cmd: internal.Command) -> Int {
   }
 }
 
-fn to_tag(value: String) -> Result(internal.Command, internal.PglError) {
+fn to_tag(value: String) -> Result(internal.Command, internal.InternalError) {
   case value {
     "SELECT " <> num -> parse_num_rows("SELECT", num, into: internal.Select)
     // https://www.postgresql.org/docs/current/protocol-message-formats.html#PROTOCOL-MESSAGE-FORMATS-COMMANDCOMPLETE
@@ -318,7 +322,7 @@ fn parse_num_rows(
   name: String,
   num: String,
   into command: fn(Int) -> internal.Command,
-) -> Result(internal.Command, internal.PglError) {
+) -> Result(internal.Command, internal.InternalError) {
   int.parse(num)
   |> result.map_error(fn(_) {
     internal.DecodingError
@@ -329,7 +333,7 @@ fn parse_num_rows(
 
 fn ready_for_query(
   payload: BitArray,
-) -> Result(internal.Message, internal.PglError) {
+) -> Result(internal.Message, internal.InternalError) {
   case payload {
     <<"I":utf8>> -> Ok(internal.ReadyForQuery(status: internal.Idle))
     <<"T":utf8>> -> Ok(internal.ReadyForQuery(status: internal.Transaction))
@@ -345,7 +349,7 @@ fn ready_for_query(
 fn error_and_notice_message_fields(
   payload: BitArray,
   acc: Dict(BitArray, String),
-) -> Result(Dict(BitArray, String), internal.PglError) {
+) -> Result(Dict(BitArray, String), internal.InternalError) {
   case payload {
     <<0>> -> Ok(acc)
     <<field:bits-size(8), rest:bits>> -> {
@@ -368,7 +372,7 @@ fn error_and_notice_message_fields(
 
 fn decode_string(
   bits: BitArray,
-) -> Result(#(String, BitArray), internal.PglError) {
+) -> Result(#(String, BitArray), internal.InternalError) {
   case binary_match(bits, <<0>>) {
     Some(#(start, _length)) -> {
       case split_binary(bits, start) {
@@ -402,7 +406,9 @@ fn binary_match(bits: BitArray, pattern: BitArray) -> Option(#(Int, Int))
 @external(erlang, "erlang", "split_binary")
 fn split_binary(bits: BitArray, position: Int) -> #(BitArray, BitArray)
 
-fn no_data(payload: BitArray) -> Result(internal.Message, internal.PglError) {
+fn no_data(
+  payload: BitArray,
+) -> Result(internal.Message, internal.InternalError) {
   case payload {
     <<>> -> Ok(internal.NoData)
     _bits -> {
@@ -415,7 +421,7 @@ fn no_data(payload: BitArray) -> Result(internal.Message, internal.PglError) {
 
 fn row_description(
   payload: BitArray,
-) -> Result(internal.Message, internal.PglError) {
+) -> Result(internal.Message, internal.InternalError) {
   case payload {
     <<count:int-size(16), rest:bits>> -> {
       case row_description_fields(count, rest, []) {
@@ -437,7 +443,7 @@ fn row_description_fields(
   count: Int,
   binary: BitArray,
   acc: List(internal.RowDescriptionField),
-) -> Result(List(internal.RowDescriptionField), internal.PglError) {
+) -> Result(List(internal.RowDescriptionField), internal.InternalError) {
   case count, binary {
     0, <<>> -> Ok(list.reverse(acc))
     count, binary -> {
@@ -486,7 +492,7 @@ fn row_description_fields(
 
 fn decode_format_code(
   code: Int,
-) -> Result(internal.PgSqlFormat, internal.PglError) {
+) -> Result(internal.PgSqlFormat, internal.InternalError) {
   case code {
     0 -> Ok(internal.Text)
     1 -> Ok(internal.Binary)
@@ -500,7 +506,7 @@ fn decode_format_code(
 
 fn parse_complete(
   payload: BitArray,
-) -> Result(internal.Message, internal.PglError) {
+) -> Result(internal.Message, internal.InternalError) {
   case payload {
     <<>> -> Ok(internal.ParseComplete)
     _bits -> {
@@ -513,7 +519,7 @@ fn parse_complete(
 
 fn parameter_description(
   payload: BitArray,
-) -> Result(internal.Message, internal.PglError) {
+) -> Result(internal.Message, internal.InternalError) {
   case payload {
     <<count:int-size(16), rest:bits>> -> {
       let data_types = parameter_data_types(rest, [])

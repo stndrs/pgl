@@ -1,8 +1,8 @@
 import pgl/internal
 
 pub fn pgl_error_to_string_test() {
-  let assert "(PglError) message" =
-    internal.PglError("message")
+  let assert "(InternalError) message" =
+    internal.InternalError("message")
     |> internal.error_to_string
 }
 

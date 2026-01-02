@@ -88,8 +88,8 @@ pub type Command {
 
 // ---------- Errors ---------- //
 
-pub type PglError {
-  PglError(message: String)
+pub type InternalError {
+  InternalError(message: String)
   AuthenticationError(kind: AuthenticationError, message: String)
   SocketError(code: PosixError, message: String)
   ProtocolError(kind: ProtocolError, message: String)
@@ -101,9 +101,9 @@ pub type PglError {
   )
 }
 
-pub fn error_to_string(err: PglError) -> String {
+pub fn error_to_string(err: InternalError) -> String {
   case err {
-    PglError(message:) -> "(PglError) " <> message
+    InternalError(message:) -> "(InternalError) " <> message
     AuthenticationError(kind, msg) -> {
       "(" <> auth_error_to_string(kind) <> ") " <> msg
     }
@@ -139,6 +139,7 @@ pub type ProtocolError {
   SaslServerError
   SaslServerFinal
   SaslServerFirst
+  ProcessingError
   DecodingError
   MessageError
   SslError
@@ -149,6 +150,7 @@ fn protocol_error_to_string(err: ProtocolError) {
     SaslServerError -> "SaslServerError"
     SaslServerFinal -> "SaslServerFinal"
     SaslServerFirst -> "SaslServerFirst"
+    ProcessingError -> "ProcessingError"
     DecodingError -> "DecodingError"
     MessageError -> "MessageError"
     SslError -> "SSLError"
@@ -321,7 +323,7 @@ fn posix_error_to_string(code: PosixError) -> String {
 }
 
 /// https://www.postgresql.org/docs/current/errcodes-appendix.html
-pub fn pg_error_code_name(error_code: String) -> Result(String, PglError) {
+pub fn pg_error_code_name(error_code: String) -> Result(String, InternalError) {
   case error_code {
     "00000" -> Ok("successful_completion")
     "01000" -> Ok("warning")
@@ -582,6 +584,6 @@ pub fn pg_error_code_name(error_code: String) -> Result(String, PglError) {
     "XX000" -> Ok("internal_error")
     "XX001" -> Ok("data_corrupted")
     "XX002" -> Ok("index_corrupted")
-    _ -> Error(PglError("PG SQL Error code not found: " <> error_code))
+    _ -> Error(InternalError("PG SQL Error code not found: " <> error_code))
   }
 }

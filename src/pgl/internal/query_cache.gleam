@@ -11,7 +11,7 @@ pub opaque type QueryCache {
 
 type Message {
   Lookup(
-    client: process.Subject(Result(List(Int), internal.PglError)),
+    client: process.Subject(Result(List(Int), internal.InternalError)),
     query: String,
   )
   Insert(client: process.Subject(Nil), query: String, desc: List(Int))
@@ -55,7 +55,7 @@ pub fn start(
 pub fn lookup(
   query_cache: QueryCache,
   query: String,
-) -> Result(List(Int), internal.PglError) {
+) -> Result(List(Int), internal.InternalError) {
   process.named_subject(query_cache.name)
   |> actor.call(1000, Lookup(_, query))
 }
@@ -81,7 +81,9 @@ fn handle_message(
   case msg {
     Lookup(client, query) -> {
       store.lookup(store, query)
-      |> result.replace_error(internal.PglError("SQL query not found in cache"))
+      |> result.replace_error(internal.InternalError(
+        "SQL query not found in cache",
+      ))
       |> actor.send(client, _)
 
       actor.continue(store)

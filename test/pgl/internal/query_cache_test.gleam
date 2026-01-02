@@ -7,7 +7,7 @@ pub fn lookup_empty_test() {
 
   let assert Ok(_) = query_cache.start(qc)
 
-  let assert Error(internal.PglError("SQL query not found in cache")) =
+  let assert Error(internal.InternalError("SQL query not found in cache")) =
     query_cache.lookup(qc, "SELECT * FROM users")
 
   query_cache.shutdown(qc)

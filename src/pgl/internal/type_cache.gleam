@@ -18,14 +18,17 @@ import pgl/internal/store.{type Store}
 pub opaque type TypeCache {
   TypeCache(
     name: process.Name(Message),
-    handle_connect: fn() -> Result(Socket, internal.PglError),
+    handle_connect: fn() -> Result(Socket, internal.InternalError),
   )
 }
 
 pub opaque type Message {
-  Load(client: process.Subject(Result(Nil, internal.PglError)), sock: Socket)
+  Load(
+    client: process.Subject(Result(Nil, internal.InternalError)),
+    sock: Socket,
+  )
   Lookup(
-    client: process.Subject(Result(List(TypeInfo), internal.PglError)),
+    client: process.Subject(Result(List(TypeInfo), internal.InternalError)),
     oids: List(Int),
   )
   Shutdown
@@ -43,7 +46,7 @@ pub fn new() -> TypeCache {
 
 pub fn on_connect(
   type_cache: TypeCache,
-  handle_connect: fn() -> Result(Socket, internal.PglError),
+  handle_connect: fn() -> Result(Socket, internal.InternalError),
 ) {
   TypeCache(..type_cache, handle_connect:)
 }
@@ -70,7 +73,7 @@ pub fn supervised(type_cache: TypeCache) -> supervision.ChildSpecification(Nil) 
   |> supervision.restart(supervision.Transient)
 }
 
-pub fn load(type_cache: TypeCache) -> Result(Nil, internal.PglError) {
+pub fn load(type_cache: TypeCache) -> Result(Nil, internal.InternalError) {
   use sock <- result.try(type_cache.handle_connect())
 
   let res =
@@ -82,7 +85,7 @@ pub fn load(type_cache: TypeCache) -> Result(Nil, internal.PglError) {
 pub fn lookup(
   type_cache: TypeCache,
   oids: List(Int),
-) -> Result(List(TypeInfo), internal.PglError) {
+) -> Result(List(TypeInfo), internal.InternalError) {
   use <- result.lazy_or(do_lookup(type_cache, oids))
   use _ <- result.try(load(type_cache))
 
@@ -92,7 +95,7 @@ pub fn lookup(
 fn do_lookup(
   type_cache: TypeCache,
   oids: List(Int),
-) -> Result(List(TypeInfo), internal.PglError) {
+) -> Result(List(TypeInfo), internal.InternalError) {
   process.named_subject(type_cache.name) |> actor.call(1000, Lookup(_, oids))
 }
 
@@ -114,7 +117,7 @@ fn handle_message(
 fn handle_load(
   store: Store(Int, TypeInfo),
   sock: Socket,
-  client: process.Subject(Result(Nil, internal.PglError)),
+  client: process.Subject(Result(Nil, internal.InternalError)),
 ) -> actor.Next(Store(Int, TypeInfo), a) {
   {
     let packet = encode.query(bootstrap_sql)
@@ -134,10 +137,12 @@ fn handle_load(
 fn handle_lookup(
   store: Store(Int, TypeInfo),
   oids: List(Int),
-  client: process.Subject(Result(List(TypeInfo), internal.PglError)),
+  client: process.Subject(Result(List(TypeInfo), internal.InternalError)),
 ) -> actor.Next(Store(Int, TypeInfo), a) {
   list.try_map(oids, store.lookup(store, _))
-  |> result.replace_error(internal.PglError("Failed to find type info for OIDs"))
+  |> result.replace_error(internal.InternalError(
+    "Failed to find type info for OIDs",
+  ))
   |> actor.send(client, _)
 
   actor.continue(store)
@@ -170,7 +175,9 @@ fn parse_type_infos(
   })
 }
 
-fn parse_type_info(row: List(BitArray)) -> Result(TypeInfo, internal.PglError) {
+fn parse_type_info(
+  row: List(BitArray),
+) -> Result(TypeInfo, internal.InternalError) {
   case row {
     [
       <<oid:bits>>,
@@ -207,9 +214,11 @@ fn parse_type_info(row: List(BitArray)) -> Result(TypeInfo, internal.PglError) {
         |> type_info.base_oid(base_oid)
         |> type_info.comp_oids(comp_oids)
       }
-      |> result.replace_error(internal.PglError("Failed to parse type info"))
+      |> result.replace_error(internal.InternalError(
+        "Failed to parse type info",
+      ))
     }
-    _ -> Error(internal.PglError("Unexpected type info format"))
+    _ -> Error(internal.InternalError("Unexpected type info format"))
   }
 }
 

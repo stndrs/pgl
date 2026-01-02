@@ -34,7 +34,7 @@ pub fn connect_error_test() {
 
   let assert Ok(_) = supervise(sockets)
 
-  let assert Error(internal.PglError("Failed to start connection")) =
+  let assert Error(internal.InternalError("Failed to start connection")) =
     socket.connect(sockets)
 }
 
