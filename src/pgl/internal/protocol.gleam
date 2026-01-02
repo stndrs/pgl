@@ -18,6 +18,7 @@ pub type Config {
     username: String,
     password: String,
     application: String,
+    connection_parameters: List(#(String, String)),
     ssl: Option(Bool),
   )
 }
@@ -27,11 +28,19 @@ pub const config = Config(
   username: "",
   password: "",
   application: "",
+  connection_parameters: [],
   ssl: None,
 )
 
 pub fn application(conf: Config, application: String) -> Config {
   Config(..conf, application:)
+}
+
+pub fn connection_parameters(
+  conf: Config,
+  connection_parameters: List(#(String, String)),
+) -> Config {
+  Config(..conf, connection_parameters:)
 }
 
 pub fn username(conf: Config, username: String) -> Config {
@@ -98,6 +107,7 @@ fn setup(sock: Socket, conf: Config) -> Result(Socket, internal.PglError) {
       #("user", conf.username),
       #("database", conf.database),
       #("application_name", conf.application),
+      ..conf.connection_parameters
     ]
     |> encode.startup
 

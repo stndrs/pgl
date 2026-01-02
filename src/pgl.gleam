@@ -31,6 +31,7 @@ pub type Config {
     username: String,
     password: String,
     database: String,
+    connection_parameters: List(#(String, String)),
     ssl: Ssl,
     rows_as_maps: Bool,
     pool_size: Int,
@@ -44,6 +45,7 @@ pub const default = Config(
   username: "",
   password: "",
   database: "",
+  connection_parameters: [],
   ssl: SslDisabled,
   rows_as_maps: False,
   pool_size: 1,
@@ -77,6 +79,17 @@ pub fn password(conf: Config, password: String) -> Config {
 
 pub fn database(conf: Config, database: String) -> Config {
   Config(..conf, database:)
+}
+
+pub fn connection_parameter(
+  conf: Config,
+  name name: String,
+  value value: String,
+) -> Config {
+  let connection_parameters =
+    list.prepend(conf.connection_parameters, #(name, value))
+
+  Config(..conf, connection_parameters:)
 }
 
 pub fn ssl(conf: Config, ssl: Ssl) -> Config {

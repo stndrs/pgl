@@ -6,6 +6,24 @@ import pgl/internal/socket.{type Socket}
 import pgl/internal/socket_test
 import pgl/internal/type_cache
 
+pub fn config_test() {
+  let conf =
+    protocol.config
+    |> protocol.application("pgl")
+    |> protocol.database("gleam_pgl_test")
+    |> protocol.username("postgres")
+    |> protocol.password("postgres")
+    |> protocol.connection_parameters([#("timezone", "MDT")])
+    |> protocol.ssl(option.Some(True))
+
+  assert "pgl" == conf.application
+  assert "gleam_pgl_test" == conf.database
+  assert "postgres" == conf.username
+  assert "postgres" == conf.password
+  assert [#("timezone", "MDT")] == conf.connection_parameters
+  assert option.Some(True) == conf.ssl
+}
+
 pub fn ssl_upgrade_unexpected_receive_test() {
   let conf =
     protocol.config

@@ -182,6 +182,18 @@ pub fn default_values_test() {
   let assert pgl.SslDisabled = conf.ssl
 }
 
+pub fn connection_parameters_test() {
+  let conf = pgl.default
+
+  assert conf.connection_parameters == []
+
+  let conf =
+    conf
+    |> pgl.connection_parameter(name: "timezone", value: "MDT")
+
+  assert conf.connection_parameters == [#("timezone", "MDT")]
+}
+
 pub fn query_params_test() {
   let query =
     pgl.sql("SELECT * FROM users WHERE id=$1")
