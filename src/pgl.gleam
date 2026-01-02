@@ -412,7 +412,7 @@ pub fn shutdown(db: Db) -> Result(Nil, PglError) {
   |> result.map_error(pool_error_to_pgl_error)
 }
 
-pub fn ping(conn: Connection) -> Result(Connection, PglError) {
+fn ping(conn: Connection) -> Result(Connection, PglError) {
   protocol.ping(conn.sock)
   |> result.replace(conn)
   |> result.map_error(from_internal_error)

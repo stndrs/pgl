@@ -275,12 +275,6 @@ fn with_conn(next: fn(pgl.Connection) -> t) {
   next(conn)
 }
 
-pub fn ping_test() {
-  use conn <- with_conn()
-
-  let assert Ok(_) = pgl.ping(conn)
-}
-
 pub type User {
   User(
     id: Int,

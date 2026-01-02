@@ -70,6 +70,19 @@ pub fn protocol_bootstrap_test() {
     |> protocol.simple(sock)
 }
 
+pub fn ping_test() {
+  let conf =
+    protocol.config
+    |> protocol.database("gleam_pgl_test")
+    |> protocol.username("postgres")
+    |> protocol.password("postgres")
+
+  let sock = connect()
+  let assert Ok(sock) = protocol.auth(sock, conf)
+
+  let assert Ok(_) = protocol.ping(sock)
+}
+
 fn connect() -> Socket {
   let sockets =
     socket.new()
