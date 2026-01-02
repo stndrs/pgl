@@ -138,6 +138,7 @@ pub type ProtocolError {
   SaslServerFinal
   SaslServerFirst
   ProcessingError
+  EncodingError
   DecodingError
   MessageError
   SslError
@@ -149,6 +150,7 @@ fn protocol_error_to_string(err: ProtocolError) {
     SaslServerFinal -> "SaslServerFinal"
     SaslServerFirst -> "SaslServerFirst"
     ProcessingError -> "ProcessingError"
+    EncodingError -> "EncodingError"
     DecodingError -> "DecodingError"
     MessageError -> "MessageError"
     SslError -> "SSLError"

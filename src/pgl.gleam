@@ -602,11 +602,12 @@ fn on_param_description(
   conn: Connection,
 ) -> Result(BitArray, Nil) {
   query_cache.insert(conn.query_cache, sql, oids)
-  use info <- result.map(type_cache.lookup(conn.type_cache, oids))
+  use info <- result.try(type_cache.lookup(conn.type_cache, oids))
 
   encode.cached(sql, params, info, pg_value.encode)
   |> encode.with_sync
   |> encode.to_bit_array
+  |> result.map_error(fn(_) { Nil })
 }
 
 fn decode_row(

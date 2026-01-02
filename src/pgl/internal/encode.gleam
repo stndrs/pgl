@@ -163,30 +163,35 @@ pub fn with_sync(msg: Query(v, t)) -> Query(v, t) {
   Query(..msg, final: Some(Sync))
 }
 
-pub fn to_bit_array(msg: Query(v, t)) -> BitArray {
-  let parse = parse("", msg.sql, [])
-
-  let bind = case msg.encoder {
-    None -> <<>>
+pub fn to_bit_array(
+  msg: Query(v, t),
+) -> Result(BitArray, internal.InternalError) {
+  case msg.encoder {
+    None -> Ok(<<>>)
     Some(encoder) -> {
       bind(<<>>, <<>>, msg.params, msg.type_infos, encoder)
-      |> result.unwrap(<<>>)
+      |> result.map_error(fn(err) {
+        internal.ProtocolError(kind: internal.EncodingError, message: err)
+      })
     }
   }
+  |> result.map(fn(bind) {
+    let describe = describe(msg.describe, "")
+    let exec = case msg.execute {
+      True -> execute("", 0)
+      False -> <<>>
+    }
 
-  let describe = describe(msg.describe, "")
-  let exec = case msg.execute {
-    True -> execute("", 0)
-    False -> <<>>
-  }
+    let final = case msg.final {
+      Some(Flush) -> flush()
+      Some(Sync) -> sync()
+      None -> <<>>
+    }
 
-  let final = case msg.final {
-    Some(Flush) -> flush()
-    Some(Sync) -> sync()
-    None -> <<>>
-  }
+    let parse = parse("", msg.sql, [])
 
-  bit_array.concat([parse, bind, describe, exec, final])
+    bit_array.concat([parse, bind, describe, exec, final])
+  })
 }
 
 // Query encoding

@@ -907,12 +907,9 @@ pub fn execute_with_wrong_number_of_arguments_test() {
   use conn <- connect()
   let sql = "SELECT * FROM users WHERE id = $1"
 
-  let assert Error(pgl.PostgresError(code:, name:, message:, fields: _)) =
-    pgl.exec(sql, conn)
-
-  let assert "34000" = code
-  let assert "invalid_cursor_name" = name
-  let assert "portal \"\" does not exist" = message
+  let assert Error(pgl.ProtocolError(
+    "(ProcessingError) Failed to describe statement parameters",
+  )) = pgl.exec(sql, conn)
 }
 
 pub fn insert_with_values_test() {

@@ -363,7 +363,8 @@ pub fn process(
   sock: Socket,
 ) -> Result(Extended(v), internal.InternalError) {
   let needs_sync = encode.needs_sync(query)
-  let packet = encode.to_bit_array(query)
+  use packet <- result.try(encode.to_bit_array(query))
+
   let flow = Extended(..flow, needs_sync:)
   let pl = pipeline()
 
@@ -461,9 +462,10 @@ pub fn batch_process(
   queries: List(encode.Query(v, t)),
   sock: Socket,
 ) -> Result(List(Extended(v)), internal.InternalError) {
+  use encoded <- result.try(list.try_map(queries, encode.to_bit_array))
+
   let packet =
-    queries
-    |> list.map(encode.to_bit_array)
+    encoded
     |> bit_array.concat
     |> bit_array.append(encode.sync())
 
