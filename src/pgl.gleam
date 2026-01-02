@@ -362,6 +362,17 @@ fn authenticated_connection(
   protocol.auth(sock, conf)
 }
 
+/// Checks out a connection passes it to the provided function. After the provided
+/// function returns, the connection is checked back in.
+///
+/// Example:
+///
+/// ```gleam
+/// pgl.with_connection(db, fn(conn) {
+///   pgl.query(sql, [], conn)
+/// })
+/// ```
+///
 pub fn with_connection(db: Db, next: fn(Connection) -> t) -> Result(t, PglError) {
   let self = process.self()
 
@@ -374,11 +385,17 @@ pub fn with_connection(db: Db, next: fn(Connection) -> t) -> Result(t, PglError)
   res
 }
 
-pub fn checkout(db: Db, caller: Pid) -> Result(Connection, PglError) {
+fn checkout(db: Db, caller: Pid) -> Result(Connection, PglError) {
   db.pool
   |> process.named_subject
   |> db_pool.checkout(caller, 500)
   |> result.map_error(pool_error_to_pgl_error)
+}
+
+fn checkin(db: Db, conn: Connection, caller: Pid) -> Nil {
+  db.pool
+  |> process.named_subject
+  |> db_pool.checkin(conn, caller)
 }
 
 fn pool_error_to_pgl_error(err: db_pool.PoolError(PglError)) -> PglError {
@@ -386,12 +403,6 @@ fn pool_error_to_pgl_error(err: db_pool.PoolError(PglError)) -> PglError {
     db_pool.ConnectionError(err) -> err
     db_pool.ConnectionTimeout -> ConnectionTimeout
   }
-}
-
-pub fn checkin(db: Db, conn: Connection, caller: Pid) -> Nil {
-  db.pool
-  |> process.named_subject
-  |> db_pool.checkin(conn, caller)
 }
 
 pub fn shutdown(db: Db) -> Result(Nil, PglError) {
