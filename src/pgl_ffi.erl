@@ -111,8 +111,8 @@ ets_lookup(Name, Key) ->
 
 binary_match(Binary, Pattern) ->
   case binary:match(Binary, Pattern) of
-    nomatch -> none;
-    {Start, Length} -> {some, {Start, Length}}
+    nomatch -> {error, nil};
+    {Start, Length} -> {ok, {Start, Length}}
   end.
 
 unique_int() -> erlang:unique_integer([positive]).

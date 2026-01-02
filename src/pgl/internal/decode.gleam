@@ -2,7 +2,6 @@ import gleam/bit_array
 import gleam/dict.{type Dict}
 import gleam/int
 import gleam/list
-import gleam/option.{type Option, None, Some}
 import gleam/result
 import gleam/string
 import pgl/internal
@@ -374,7 +373,7 @@ fn decode_string(
   bits: BitArray,
 ) -> Result(#(String, BitArray), internal.InternalError) {
   case binary_match(bits, <<0>>) {
-    Some(#(start, _length)) -> {
+    Ok(#(start, _length)) -> {
       case split_binary(bits, start) {
         #(<<str:bits>>, <<0, rest:bits>>) -> {
           bit_array.to_string(str)
@@ -391,8 +390,7 @@ fn decode_string(
         }
       }
     }
-    None -> {
-      echo bits
+    Error(_) -> {
       internal.DecodingError
       |> internal.ProtocolError(message: "Failed to decode string")
       |> Error
@@ -401,7 +399,7 @@ fn decode_string(
 }
 
 @external(erlang, "pgl_ffi", "binary_match")
-fn binary_match(bits: BitArray, pattern: BitArray) -> Option(#(Int, Int))
+fn binary_match(bits: BitArray, pattern: BitArray) -> Result(#(Int, Int), Nil)
 
 @external(erlang, "erlang", "split_binary")
 fn split_binary(bits: BitArray, position: Int) -> #(BitArray, BitArray)
