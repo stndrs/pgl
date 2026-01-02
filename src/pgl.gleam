@@ -194,7 +194,7 @@ fn apply_ssl_mode(conf: Config, uri: Uri) -> Result(Config, Nil) {
 }
 
 pub type PglError {
-  PglError(message: String)
+  QueryError(message: String)
   ConnectionError(message: String)
   ConnectionTimeout
   AuthenticationError(message: String)
@@ -544,7 +544,7 @@ fn to_queried(
     False -> Ok(list.map(values, dynamic.array))
   }
   |> result.map(Queried(count: ext.count, fields: ext.fields, rows: _))
-  |> result.map_error(fn(_) { PglError("Failed to process queried rows") })
+  |> result.map_error(fn(_) { QueryError("Failed to process queried rows") })
 }
 
 /// Perform a query with the given SQL string. This function does not accept
