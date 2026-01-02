@@ -273,8 +273,8 @@ fn connect(next: fn(pgl.Connection) -> t) {
 fn with_setup_conn(db: pgl.Db, next: fn(pgl.Connection) -> t) {
   use conn <- pgl.with_connection(db)
 
-  let assert Ok(_) = pgl.exec(drop_table_sql, conn)
-  let assert Ok(_) = pgl.exec(create_table_sql, conn)
+  let assert Ok(_) = pgl.execute(drop_table_sql, conn)
+  let assert Ok(_) = pgl.execute(create_table_sql, conn)
 
   next(conn)
 }
@@ -451,15 +451,15 @@ pub fn pipeline_dependent_queries_test() {
 
   use conn <- with_conn()
 
-  let assert Ok(_) = pgl.exec(drop1, conn)
-  let assert Ok(_) = pgl.exec(drop2, conn)
-  let assert Ok(_) = pgl.exec(drop3, conn)
-  let assert Ok(_) = pgl.exec(drop4, conn)
+  let assert Ok(_) = pgl.execute(drop1, conn)
+  let assert Ok(_) = pgl.execute(drop2, conn)
+  let assert Ok(_) = pgl.execute(drop3, conn)
+  let assert Ok(_) = pgl.execute(drop4, conn)
 
-  let assert Ok(_) = pgl.exec(create1, conn)
-  let assert Ok(_) = pgl.exec(create2, conn)
-  let assert Ok(_) = pgl.exec(create3, conn)
-  let assert Ok(_) = pgl.exec(create4, conn)
+  let assert Ok(_) = pgl.execute(create1, conn)
+  let assert Ok(_) = pgl.execute(create2, conn)
+  let assert Ok(_) = pgl.execute(create3, conn)
+  let assert Ok(_) = pgl.execute(create4, conn)
 
   // create users
 
@@ -605,7 +605,7 @@ pub fn rows_as_maps_test() {
         "DEFAULT, 'Stephen', true, ARRAY['Steve'], '1993-01-01', '2025-01-06 20:01:06.000'",
       ])
 
-    let assert Ok(count) = pgl.exec(sql, conn)
+    let assert Ok(count) = pgl.execute(sql, conn)
     let assert 3 = count
 
     let assert Ok(queried) =
@@ -643,7 +643,7 @@ pub fn selecting_rows_test() {
       "DEFAULT, 'James', true, ARRAY['Jim'], '2233-04-22', '2263-01-09 11:30:22'",
     ])
 
-  let assert Ok(count) = pgl.exec(sql, conn)
+  let assert Ok(count) = pgl.execute(sql, conn)
 
   let assert 1 = count
 
@@ -843,7 +843,7 @@ pub fn invalid_sql_test() {
   let sql = "select       select"
 
   let assert Error(pgl.PostgresError(code:, name:, message:, fields: _)) =
-    pgl.exec(sql, conn)
+    pgl.execute(sql, conn)
 
   let assert "42601" = code
   let assert "syntax_error" = name
@@ -858,7 +858,7 @@ pub fn insert_constraint_error_test() {
       "900, 'William', false, ARRAY['William', 'Will'], '1990-02-09', now()",
       "900, 'Stephen', true, ARRAY['Steve'], '1993-01-01', now()",
     ])
-    |> pgl.exec(conn)
+    |> pgl.execute(conn)
 
   let assert "23505" = code
   let assert "unique_violation" = name
@@ -883,7 +883,7 @@ pub fn select_from_unknown_table_test() {
   let sql = "SELECT * FROM unknown"
 
   let assert Error(pgl.PostgresError(code:, name:, message:, fields: _)) =
-    pgl.exec(sql, conn)
+    pgl.execute(sql, conn)
 
   let assert "42P01" = code
   let assert "undefined_table" = name
@@ -895,7 +895,7 @@ pub fn insert_with_incorrect_type_test() {
 
   let assert Error(pgl.PostgresError(code:, name:, message:, fields: _)) =
     insert_into_users(["true, true, true, true"])
-    |> pgl.exec(conn)
+    |> pgl.execute(conn)
 
   let assert "42804" = code
   let assert "datatype_mismatch" = name
@@ -909,7 +909,7 @@ pub fn execute_with_wrong_number_of_arguments_test() {
 
   let assert Error(pgl.ProtocolError(
     "(ProcessingError) Failed to describe statement parameters",
-  )) = pgl.exec(sql, conn)
+  )) = pgl.execute(sql, conn)
 }
 
 pub fn insert_with_values_test() {
@@ -984,11 +984,11 @@ pub fn transaction_error_test() {
 
   let assert Ok(_) =
     "DROP TABLE IF EXISTS tx_test"
-    |> pgl.exec(conn)
+    |> pgl.execute(conn)
 
   let assert Ok(_) =
     "CREATE TABLE tx_test (id INTEGER PRIMARY KEY, name TEXT)"
-    |> pgl.exec(conn)
+    |> pgl.execute(conn)
 
   let assert Ok(_queried) =
     "INSERT INTO tx_test (id, name) VALUES ($1, $2) RETURNING *"
@@ -1083,7 +1083,7 @@ pub fn savepoint_release_test() {
 // Transaction helper functions
 
 fn setup_users_table(conn: pgl.Connection) {
-  let assert Ok(_) = pgl.exec("truncate table users", conn)
+  let assert Ok(_) = pgl.execute("truncate table users", conn)
 
   Nil
 }

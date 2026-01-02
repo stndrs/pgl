@@ -550,7 +550,7 @@ fn to_queried(
 /// Perform a query with the given SQL string. This function does not accept
 /// any parameters and will send the SQL string as is to the postgres database
 /// server.
-pub fn exec(sql: String, on conn: Connection) -> Result(Int, PglError) {
+pub fn execute(sql: String, on conn: Connection) -> Result(Int, PglError) {
   extended_query(sql, [], conn)
   |> result.map(fn(rows) { rows.count })
   |> result.map_error(from_internal_error)
