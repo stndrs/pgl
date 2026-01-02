@@ -1,7 +1,6 @@
 import gleam/dict
 import gleam/erlang/atom.{type Atom}
 import gleam/int
-import gleam/result
 
 pub opaque type Store(a, b) {
   Store(name: Atom)

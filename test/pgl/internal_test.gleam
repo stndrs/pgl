@@ -1,11 +1,5 @@
 import pgl/internal
 
-pub fn pgl_error_to_string_test() {
-  let assert "(InternalError) message" =
-    internal.InternalError("message")
-    |> internal.error_to_string
-}
-
 pub fn auth_failed_test() {
   let assert "(AuthenticationFailed) message" =
     internal.AuthenticationError(internal.AuthenticationFailed, "message")

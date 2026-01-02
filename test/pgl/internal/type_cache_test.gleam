@@ -61,7 +61,11 @@ fn with_type_cache(next: fn(TypeCache) -> t) {
     type_cache.new()
     |> type_cache.on_connect(fn() {
       socket.connect(sockets)
-      |> result.try(protocol.auth(_, conf()))
+      |> result.map_error(fn(_) { Nil })
+      |> result.try(fn(sock) {
+        protocol.auth(sock, conf())
+        |> result.map_error(fn(_) { Nil })
+      })
     })
 
   let assert Ok(_) = type_cache.start(tc)

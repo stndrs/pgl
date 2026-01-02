@@ -57,9 +57,7 @@ pub fn startup(params: List(#(String, String))) -> BitArray {
   <<size:int-size(32), packet:bits>>
 }
 
-//
-
-pub fn bind(
+fn bind(
   portal_name: BitArray,
   statement_name: BitArray,
   params: List(v),

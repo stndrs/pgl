@@ -195,6 +195,7 @@ fn apply_ssl_mode(conf: Config, uri: Uri) -> Result(Config, Nil) {
 
 pub type PglError {
   PglError(message: String)
+  ConnectionError(message: String)
   ConnectionTimeout
   AuthenticationError(message: String)
   ProtocolError(message: String)
@@ -232,7 +233,6 @@ pub type Field {
 
 fn from_internal_error(err: internal.InternalError) -> PglError {
   case err {
-    internal.InternalError(message:) -> PglError(message:)
     internal.PostgresError(code:, name:, message:, fields:) -> {
       let fields =
         {
@@ -324,9 +324,7 @@ pub fn start(db: Db) -> actor.StartResult(Supervisor) {
   let pool =
     db_pool.new()
     |> db_pool.size(db.config.pool_size)
-    |> db_pool.on_open(fn() {
-      connect(db) |> result.map_error(from_internal_error)
-    })
+    |> db_pool.on_open(fn() { connect(db) })
     |> db_pool.on_close(disconnect)
     |> db_pool.on_interval(fn(conn) {
       let _ = ping(conn)
@@ -352,18 +350,20 @@ pub fn supervised(db: Db) -> supervision.ChildSpecification(Supervisor) {
   |> supervisor.supervised
 }
 
-fn connect(db: Db) -> Result(Connection, internal.InternalError) {
+fn connect(db: Db) -> Result(Connection, PglError) {
   let Db(pool: _, sockets:, config:, type_cache:, query_cache:) = db
 
-  use sock <- result.map(authenticated_connection(config, sockets))
-
-  Connection(
-    sock:,
-    savepoint: None,
-    type_cache:,
-    query_cache:,
-    rows_as_dict: config.rows_as_dict,
-  )
+  authenticated_connection(config, sockets)
+  |> result.map(fn(sock) {
+    Connection(
+      sock:,
+      savepoint: None,
+      type_cache:,
+      query_cache:,
+      rows_as_dict: config.rows_as_dict,
+    )
+  })
+  |> result.map_error(fn(_) { ConnectionError("Failed to open connection") })
 }
 
 fn disconnect(conn: Connection) -> Result(Nil, PglError) {
@@ -374,7 +374,7 @@ fn disconnect(conn: Connection) -> Result(Nil, PglError) {
 fn authenticated_connection(
   config: Config,
   sockets: socket.Factory,
-) -> Result(Socket, internal.InternalError) {
+) -> Result(Socket, Nil) {
   let conf =
     protocol.config
     |> protocol.application(config.application)
@@ -382,8 +382,13 @@ fn authenticated_connection(
     |> protocol.password(config.password)
     |> protocol.database(config.database)
 
-  use sock <- result.try(socket.connect(sockets))
-  protocol.auth(sock, conf)
+  sockets
+  |> socket.connect
+  |> result.map_error(fn(_) { Nil })
+  |> result.try(fn(sock) {
+    protocol.auth(sock, conf)
+    |> result.map_error(fn(_) { Nil })
+  })
 }
 
 /// Checks out a connection passes it to the provided function. After the provided

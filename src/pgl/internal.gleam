@@ -89,7 +89,6 @@ pub type Command {
 // ---------- Errors ---------- //
 
 pub type InternalError {
-  InternalError(message: String)
   AuthenticationError(kind: AuthenticationError, message: String)
   SocketError(code: PosixError, message: String)
   ProtocolError(kind: ProtocolError, message: String)
@@ -103,7 +102,6 @@ pub type InternalError {
 
 pub fn error_to_string(err: InternalError) -> String {
   case err {
-    InternalError(message:) -> "(InternalError) " <> message
     AuthenticationError(kind, msg) -> {
       "(" <> auth_error_to_string(kind) <> ") " <> msg
     }
@@ -323,7 +321,7 @@ fn posix_error_to_string(code: PosixError) -> String {
 }
 
 /// https://www.postgresql.org/docs/current/errcodes-appendix.html
-pub fn pg_error_code_name(error_code: String) -> Result(String, InternalError) {
+pub fn pg_error_code_name(error_code: String) -> Result(String, Nil) {
   case error_code {
     "00000" -> Ok("successful_completion")
     "01000" -> Ok("warning")
@@ -584,6 +582,6 @@ pub fn pg_error_code_name(error_code: String) -> Result(String, InternalError) {
     "XX000" -> Ok("internal_error")
     "XX001" -> Ok("data_corrupted")
     "XX002" -> Ok("index_corrupted")
-    _ -> Error(InternalError("PG SQL Error code not found: " <> error_code))
+    _ -> Error(Nil)
   }
 }

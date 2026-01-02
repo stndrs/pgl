@@ -127,12 +127,9 @@ pub fn parameter(sock: Socket, key: String, value: String) -> Socket {
   Socket(..sock, parameters:)
 }
 
-pub fn connect(factory: Factory) -> Result(Socket, internal.InternalError) {
+pub fn connect(factory: Factory) -> Result(Socket, actor.StartError) {
   factory.get_by_name(factory.name)
   |> factory.start_child(factory.builder)
-  |> result.map_error(fn(_start_error) {
-    internal.InternalError("Failed to start connection")
-  })
   |> result.map(fn(started) { started.data })
 }
 

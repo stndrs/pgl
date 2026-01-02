@@ -9,7 +9,6 @@ import gleam/otp/supervision
 import gleam/result
 import gleam/string
 import pg_value/type_info.{type TypeInfo}
-import pgl/internal
 import pgl/internal/encode
 import pgl/internal/protocol
 import pgl/internal/socket.{type Socket}
@@ -18,7 +17,7 @@ import pgl/internal/store.{type Store}
 pub opaque type TypeCache {
   TypeCache(
     name: process.Name(Message),
-    handle_connect: fn() -> Result(Socket, internal.InternalError),
+    handle_connect: fn() -> Result(Socket, Nil),
   )
 }
 
@@ -40,7 +39,7 @@ pub fn new() -> TypeCache {
 
 pub fn on_connect(
   type_cache: TypeCache,
-  handle_connect: fn() -> Result(Socket, internal.InternalError),
+  handle_connect: fn() -> Result(Socket, Nil),
 ) {
   TypeCache(..type_cache, handle_connect:)
 }
@@ -118,17 +117,23 @@ fn handle_load(
   sock: Socket,
   client: process.Subject(Result(Nil, Nil)),
 ) -> actor.Next(Store(Int, TypeInfo), a) {
-  {
-    let packet = encode.query(bootstrap_sql)
+  bootstrap_sql
+  |> encode.query
+  |> protocol.simple(sock)
+  |> result.map(fn(rows) {
+    case list.try_map(rows, parse_type_info) {
+      Ok(infos) -> {
+        actor.send(client, Ok(Nil))
 
-    use rows <- result.try(protocol.simple(packet, sock))
+        parse_type_infos(store, infos)
+      }
+      Error(_) -> {
+        actor.send(client, Error(Nil))
 
-    use infos <- result.map(list.try_map(rows, parse_type_info))
-
-    actor.send(client, Ok(Nil))
-
-    parse_type_infos(store, infos)
-  }
+        store
+      }
+    }
+  })
   |> result.unwrap(store)
   |> actor.continue
 }
@@ -172,9 +177,7 @@ fn parse_type_infos(
   })
 }
 
-fn parse_type_info(
-  row: List(BitArray),
-) -> Result(TypeInfo, internal.InternalError) {
+fn parse_type_info(row: List(BitArray)) -> Result(TypeInfo, Nil) {
   case row {
     [
       <<oid:bits>>,
@@ -211,11 +214,8 @@ fn parse_type_info(
         |> type_info.base_oid(base_oid)
         |> type_info.comp_oids(comp_oids)
       }
-      |> result.replace_error(internal.InternalError(
-        "Failed to parse type info",
-      ))
     }
-    _ -> Error(internal.InternalError("Unexpected type info format"))
+    _ -> Error(Nil)
   }
 }
 

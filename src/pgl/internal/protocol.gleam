@@ -72,7 +72,7 @@ pub fn auth(
 
 // SSL functions
 
-pub fn ssl_upgrade(
+fn ssl_upgrade(
   sock: Socket,
   ssl: Option(Bool),
 ) -> Result(Socket, internal.InternalError) {
