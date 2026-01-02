@@ -342,6 +342,11 @@ fn connect(db: Db) -> Result(Connection, internal.PglError) {
   )
 }
 
+fn disconnect(conn: Connection) -> Result(Nil, PglError) {
+  socket.shutdown(conn.sock)
+  |> result.map_error(from_internal_error)
+}
+
 fn authenticated_connection(
   config: Config,
   sockets: socket.Factory,
@@ -441,12 +446,6 @@ fn rows_to_maps(
     #(dynamic.string(col), val)
   }
   |> list.map(dynamic.properties)
-}
-
-/// Shuts down a database connection.
-pub fn disconnect(conn: Connection) -> Result(Nil, PglError) {
-  socket.shutdown(conn.sock)
-  |> result.map_error(from_internal_error)
 }
 
 // ---------- Query ---------- //
