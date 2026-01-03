@@ -903,7 +903,7 @@ pub fn select_from_unknown_table_test() {
 }
 
 pub fn insert_with_incorrect_type_test() {
-  use conn <- with_conn()
+  use conn <- connect()
 
   let assert Error(pgl.PostgresError(code:, name:, message:, fields: _)) =
     insert_into_users(["true, true, true, true"])
