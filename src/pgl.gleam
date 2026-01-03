@@ -1,3 +1,5 @@
+//// PostgreSQL database client
+
 import db_pool
 import exception
 import gleam/dict.{type Dict}
@@ -25,22 +27,36 @@ import pgl/internal/type_cache.{type TypeCache}
 
 pub type Config {
   Config(
+    /// Application's name.
     application: String,
+    /// (default: 127.0.0.1) Database server hostname.
     host: String,
+    /// (default: 5432) Database server port.
     port: Int,
+    /// Database username.
     username: String,
+    /// Database user password.
     password: String,
+    /// Database to use.
     database: String,
+    /// Other Postgres connection parameters.
     connection_parameters: List(#(String, String)),
+    /// (default: SslDisabled) SSL enabled or disabled.
     ssl: Ssl,
+    /// (default: False) Return rows as `Dict` or n-tuple.
     rows_as_dict: Bool,
-    // pool options
+    /// (default: 1) Connection pool size.
     pool_size: Int,
+    /// (default: 1000) Idle connections ping the database every `idle_interval`.
     idle_interval: Int,
+    /// (default: 50) How long checking out a connection should take.
     queue_target: Int,
   )
 }
 
+/// A default configuration with a connection pool size of 1.
+/// At minimum you need to set the username, password, and
+/// database values.
 pub const default = Config(
   application: "",
   host: internal.default_host,
@@ -57,8 +73,11 @@ pub const default = Config(
 )
 
 pub type Ssl {
+  /// Disables SSL leaving connections unsecured. Avoid using this in production.
   SslDisabled
+  /// Enables SSL and checks the CA certificate.
   SslVerified
+  /// Enables SSL but does not check the CA certificate.
   SslUnverified
 }
 
@@ -306,6 +325,8 @@ pub type TransactionError(error) {
   TransactionError(message: String)
 }
 
+/// A configured `Db`. Must be started via `pgl.start` or `pgl.supervised`
+/// before use. Once started, `Db` can be passed to `with_connection`.
 pub opaque type Db {
   Db(
     pool: process.Name(db_pool.Message(Connection, PglError)),
@@ -468,21 +489,6 @@ pub opaque type Connection {
   )
 }
 
-fn rows_to_maps(
-  fields: List(String),
-  values: List(List(Dynamic)),
-) -> Result(List(Dynamic), Nil) {
-  use rows <- result.map(list.try_map(values, list.strict_zip(fields, _)))
-
-  {
-    use row <- list.map(rows)
-    use #(col, val) <- list.map(row)
-
-    #(dynamic.string(col), val)
-  }
-  |> list.map(dynamic.properties)
-}
-
 // ---------- Query ---------- //
 
 /// `Queried` captures the number of rows queried, the fields that
@@ -492,7 +498,7 @@ pub type Queried {
   Queried(count: Int, fields: List(String), rows: List(Dynamic))
 }
 
-/// Holds a SQL string and the list of query parameters.
+/// Holds a SQL string and a list of query parameters.
 pub type Query {
   Query(sql: String, params: List(pg_value.Value))
 }
@@ -502,7 +508,7 @@ pub fn sql(sql: String) -> Query {
   Query(sql:, params: [])
 }
 
-/// Sets the list of query parameters for the provided `Query`.
+/// Sets a list of query parameters for the provided `Query`.
 pub fn params(q: Query, params: List(pg_value.Value)) -> Query {
   Query(..q, params:)
 }
@@ -561,11 +567,26 @@ fn to_queried(
   let values = list.reverse(ext.values)
 
   case rows_as_dict {
-    True -> rows_to_maps(ext.fields, values)
+    True -> rows_to_dicts(ext.fields, values)
     False -> Ok(list.map(values, dynamic.array))
   }
   |> result.map(Queried(count: ext.count, fields: ext.fields, rows: _))
   |> result.map_error(fn(_) { QueryError("Failed to process queried rows") })
+}
+
+fn rows_to_dicts(
+  fields: List(String),
+  values: List(List(Dynamic)),
+) -> Result(List(Dynamic), Nil) {
+  use rows <- result.map(list.try_map(values, list.strict_zip(fields, _)))
+
+  {
+    use row <- list.map(rows)
+    use #(col, val) <- list.map(row)
+
+    #(dynamic.string(col), val)
+  }
+  |> list.map(dynamic.properties)
 }
 
 /// Perform a query with the given SQL string. This function will send the
