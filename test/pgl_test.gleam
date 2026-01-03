@@ -399,7 +399,7 @@ pub fn pipeline_multiple_query_test() {
 
   let assert Ok(_) =
     [pgl.Query(insert1, params1), pgl.Query(insert2, params2)]
-    |> pgl.pipeline(conn)
+    |> pgl.batch(conn)
 }
 
 pub fn pipeline_multiple_different_queries_test() {
@@ -415,7 +415,7 @@ pub fn pipeline_multiple_different_queries_test() {
 
   let assert Ok(_) =
     [pgl.Query(insert1, params1), pgl.Query("SELECT 1", [])]
-    |> pgl.pipeline(conn)
+    |> pgl.batch(conn)
 }
 
 pub fn pipeline_dependent_queries_test() {
@@ -469,7 +469,7 @@ pub fn pipeline_dependent_queries_test() {
   let q2 = pgl.Query(create_user_sql, params: [pg_value.text("Will")])
   let q3 = pgl.Query(create_user_sql, params: [pg_value.text("Jean-Luc")])
 
-  let assert Ok(queried) = pgl.pipeline([q1, q2, q3], conn)
+  let assert Ok(queried) = pgl.batch([q1, q2, q3], conn)
 
   let assert Ok(user_ids) =
     queried
@@ -521,7 +521,7 @@ pub fn pipeline_dependent_queries_test() {
       ]
     })
 
-  let assert Ok(queried) = pgl.pipeline(post_queries, conn)
+  let assert Ok(queried) = pgl.batch(post_queries, conn)
 
   let assert Ok(post_ids) =
     queried
@@ -566,7 +566,7 @@ pub fn pipeline_dependent_queries_test() {
       ]
     })
 
-  let assert Ok(queried) = pgl.pipeline(comment_and_tag_queries, conn)
+  let assert Ok(queried) = pgl.batch(comment_and_tag_queries, conn)
 
   let assert Ok(_data) =
     queried

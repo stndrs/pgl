@@ -291,8 +291,6 @@ pub type TransactionError(error) {
   TransactionError(message: String)
 }
 
-// ---------- Pool ---------- //
-
 pub opaque type Db {
   Db(
     pool: process.Name(db_pool.Message(Connection, PglError)),
@@ -303,6 +301,8 @@ pub opaque type Db {
   )
 }
 
+/// Creates a new `Db` record. This must be passed to `pgl.start` or
+/// `pgl.supervised` before it can be used.
 pub fn new(config: Config) -> Db {
   let sockets =
     socket.new()
@@ -378,6 +378,7 @@ fn authenticated_connection(
   let conf =
     protocol.config
     |> protocol.application(config.application)
+    |> protocol.connection_parameters(config.connection_parameters)
     |> protocol.username(config.username)
     |> protocol.password(config.password)
     |> protocol.database(config.database)
@@ -434,6 +435,7 @@ fn pool_error_to_pgl_error(err: db_pool.PoolError(PglError)) -> PglError {
   }
 }
 
+/// Shuts down the `Db`
 pub fn shutdown(db: Db) -> Result(Nil, PglError) {
   db.pool
   |> process.named_subject
@@ -449,6 +451,7 @@ fn ping(conn: Connection) -> Result(Connection, PglError) {
 
 // ---------- Connection ---------- //
 
+/// A single database connection
 pub opaque type Connection {
   Connection(
     sock: Socket,
@@ -476,18 +479,24 @@ fn rows_to_maps(
 
 // ---------- Query ---------- //
 
+/// `Queried` captures the number of rows queried, the fields that
+/// were queried, and rows returned by the query. The rows returned
+/// need to be decoded.
 pub type Queried {
   Queried(count: Int, fields: List(String), rows: List(Dynamic))
 }
 
+/// Holds a SQL string and the list of query parameters.
 pub type Query {
   Query(sql: String, params: List(pg_value.Value))
 }
 
+/// Returns a `Query` with the provided SQL string.
 pub fn sql(sql: String) -> Query {
   Query(sql:, params: [])
 }
 
+/// Sets the list of query parameters for the provided `Query`.
 pub fn params(q: Query, params: List(pg_value.Value)) -> Query {
   Query(..q, params:)
 }
@@ -503,7 +512,13 @@ pub fn query(
   |> result.try(to_queried(_, conn.rows_as_dict))
 }
 
-pub fn pipeline(
+/// Uses [pipelining][1] to send multiple queries to the database server without
+/// waiting for previous queries to complete. Reduces the number of network
+/// roundtrips needed for multiple queries.
+///
+/// [1]: https://www.postgresql.org/docs/current/protocol-flow.html#PROTOCOL-FLOW-PIPELINING
+/// 
+pub fn batch(
   queries: List(Query),
   conn: Connection,
 ) -> Result(List(Queried), PglError) {
@@ -547,9 +562,8 @@ fn to_queried(
   |> result.map_error(fn(_) { QueryError("Failed to process queried rows") })
 }
 
-/// Perform a query with the given SQL string. This function does not accept
-/// any parameters and will send the SQL string as is to the postgres database
-/// server.
+/// Perform a query with the given SQL string. This function will send the
+/// SQL string as is to the postgres database server.
 pub fn execute(sql: String, on conn: Connection) -> Result(Int, PglError) {
   extended_query(sql, [], conn)
   |> result.map(fn(rows) { rows.count })
@@ -665,6 +679,7 @@ pub fn transaction(
   |> result.try(fn(res) { commit(tx) |> result.replace(res) })
 }
 
+/// Begins a transaction
 pub fn begin(conn: Connection) -> Result(Connection, TransactionError(error)) {
   let packet = encode.query("BEGIN")
 
@@ -708,6 +723,7 @@ pub fn rollback(conn: Connection) -> Result(Connection, TransactionError(error))
   }
 }
 
+/// Creates a new savepoint.
 pub fn savepoint(
   conn: Connection,
   next: fn(Connection) -> Result(t, error),
@@ -759,6 +775,7 @@ fn set_savepoint(conn: Connection, savepoint: Int) -> Connection {
   Connection(..conn, savepoint: Some(savepoint))
 }
 
+/// Releases a savepoint.
 pub fn release_savepoint(
   conn: Connection,
 ) -> Result(Connection, TransactionError(error)) {
