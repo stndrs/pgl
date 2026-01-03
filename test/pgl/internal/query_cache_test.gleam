@@ -16,7 +16,7 @@ pub fn insert_lookup_test() {
 
   let assert Ok(_) = query_cache.start(qc)
 
-  query_cache.insert(qc, "SELECT id FROM users", [23])
+  let assert Ok(Nil) = query_cache.insert(qc, "SELECT id FROM users", [23])
 
   let assert Ok([23]) = query_cache.lookup(qc, "SELECT id FROM users")
 
@@ -42,7 +42,7 @@ pub fn reset_test() {
 
   let assert Ok(_) = query_cache.start(qc)
 
-  query_cache.insert(qc, "SELECT id FROM users", [23])
+  let assert Ok(Nil) = query_cache.insert(qc, "SELECT id FROM users", [23])
 
   let assert Ok([23]) = query_cache.lookup(qc, "SELECT id FROM users")
 

@@ -161,17 +161,18 @@ fn parse_type_infos(
 
   oid_to_info
   |> dict.fold(from: store, with: fn(store, oid, info) {
-    info.comp_oids
-    |> list.try_map(dict.get(oid_to_info, _))
-    |> result.try(fn(comp_types) {
-      use elem_type <- result.map(dict.get(oid_to_info, info.elem_oid))
+    let _ =
+      info.comp_oids
+      |> list.try_map(dict.get(oid_to_info, _))
+      |> result.try(fn(comp_types) {
+        use elem_type <- result.map(dict.get(oid_to_info, info.elem_oid))
 
-      info
-      |> type_info.elem_type(Some(elem_type))
-      |> type_info.comp_types(Some(comp_types))
-    })
-    |> result.unwrap(info)
-    |> store.insert(store, oid, _)
+        info
+        |> type_info.elem_type(Some(elem_type))
+        |> type_info.comp_types(Some(comp_types))
+      })
+      |> result.unwrap(info)
+      |> store.insert(store, oid, _)
 
     store
   })

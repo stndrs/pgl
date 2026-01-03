@@ -13,6 +13,8 @@
   ets_new/1,
   ets_insert/3,
   ets_lookup/2,
+  ets_delete/1,
+  ets_delete/2,
   binary_match/2,
   unique_int/0
 ]).
@@ -84,28 +86,43 @@ normalise({error, _} = E) -> E.
 
 %%% ETS %%%
 
+with_rescue(Fun) ->
+  try Fun()
+  catch error:badarg -> {error, nil}
+  end.
+
 ets_new(Name) ->
-  ets:new(Name, [named_table, {read_concurrency, true}]).
+  ets:new(Name, [named_table, private]).
 
 ets_insert(Name, Key, Value) ->
-  try
+  with_rescue(fun() ->
     ets:insert(Name, {Key, Value}),
 
-    {ok, {Key, Value}}
-  catch
-    error:badarg ->
-      {error, nil}
-  end.
+    {ok, nil}
+  end).
 
 ets_lookup(Name, Key) ->
-  try
-    Objects = ets:lookup(Name, Key),
+  with_rescue(fun() ->
+    case ets:lookup(Name, Key) of
+      '$end_of_table' -> {error, nil};
+      [{_Key, Value}] -> {ok, Value};
+      [] -> {error, nil}
+    end
+  end).
 
-    {ok, Objects}
-  catch
-    error:badarg ->
-      {error, nil}
-  end.
+ets_delete(Name) ->
+  with_rescue(fun() ->
+    ets:delete(Name),
+
+    {ok, nil}
+  end).
+
+ets_delete(Name, Key) ->
+  with_rescue(fun() ->
+    ets:delete(Name, Key),
+
+    {ok, nil}
+  end).
 
 %%% Helper functions %%%
 

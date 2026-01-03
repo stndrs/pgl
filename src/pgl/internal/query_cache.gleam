@@ -1,6 +1,7 @@
 import gleam/erlang/process
 import gleam/otp/actor
 import gleam/otp/supervision
+import gleam/result
 import pgl/internal/store.{type Store}
 
 pub opaque type QueryCache {
@@ -9,8 +10,13 @@ pub opaque type QueryCache {
 
 type Message {
   Lookup(client: process.Subject(Result(List(Int), Nil)), query: String)
-  Insert(client: process.Subject(Nil), query: String, desc: List(Int))
-  Reset(client: process.Subject(Nil))
+  Insert(
+    client: process.Subject(Result(Nil, Nil)),
+    query: String,
+    desc: List(Int),
+  )
+  Reset
+  Delete(query: String)
   Shutdown
 }
 
@@ -52,18 +58,28 @@ pub fn lookup(query_cache: QueryCache, query: String) -> Result(List(Int), Nil) 
   |> actor.call(1000, Lookup(_, query))
 }
 
-pub fn insert(query_cache: QueryCache, query: String, oids: List(Int)) -> Nil {
+pub fn insert(
+  query_cache: QueryCache,
+  query: String,
+  oids: List(Int),
+) -> Result(Nil, Nil) {
   process.named_subject(query_cache.name)
   |> actor.call(1000, Insert(_, query, oids))
 }
 
 pub fn reset(query_cache: QueryCache) -> Nil {
   process.named_subject(query_cache.name)
-  |> actor.call(1000, Reset)
+  |> actor.send(Reset)
+}
+
+pub fn delete(query_cache: QueryCache, query: String) -> Nil {
+  process.named_subject(query_cache.name)
+  |> actor.send(Delete(query))
 }
 
 pub fn shutdown(query_cache: QueryCache) -> Nil {
-  process.named_subject(query_cache.name) |> process.send(Shutdown)
+  process.named_subject(query_cache.name)
+  |> process.send(Shutdown)
 }
 
 fn handle_message(
@@ -79,18 +95,23 @@ fn handle_message(
     }
     Insert(client, query, description) -> {
       store.insert(store, query, description)
+      |> result.replace(Nil)
+      |> actor.send(client, _)
 
-      actor.send(client, Nil)
       actor.continue(store)
     }
-    Reset(client) -> {
-      store.delete(store)
+    Reset -> {
+      let _ = store.drop(store)
 
-      actor.send(client, Nil)
       actor.continue(store.new(table_name))
     }
+    Delete(query) -> {
+      let _ = store.delete(store, query)
+
+      actor.continue(store)
+    }
     Shutdown -> {
-      store.delete(store)
+      let _ = store.drop(store)
 
       actor.stop()
     }

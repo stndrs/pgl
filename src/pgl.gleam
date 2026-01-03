@@ -621,7 +621,7 @@ fn on_param_description(
   oids: List(Int),
   conn: Connection,
 ) -> Result(BitArray, Nil) {
-  query_cache.insert(conn.query_cache, sql, oids)
+  use _ <- result.try(query_cache.insert(conn.query_cache, sql, oids))
   use info <- result.try(type_cache.lookup(conn.type_cache, oids))
 
   encode.cached(sql, params, info, pg_value.encode)
