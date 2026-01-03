@@ -33,7 +33,9 @@ pub fn main() {
       use conn <- pgl.with_connection(db)
 
       "SELECT * FROM users WHERE id=$1"
-      |> pgl.query([value.int(1000)], conn)
+      |> pgl.sql
+      |> pgl.params([value.int(1000)])
+      |> pgl.query(conn)
     }
 
   pgl.shutdown(db)
