@@ -2,7 +2,7 @@ import db_pool
 import exception
 import gleam/dict.{type Dict}
 import gleam/dynamic.{type Dynamic}
-import gleam/erlang/process.{type Pid}
+import gleam/erlang/process
 import gleam/int
 import gleam/list
 import gleam/option.{type Option, None, Some}
@@ -34,7 +34,10 @@ pub type Config {
     connection_parameters: List(#(String, String)),
     ssl: Ssl,
     rows_as_dict: Bool,
+    // pool options
     pool_size: Int,
+    idle_interval: Int,
+    queue_target: Int,
   )
 }
 
@@ -49,6 +52,8 @@ pub const default = Config(
   ssl: SslDisabled,
   rows_as_dict: False,
   pool_size: 1,
+  idle_interval: 1000,
+  queue_target: 50,
 )
 
 pub type Ssl {
@@ -57,37 +62,37 @@ pub type Ssl {
   SslUnverified
 }
 
-/// Name of the application connecting to the database
+/// Name of the application connecting to the database.
 pub fn application(conf: Config, application: String) -> Config {
   Config(..conf, application:)
 }
 
-/// The database server hostname
+/// The database server hostname.
 pub fn host(conf: Config, host: String) -> Config {
   Config(..conf, host:)
 }
 
-/// The port on which the database server is listening
+/// The port on which the database server is listening.
 pub fn port(conf: Config, port: Int) -> Config {
   Config(..conf, port:)
 }
 
-/// The username to connect to the database as
+/// The username to connect to the database as.
 pub fn username(conf: Config, username: String) -> Config {
   Config(..conf, username:)
 }
 
-/// The password of the user
+/// The password of the user.
 pub fn password(conf: Config, password: String) -> Config {
   Config(..conf, password:)
 }
 
-/// The name of the database to use
+/// The name of the database to use.
 pub fn database(conf: Config, database: String) -> Config {
   Config(..conf, database:)
 }
 
-/// Sets other postgres connection parameters
+/// Sets other postgres connection parameters.
 pub fn connection_parameter(
   conf: Config,
   name name: String,
@@ -99,19 +104,29 @@ pub fn connection_parameter(
   Config(..conf, connection_parameters:)
 }
 
-/// Whether SSL should be used
+/// Whether SSL should be used.
 pub fn ssl(conf: Config, ssl: Ssl) -> Config {
   Config(..conf, ssl:)
 }
 
-/// Configures rows to be returns as `Dict` rather than n-tuples
+/// Configures rows to be returns as `Dict` rather than n-tuples.
 pub fn rows_as_dict(conf: Config, rows_as_dict: Bool) -> Config {
   Config(..conf, rows_as_dict:)
 }
 
-/// Sets the size of the connection pool
+/// Sets the size of the connection pool.
 pub fn pool_size(conf: Config, pool_size: Int) -> Config {
   Config(..conf, pool_size:)
+}
+
+/// How often idle connections should ping the database server.
+pub fn idle_interval(conf: Config, idle_interval: Int) -> Config {
+  Config(..conf, idle_interval:)
+}
+
+/// How long it should take to check out a connection from the connection pool.
+pub fn queue_target(conf: Config, queue_target: Int) -> Config {
+  Config(..conf, queue_target:)
 }
 
 /// Build a `Config` from a connection url
@@ -324,6 +339,7 @@ pub fn start(db: Db) -> actor.StartResult(Supervisor) {
   let pool =
     db_pool.new()
     |> db_pool.size(db.config.pool_size)
+    |> db_pool.interval(db.config.idle_interval)
     |> db_pool.on_open(fn() { connect(db) })
     |> db_pool.on_close(disconnect)
     |> db_pool.on_interval(fn(conn) {
@@ -405,27 +421,17 @@ fn authenticated_connection(
 ///
 pub fn with_connection(db: Db, next: fn(Connection) -> t) -> Result(t, PglError) {
   let self = process.self()
+  let pool = process.named_subject(db.pool)
 
-  use conn <- result.map(checkout(db, self))
-
-  let res = next(conn)
-
-  checkin(db, conn, self)
-
-  res
-}
-
-fn checkout(db: Db, caller: Pid) -> Result(Connection, PglError) {
-  db.pool
-  |> process.named_subject
-  |> db_pool.checkout(caller, 500)
+  db_pool.checkout(pool, self, db.config.queue_target)
   |> result.map_error(pool_error_to_pgl_error)
-}
+  |> result.map(fn(conn) {
+    let res = next(conn)
 
-fn checkin(db: Db, conn: Connection, caller: Pid) -> Nil {
-  db.pool
-  |> process.named_subject
-  |> db_pool.checkin(conn, caller)
+    db_pool.checkin(pool, conn, self)
+
+    res
+  })
 }
 
 fn pool_error_to_pgl_error(err: db_pool.PoolError(PglError)) -> PglError {
@@ -439,7 +445,7 @@ fn pool_error_to_pgl_error(err: db_pool.PoolError(PglError)) -> PglError {
 pub fn shutdown(db: Db) -> Result(Nil, PglError) {
   db.pool
   |> process.named_subject
-  |> db_pool.shutdown(500)
+  |> db_pool.shutdown(1000)
   |> result.map_error(pool_error_to_pgl_error)
 }
 
