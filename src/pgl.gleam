@@ -534,12 +534,8 @@ pub fn params(q: Query, params: List(pg_value.Value)) -> Query {
 }
 
 /// Perform a query with the given SQL string and list of parameters.
-pub fn query(
-  sql: String,
-  params: List(pg_value.Value),
-  conn: Connection,
-) -> Result(Queried, PglError) {
-  extended_query(sql, params, conn)
+pub fn query(q: Query, conn: Connection) -> Result(Queried, PglError) {
+  extended_query(q.sql, q.params, conn)
   |> result.map_error(from_internal_error)
   |> result.try(to_queried(_, conn.rows_as_dict))
 }

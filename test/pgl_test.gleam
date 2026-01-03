@@ -321,7 +321,8 @@ fn inserting_new_rows(conn: pgl.Connection) {
       "DEFAULT, 'Stephen', true, ARRAY['Steve'], '1993-01-01', '2025-01-06 20:01:06.000'",
     ])
     |> returning(["*"])
-    |> pgl.query([], conn)
+    |> pgl.sql
+    |> pgl.query(conn)
 
   assert 2 == returned.count
 
@@ -384,7 +385,8 @@ pub fn inserting_new_rows_and_returning_test() {
       "DEFAULT, 'Stephen', true, ARRAY['Steve'], '1993-01-01', '2025-01-06 20:01:06.000'",
     ])
     |> returning(["name"])
-    |> pgl.query([], conn)
+    |> pgl.sql
+    |> pgl.query(conn)
 
   assert 2 == returned.count
   assert returned.rows
@@ -625,8 +627,8 @@ pub fn rows_as_maps_test() {
     assert 3 == count
 
     let assert Ok(queried) =
-      "SELECT * FROM users"
-      |> pgl.query([], conn)
+      pgl.sql("SELECT * FROM users")
+      |> pgl.query(conn)
 
     assert 3 == queried.count
 
@@ -664,11 +666,9 @@ pub fn selecting_rows_test() {
   assert 1 == count
 
   let assert Ok(returned) =
-    pgl.query(
-      "SELECT * FROM users WHERE name = $1",
-      [pg_value.Text("James")],
-      conn,
-    )
+    pgl.sql("SELECT * FROM users WHERE name = $1")
+    |> pgl.params([pg_value.Text("James")])
+    |> pgl.query(conn)
 
   assert 1 == returned.count
 
@@ -702,7 +702,10 @@ pub fn varchar_encoding_test() {
     pg_value.Text("postgres"),
   ]
 
-  let assert Ok(result) = pgl.query(sql, params, conn)
+  let assert Ok(result) =
+    pgl.sql(sql)
+    |> pgl.params(params)
+    |> pgl.query(conn)
 
   assert 1 == result.count
 
@@ -722,7 +725,10 @@ pub fn null_encoding_test() {
   let sql = "SELECT $1::TEXT, $1 IS NULL, $2::INT"
   let params = [pg_value.null, pg_value.int(42)]
 
-  let assert Ok(result) = pgl.query(sql, params, conn)
+  let assert Ok(result) =
+    pgl.sql(sql)
+    |> pgl.params(params)
+    |> pgl.query(conn)
 
   assert 1 == result.count
 
@@ -737,7 +743,7 @@ pub fn interval_encoding_test() {
 
   let sql = "SELECT 'P14MT86430S'::INTERVAL"
 
-  let assert Ok(result) = pgl.query(sql, [], conn)
+  let assert Ok(result) = pgl.sql(sql) |> pgl.query(conn)
 
   assert result.rows
     == [
@@ -762,7 +768,10 @@ pub fn interval_roundtrip_test() {
     |> interval.add(interval.seconds(30))
     |> interval.add(interval.microseconds(500_000))
 
-  let assert Ok(queried) = pgl.query(sql, [pg_value.interval(interval)], conn)
+  let assert Ok(queried) =
+    pgl.sql(sql)
+    |> pgl.params([pg_value.interval(interval)])
+    |> pgl.query(conn)
 
   let decoder = {
     use interval <- decode.field(0, interval.decoder())
@@ -781,9 +790,8 @@ pub fn array_encoding_test() {
 
   let sql =
     "SELECT ARRAY['howdy', 'postgres']::TEXT[], ARRAY[1, 2, 3]::INT[], ARRAY[]::TEXT[]"
-  let params = []
 
-  let assert Ok(result) = pgl.query(sql, params, conn)
+  let assert Ok(result) = pgl.sql(sql) |> pgl.query(conn)
 
   assert 1 == result.count
 
@@ -815,7 +823,10 @@ pub fn mixed_types_with_encoding_test() {
 
   let params = [pg_value.Text("Margaret"), pg_value.Bool(True)]
 
-  let assert Ok(result) = pgl.query(sql, params, conn)
+  let assert Ok(result) =
+    pgl.sql(sql)
+    |> pgl.params(params)
+    |> pgl.query(conn)
 
   assert 1 == result.count
 
@@ -840,10 +851,9 @@ pub fn error_handling_test() {
   use conn <- with_conn()
 
   let sql = "SELECT * FROM non_existent_table"
-  let params = []
 
   let assert Error(pgl.PostgresError(code:, name:, message:, fields: _)) =
-    pgl.query(sql, params, conn)
+    pgl.sql(sql) |> pgl.query(conn)
 
   assert "42P01" == code
   assert "undefined_table" == name
@@ -927,17 +937,17 @@ pub fn execute_with_wrong_number_of_arguments_test() {
 pub fn insert_with_values_test() {
   use conn <- connect()
 
-  let sql =
+  let query =
     "INSERT INTO users (name, nicknames, birthday, created_at) VALUES ($1, $2, $3, $4)"
+    |> pgl.sql
+    |> pgl.params([
+      pg_value.text("Richard"),
+      pg_value.array(["Dick", "Robin", "Nightwing"], of: pg_value.text),
+      pg_value.date(calendar.Date(2011, calendar.March, 20)),
+      pg_value.timestamp(timestamp.system_time()),
+    ])
 
-  let values = [
-    pg_value.text("Richard"),
-    pg_value.array(["Dick", "Robin", "Nightwing"], of: pg_value.text),
-    pg_value.date(calendar.Date(2011, calendar.March, 20)),
-    pg_value.timestamp(timestamp.system_time()),
-  ]
-
-  let assert Ok(_) = pgl.query(sql, values, conn)
+  let assert Ok(_) = pgl.query(query, conn)
 }
 
 pub fn transaction_commit_test() {
@@ -957,7 +967,7 @@ pub fn transaction_commit_test() {
   }
 
   let assert Ok(queried) =
-    pgl.query("SELECT id FROM users ORDER BY id", [], conn)
+    pgl.sql("SELECT id FROM users ORDER BY id") |> pgl.query(conn)
 
   let assert Ok([got1, got2]) =
     queried.rows
@@ -985,8 +995,8 @@ pub fn transaction_rollback_test() {
   let assert Ok(conn) = pgl.rollback(tx)
 
   let assert Ok(queried) =
-    "SELECT * FROM users"
-    |> pgl.query([], conn)
+    pgl.sql("SELECT * FROM users")
+    |> pgl.query(conn)
 
   assert 0 == queried.count
 }
@@ -1003,12 +1013,13 @@ pub fn transaction_error_test() {
     |> pgl.execute(conn)
 
   let assert Ok(_queried) =
-    "INSERT INTO tx_test (id, name) VALUES ($1, $2) RETURNING *"
-    |> pgl.query([pg_value.int(1), pg_value.text("Before")], conn)
+    pgl.sql("INSERT INTO tx_test (id, name) VALUES ($1, $2) RETURNING *")
+    |> pgl.params([pg_value.int(1), pg_value.text("Before")])
+    |> pgl.query(conn)
 
   let assert Ok(queried) =
-    "SELECT COUNT(*) FROM tx_test"
-    |> pgl.query([], conn)
+    pgl.sql("SELECT COUNT(*) FROM tx_test")
+    |> pgl.query(conn)
 
   assert 1 == queried.count
 
@@ -1016,19 +1027,21 @@ pub fn transaction_error_test() {
     use tx <- pgl.transaction(conn)
 
     let assert Ok(_queried) =
-      "INSERT INTO tx_test (id, name) VALUES ($1, $2) RETURNING *"
-      |> pgl.query([pg_value.int(2), pg_value.text("Transaction")], tx)
+      pgl.sql("INSERT INTO tx_test (id, name) VALUES ($1, $2) RETURNING *")
+      |> pgl.params([pg_value.int(2), pg_value.text("Transaction")])
+      |> pgl.query(tx)
 
-    "INSERT INTO tx_test (id, name) VALUES ($1, $2) RETURNING *"
-    |> pgl.query([pg_value.int(1), pg_value.text("Duplicate")], tx)
+    pgl.sql("INSERT INTO tx_test (id, name) VALUES ($1, $2) RETURNING *")
+    |> pgl.params([pg_value.int(1), pg_value.text("Duplicate")])
+    |> pgl.query(tx)
   }
 
   assert "23505" == code
   assert "unique_violation" == name
 
   let assert Ok(queried) =
-    "SELECT COUNT(*) FROM tx_test"
-    |> pgl.query([], conn)
+    pgl.sql("SELECT COUNT(*) FROM tx_test")
+    |> pgl.query(conn)
 
   assert 1 == queried.count
 }
@@ -1042,12 +1055,12 @@ pub fn savepoint_test() {
     pgl.transaction(conn, fn(tx) {
       let id1 = insert_into_users_table(tx, "one")
 
-      let assert Ok(_) = pgl.query("SELECT 1", [], tx)
+      let assert Ok(_) = pgl.sql("SELECT 1") |> pgl.query(tx)
 
       pgl.savepoint(tx, fn(tx2) {
         let id2 = insert_into_users_table(tx2, "two")
 
-        let assert Ok(_) = pgl.query("SELECT 1", [], tx2)
+        let assert Ok(_) = pgl.sql("SELECT 1") |> pgl.query(tx2)
 
         Ok(id2)
       })
@@ -1064,12 +1077,12 @@ pub fn savepoint_release_test() {
     pgl.transaction(conn, fn(tx) {
       let id1 = insert_into_users_table(tx, "one")
 
-      let assert Ok(_) = pgl.query("SELECT 1", [], tx)
+      let assert Ok(_) = pgl.sql("SELECT 1") |> pgl.query(tx)
 
       pgl.savepoint(tx, fn(tx2) {
         let id2 = insert_into_users_table(tx2, "two")
 
-        let assert Ok(_) = pgl.query("SELECT 2", [], tx2)
+        let assert Ok(_) = pgl.sql("SELECT 2") |> pgl.query(tx2)
 
         let assert Error(_) =
           pgl.savepoint(tx2, fn(tx3) {
@@ -1086,8 +1099,8 @@ pub fn savepoint_release_test() {
     })
 
   let assert Ok(queried) =
-    "SELECT * FROM users WHERE name IN ('one', 'two', 'three')"
-    |> pgl.query([], conn)
+    pgl.sql("SELECT * FROM users WHERE name IN ('one', 'two', 'three')")
+    |> pgl.query(conn)
 
   assert 2 == queried.count
 }
@@ -1106,7 +1119,8 @@ fn insert_into_users_table(conn: pgl.Connection, name: String) {
       "DEFAULT, '" <> name <> "', true, ARRAY[''], '2025-03-04', now()",
     ])
     |> returning(["id"])
-    |> pgl.query([], conn)
+    |> pgl.sql
+    |> pgl.query(conn)
 
   let assert Ok(row) =
     returned.rows
