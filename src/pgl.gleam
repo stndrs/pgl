@@ -45,6 +45,8 @@ pub type Config {
     ssl: Ssl,
     /// (default: False) Return rows as `Dict` or n-tuple.
     rows_as_dict: Bool,
+    /// (default: Ipv4) The IP version to use
+    ip_version: IpVersion,
     /// (default: 1) Connection pool size.
     pool_size: Int,
     /// (default: 1000) Idle connections ping the database every `idle_interval`.
@@ -67,10 +69,17 @@ pub const default = Config(
   connection_parameters: [],
   ssl: SslDisabled,
   rows_as_dict: False,
+  ip_version: Ipv4,
   pool_size: 1,
   idle_interval: 1000,
   queue_target: 50,
 )
+
+/// The IP version to use
+pub type IpVersion {
+  Ipv4
+  Ipv6
+}
 
 pub type Ssl {
   /// Disables SSL leaving connections unsecured. Avoid using this in production.
@@ -131,6 +140,11 @@ pub fn ssl(conf: Config, ssl: Ssl) -> Config {
 /// Configures rows to be returns as `Dict` rather than n-tuples.
 pub fn rows_as_dict(conf: Config, rows_as_dict: Bool) -> Config {
   Config(..conf, rows_as_dict:)
+}
+
+/// Which IP version to use
+pub fn ip_version(conf: Config, ip_version: IpVersion) -> Config {
+  Config(..conf, ip_version:)
 }
 
 /// Sets the size of the connection pool.
@@ -344,6 +358,12 @@ pub fn new(config: Config) -> Db {
     socket.new()
     |> socket.host(config.host)
     |> socket.port(config.port)
+    |> socket.ipv6({
+      case config.ip_version {
+        Ipv4 -> False
+        Ipv6 -> True
+      }
+    })
     |> socket.factory
 
   let pool = process.new_name("pgl_pool")

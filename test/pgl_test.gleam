@@ -171,15 +171,24 @@ pub fn ssl_test() {
   let assert True = result.port == conf.port
 }
 
+pub fn ip_version_test() {
+  let conf =
+    pgl.default
+    |> pgl.ip_version(pgl.Ipv6)
+
+  assert pgl.Ipv6 == conf.ip_version
+}
+
 pub fn default_values_test() {
   let conf = pgl.default
 
-  let assert "127.0.0.1" = conf.host
-  let assert 5432 = conf.port
-  let assert "" = conf.username
-  let assert "" = conf.password
-  let assert "" = conf.database
-  let assert pgl.SslDisabled = conf.ssl
+  assert "127.0.0.1" == conf.host
+  assert 5432 == conf.port
+  assert "" == conf.username
+  assert "" == conf.password
+  assert "" == conf.database
+  assert pgl.SslDisabled == conf.ssl
+  assert pgl.Ipv4 == conf.ip_version
 }
 
 pub fn connection_parameters_test() {
@@ -350,6 +359,19 @@ pub fn inserting_new_rows_test() {
   use conn <- connect()
 
   inserting_new_rows(conn)
+}
+
+pub fn ipv6_test() {
+  let db =
+    pgl.default
+    |> pgl.database("gleam_pgl_test")
+    |> pgl.username("postgres")
+    |> pgl.password("postgres")
+    |> pgl.host("::1")
+    |> pgl.ip_version(pgl.Ipv6)
+    |> pgl.new
+
+  let assert Ok(_) = pgl.start(db)
 }
 
 // pub fn inserting_new_rows_ssl_test() {

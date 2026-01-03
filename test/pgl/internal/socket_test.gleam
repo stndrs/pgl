@@ -19,6 +19,23 @@ pub fn connect() {
   sock
 }
 
+pub fn connect_ipv6_test() {
+  let assert Ok(tcp_port) = tcp_listen_ipv6(0)
+  let assert Ok(port_num) = inet_port(tcp_port)
+
+  let sockets =
+    socket.new()
+    |> socket.host("::1")
+    |> socket.ipv6(True)
+    |> socket.port(port_num)
+    |> socket.factory
+
+  let assert Ok(_) = supervise(sockets)
+  let assert Ok(sock) = socket.connect(sockets)
+
+  sock
+}
+
 pub fn supervise(sockets: socket.Factory) {
   supervisor.new(supervisor.OneForOne)
   |> supervisor.add(socket.supervised(sockets))
@@ -92,6 +109,9 @@ pub fn receive_error_test() {
 
 @external(erlang, "pgl_ffi", "gen_tcp_listen")
 fn tcp_listen(port: Int) -> Result(Port, internal.PosixError)
+
+@external(erlang, "pgl_ffi", "gen_tcp_listen_ipv6")
+fn tcp_listen_ipv6(port: Int) -> Result(Port, internal.PosixError)
 
 @external(erlang, "inet", "port")
 fn inet_port(port: Port) -> Result(Int, Nil)

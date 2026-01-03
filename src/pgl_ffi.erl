@@ -2,7 +2,8 @@
 
 -export([
   gen_tcp_listen/1,
-  gen_tcp_connect/2,
+  gen_tcp_listen_ipv6/1,
+  gen_tcp_connect/3,
   gen_tcp_send/2,
   gen_tcp_recv/3,
   gen_tcp_shutdown/1,
@@ -52,9 +53,13 @@ ssl_send(Socket, Packet) ->
 
 %%% TCP connection %%%
 
-gen_tcp_connect(Host, Port) ->
-  Connected = gen_tcp:connect(Host, Port, [binary, {packet, raw}, {active, false}]),
-  Connected.
+gen_tcp_connect(Host, Port, UseInet6) ->
+  Inet = case UseInet6 of
+    true -> inet6;
+    false -> inet
+  end,
+
+  gen_tcp:connect(Host, Port, [binary, {packet, raw}, {active, false}, Inet]).
 
 gen_tcp_shutdown(Socket) ->
   Shut = gen_tcp:shutdown(Socket, read_write),
@@ -74,6 +79,16 @@ gen_tcp_listen(Port) ->
     {packet, 0},
     {active, false},
     {reuseaddr, true}
+  ],
+  gen_tcp:listen(Port, Options).
+
+gen_tcp_listen_ipv6(Port) ->
+  Options = [
+    {ip, {0,0,0,0,0,0,0,1}},
+    {packet, 0},
+    {active, false},
+    {reuseaddr, true},
+    inet6
   ],
   gen_tcp:listen(Port, Options).
 

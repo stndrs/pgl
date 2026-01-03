@@ -20,6 +20,7 @@ pub opaque type Builder {
   Builder(
     host: String,
     port: Int,
+    ipv6: Bool,
     timeout: Int,
     send: Sender,
     receive: Receiver,
@@ -66,6 +67,7 @@ pub fn new() -> Builder {
   Builder(
     host: internal.default_host,
     port: internal.default_port,
+    ipv6: False,
     timeout: 1000,
     send: socket_send,
     receive: socket_receive,
@@ -83,6 +85,10 @@ pub fn port(builder: Builder, port: Int) -> Builder {
 
 pub fn timeout(builder: Builder, timeout: Int) -> Builder {
   Builder(..builder, timeout:)
+}
+
+pub fn ipv6(builder: Builder, ipv6: Bool) -> Builder {
+  Builder(..builder, ipv6:)
 }
 
 pub type Sender =
@@ -142,11 +148,12 @@ pub fn supervised(
 }
 
 fn start_socket(builder: Builder) -> actor.StartResult(Socket) {
-  let Builder(host:, port:, timeout:, send:, receive:, shutdown:) = builder
+  let Builder(host:, port:, ipv6:, timeout:, send:, receive:, shutdown:) =
+    builder
 
   actor.new_with_initialiser(1000, fn(subject) {
-    tcp_connect(host, port)
-    |> result.map_error(fn(_) { "Failed to start connection" })
+    tcp_connect(host, port, ipv6)
+    |> result.map_error(internal.error_to_string)
     |> result.map(fn(sock) {
       let selector = process.new_selector() |> process.select(subject)
 
@@ -275,10 +282,11 @@ fn tcp_to_ssl(
 fn tcp_connect(
   host: String,
   port: Int,
+  ipv6: Bool,
 ) -> Result(InternalSocket, internal.InternalError) {
   host
   |> charlist.from_string
-  |> tcp_connect_(port)
+  |> tcp_connect_(port, ipv6)
   |> result.map(Tcp)
   |> result.map_error(fn(code) {
     internal.SocketError(code:, message: "Failed to connect")
@@ -319,6 +327,7 @@ fn socket_shutdown(socket: InternalSocket) -> Result(Nil, internal.PosixError) {
 fn tcp_connect_(
   host: Charlist,
   port: Int,
+  ipv6: Bool,
 ) -> Result(TcpSocket, internal.PosixError)
 
 @external(erlang, "pgl_ffi", "gen_tcp_recv")
