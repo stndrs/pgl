@@ -27,8 +27,8 @@ pub fn lookup_test() {
   let assert Ok(result) = type_cache.lookup(tc, [23])
   let assert Ok(ti) = list.first(result)
 
-  let assert 23 = ti.oid
-  let assert "int4" = ti.name
+  assert 23 == ti.oid
+  assert "int4" == ti.name
 }
 
 pub fn lookup_many_test() {
@@ -45,7 +45,7 @@ pub fn lookup_many_test() {
 
   let assert Ok(result) = type_cache.lookup(tc, oids)
 
-  let assert 4 = result |> list.length
+  assert 4 == list.length(result)
 }
 
 fn with_type_cache(next: fn(TypeCache) -> t) {

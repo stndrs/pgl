@@ -23,8 +23,7 @@ pub fn parse_url_test() {
     "postgres://postgres:supersecretpassword@localhost:5433/gleam_pgl_test"
     |> pgl.from_url
 
-  let assert True =
-    pgl.Config(
+  assert pgl.Config(
       ..pgl.default,
       host: "localhost",
       port: 5433,
@@ -41,8 +40,7 @@ pub fn parse_url_alternative_schema_test() {
     "postgresql://postgres:supersecretpassword@localhost:5433/gleam_pgl_test"
     |> pgl.from_url
 
-  let assert True =
-    pgl.Config(
+  assert pgl.Config(
       ..pgl.default,
       host: "localhost",
       port: 5433,
@@ -68,8 +66,7 @@ pub fn parse_url_ssl_mode_require_test() {
     "postgres://username:pass@localhost:5432/gleam_pgl_test?sslmode=require"
     |> pgl.from_url
 
-  let assert True =
-    pgl.Config(
+  assert pgl.Config(
       ..pgl.default,
       host: "localhost",
       port: 5432,
@@ -86,8 +83,7 @@ pub fn parse_url_ssl_mode_verify_test() {
     "postgres://username:pass@localhost:5432/gleam_pgl_test?sslmode=verify-ca"
     |> pgl.from_url
 
-  let assert True =
-    pgl.Config(
+  assert pgl.Config(
       ..pgl.default,
       host: "localhost",
       port: 5432,
@@ -102,8 +98,7 @@ pub fn parse_url_ssl_mode_verify_test() {
     "postgres://username:pass@localhost:5432/gleam_pgl_test?sslmode=verify-full"
     |> pgl.from_url
 
-  let assert True =
-    pgl.Config(
+  assert pgl.Config(
       ..pgl.default,
       host: "localhost",
       port: 5432,
@@ -121,54 +116,54 @@ pub fn database_test() {
   let conf = pgl.default
   let result = pgl.database(conf, "test_db")
 
-  let assert "test_db" = result.database
-  let assert True = result.host == conf.host
-  let assert True = result.port == conf.port
+  assert "test_db" == result.database
+  assert result.host == conf.host
+  assert result.port == conf.port
 }
 
 pub fn host_test() {
   let conf = pgl.default
   let result = pgl.host(conf, "192.168.1.1")
 
-  let assert "192.168.1.1" = result.host
-  let assert True = result.database == conf.database
-  let assert True = result.port == conf.port
+  assert "192.168.1.1" == result.host
+  assert result.database == conf.database
+  assert result.port == conf.port
 }
 
 pub fn port_test() {
   let conf = pgl.default
   let result = pgl.port(conf, 3306)
 
-  let assert 3306 = result.port
-  let assert True = result.host == conf.host
-  let assert True = result.database == conf.database
+  assert 3306 == result.port
+  assert result.host == conf.host
+  assert result.database == conf.database
 }
 
 pub fn username_test() {
   let conf = pgl.default
   let result = pgl.username(conf, "admin")
 
-  let assert "admin" = result.username
-  let assert True = result.host == conf.host
-  let assert True = result.password == conf.password
+  assert "admin" == result.username
+  assert result.host == conf.host
+  assert result.password == conf.password
 }
 
 pub fn password_test() {
   let conf = pgl.default
   let result = pgl.password(conf, "secret123")
 
-  let assert "secret123" = result.password
-  let assert True = result.username == conf.username
-  let assert True = result.host == conf.host
+  assert "secret123" == result.password
+  assert result.username == conf.username
+  assert result.host == conf.host
 }
 
 pub fn ssl_test() {
   let conf = pgl.default
   let result = pgl.ssl(conf, pgl.SslVerified)
 
-  let assert pgl.SslVerified = result.ssl
-  let assert True = result.host == conf.host
-  let assert True = result.port == conf.port
+  assert pgl.SslVerified == result.ssl
+  assert result.host == conf.host
+  assert result.port == conf.port
 }
 
 pub fn ip_version_test() {
@@ -328,7 +323,7 @@ fn inserting_new_rows(conn: pgl.Connection) {
     |> returning(["*"])
     |> pgl.query([], conn)
 
-  let assert 2 = returned.count
+  assert 2 == returned.count
 
   let assert Ok([william, stephen]) =
     returned.rows
@@ -338,21 +333,21 @@ fn inserting_new_rows(conn: pgl.Connection) {
     timestamp.parse_rfc3339("2025-09-30T09:17:30.100Z")
   let william_birthday = calendar.Date(1990, calendar.February, 9)
 
-  let assert "William" = william.name
-  let assert False = william.active
-  let assert ["William", "Will"] = william.nicknames
-  let assert True = william.created_at == william_created_at
-  let assert True = william.birthday == william_birthday
+  assert "William" == william.name
+  assert False == william.active
+  assert ["William", "Will"] == william.nicknames
+  assert william.created_at == william_created_at
+  assert william.birthday == william_birthday
 
   let assert Ok(stephen_created_at) =
     timestamp.parse_rfc3339("2025-01-06T20:01:06.000Z")
   let stephen_birthday = calendar.Date(1993, calendar.January, 1)
 
-  let assert "Stephen" = stephen.name
-  let assert True = stephen.active
-  let assert ["Steve"] = stephen.nicknames
-  let assert True = stephen.created_at == stephen_created_at
-  let assert True = stephen.birthday == stephen_birthday
+  assert "Stephen" == stephen.name
+  assert stephen.active
+  assert ["Steve"] == stephen.nicknames
+  assert stephen.created_at == stephen_created_at
+  assert stephen.birthday == stephen_birthday
 }
 
 pub fn inserting_new_rows_test() {
@@ -391,9 +386,8 @@ pub fn inserting_new_rows_and_returning_test() {
     |> returning(["name"])
     |> pgl.query([], conn)
 
-  let assert 2 = returned.count
-  let assert True =
-    returned.rows
+  assert 2 == returned.count
+  assert returned.rows
     == [
       dynamic.array([dynamic.string("William")]),
       dynamic.array([dynamic.string("Stephen")]),
@@ -628,21 +622,21 @@ pub fn rows_as_maps_test() {
       ])
 
     let assert Ok(count) = pgl.execute(sql, conn)
-    let assert 3 = count
+    assert 3 == count
 
     let assert Ok(queried) =
       "SELECT * FROM users"
       |> pgl.query([], conn)
 
-    let assert 3 = queried.count
+    assert 3 == queried.count
 
     let assert Ok([james, william, steve]) =
       queried.rows
       |> list.try_map(decode.run(_, user_with_fields_decoder()))
 
-    let assert 1 = james.id
-    let assert 2 = william.id
-    let assert 3 = steve.id
+    assert 1 == james.id
+    assert 2 == william.id
+    assert 3 == steve.id
   })
 }
 
@@ -667,7 +661,7 @@ pub fn selecting_rows_test() {
 
   let assert Ok(count) = pgl.execute(sql, conn)
 
-  let assert 1 = count
+  assert 1 == count
 
   let assert Ok(returned) =
     pgl.query(
@@ -676,7 +670,7 @@ pub fn selecting_rows_test() {
       conn,
     )
 
-  let assert 1 = returned.count
+  assert 1 == returned.count
 
   let assert Ok(james) =
     returned.rows
@@ -687,8 +681,7 @@ pub fn selecting_rows_test() {
 
   let microseconds = { seconds * 1_000_000 } + { nanoseconds / 1000 }
 
-  let assert True =
-    james
+  assert james
     == dynamic.array([
       dynamic.int(1),
       dynamic.string("James"),
@@ -711,10 +704,9 @@ pub fn varchar_encoding_test() {
 
   let assert Ok(result) = pgl.query(sql, params, conn)
 
-  let assert 1 = result.count
+  assert 1 == result.count
 
-  let assert True =
-    result.rows
+  assert result.rows
     == [
       dynamic.array([
         dynamic.string("howdy"),
@@ -732,10 +724,9 @@ pub fn null_encoding_test() {
 
   let assert Ok(result) = pgl.query(sql, params, conn)
 
-  let assert 1 = result.count
+  assert 1 == result.count
 
-  let assert True =
-    result.rows
+  assert result.rows
     == [
       dynamic.array([dynamic.string(""), dynamic.bool(True), dynamic.int(42)]),
     ]
@@ -748,8 +739,7 @@ pub fn interval_encoding_test() {
 
   let assert Ok(result) = pgl.query(sql, [], conn)
 
-  let assert True =
-    result.rows
+  assert result.rows
     == [
       dynamic.array([
         dynamic.array([
@@ -795,7 +785,7 @@ pub fn array_encoding_test() {
 
   let assert Ok(result) = pgl.query(sql, params, conn)
 
-  let assert 1 = result.count
+  assert 1 == result.count
 
   let row_decoder = {
     use text_array <- decode.field(0, decode.list(of: decode.string))
@@ -809,9 +799,9 @@ pub fn array_encoding_test() {
     result.rows
     |> list.try_map(decode.run(_, row_decoder))
 
-  let assert ["howdy", "postgres"] = text
-  let assert [1, 2, 3] = int
-  let assert [] = empty
+  assert ["howdy", "postgres"] == text
+  assert [1, 2, 3] == int
+  assert [] == empty
 }
 
 pub fn mixed_types_with_encoding_test() {
@@ -827,7 +817,7 @@ pub fn mixed_types_with_encoding_test() {
 
   let assert Ok(result) = pgl.query(sql, params, conn)
 
-  let assert 1 = result.count
+  assert 1 == result.count
 
   let row_decoder = {
     use name <- decode.field(0, decode.string)
@@ -841,9 +831,9 @@ pub fn mixed_types_with_encoding_test() {
     result.rows
     |> list.try_map(decode.run(_, row_decoder))
 
-  let assert "Margaret" = name
-  let assert True = active
-  let assert ["Peggy"] = nicknames
+  assert "Margaret" == name
+  assert active
+  assert ["Peggy"] == nicknames
 }
 
 pub fn error_handling_test() {
@@ -855,9 +845,9 @@ pub fn error_handling_test() {
   let assert Error(pgl.PostgresError(code:, name:, message:, fields: _)) =
     pgl.query(sql, params, conn)
 
-  let assert "42P01" = code
-  let assert "undefined_table" = name
-  let assert "relation \"non_existent_table\" does not exist" = message
+  assert "42P01" == code
+  assert "undefined_table" == name
+  assert "relation \"non_existent_table\" does not exist" == message
 }
 
 pub fn invalid_sql_test() {
@@ -867,9 +857,9 @@ pub fn invalid_sql_test() {
   let assert Error(pgl.PostgresError(code:, name:, message:, fields: _)) =
     pgl.execute(sql, conn)
 
-  let assert "42601" = code
-  let assert "syntax_error" = name
-  let assert "syntax error at or near \"select\"" = message
+  assert "42601" == code
+  assert "syntax_error" == name
+  assert "syntax error at or near \"select\"" == message
 }
 
 pub fn insert_constraint_error_test() {
@@ -888,16 +878,16 @@ pub fn insert_constraint_error_test() {
     message
 
   let assert Ok(constraint) = dict.get(fields, pgl.Constraint)
-  let assert "users_pkey" = constraint
+  assert "users_pkey" == constraint
 
   let assert Ok(detail) = dict.get(fields, pgl.Detail)
-  let assert "Key (id)=(900) already exists." = detail
+  assert "Key (id)=(900) already exists." == detail
 
   let assert Ok(table) = dict.get(fields, pgl.Table)
-  let assert "users" = table
+  assert "users" == table
 
   let assert Ok(schema) = dict.get(fields, pgl.Schema)
-  let assert "public" = schema
+  assert "public" == schema
 }
 
 pub fn select_from_unknown_table_test() {
@@ -907,9 +897,9 @@ pub fn select_from_unknown_table_test() {
   let assert Error(pgl.PostgresError(code:, name:, message:, fields: _)) =
     pgl.execute(sql, conn)
 
-  let assert "42P01" = code
-  let assert "undefined_table" = name
-  let assert "relation \"unknown\" does not exist" = message
+  assert "42P01" == code
+  assert "undefined_table" == name
+  assert "relation \"unknown\" does not exist" == message
 }
 
 pub fn insert_with_incorrect_type_test() {
@@ -919,10 +909,10 @@ pub fn insert_with_incorrect_type_test() {
     insert_into_users(["true, true, true, true"])
     |> pgl.execute(conn)
 
-  let assert "42804" = code
-  let assert "datatype_mismatch" = name
-  let assert "column \"id\" is of type integer but expression is of type boolean" =
-    message
+  assert "42804" == code
+  assert "datatype_mismatch" == name
+  assert "column \"id\" is of type integer but expression is of type boolean"
+    == message
 }
 
 pub fn execute_with_wrong_number_of_arguments_test() {
@@ -978,8 +968,8 @@ pub fn transaction_commit_test() {
       })
     })
 
-  let assert True = id1 == got1
-  let assert True = id2 == got2
+  assert id1 == got1
+  assert id2 == got2
 }
 
 pub fn transaction_rollback_test() {
@@ -998,7 +988,7 @@ pub fn transaction_rollback_test() {
     "SELECT * FROM users"
     |> pgl.query([], conn)
 
-  let assert 0 = queried.count
+  assert 0 == queried.count
 }
 
 pub fn transaction_error_test() {
@@ -1020,7 +1010,7 @@ pub fn transaction_error_test() {
     "SELECT COUNT(*) FROM tx_test"
     |> pgl.query([], conn)
 
-  let assert 1 = queried.count
+  assert 1 == queried.count
 
   let assert Error(pgl.RollbackError(pgl.PostgresError(code, name, ..))) = {
     use tx <- pgl.transaction(conn)
@@ -1033,14 +1023,14 @@ pub fn transaction_error_test() {
     |> pgl.query([pg_value.int(1), pg_value.text("Duplicate")], tx)
   }
 
-  let assert "23505" = code
-  let assert "unique_violation" = name
+  assert "23505" == code
+  assert "unique_violation" == name
 
   let assert Ok(queried) =
     "SELECT COUNT(*) FROM tx_test"
     |> pgl.query([], conn)
 
-  let assert 1 = queried.count
+  assert 1 == queried.count
 }
 
 pub fn savepoint_test() {
@@ -1099,7 +1089,7 @@ pub fn savepoint_release_test() {
     "SELECT * FROM users WHERE name IN ('one', 'two', 'three')"
     |> pgl.query([], conn)
 
-  let assert 2 = queried.count
+  assert 2 == queried.count
 }
 
 // Transaction helper functions

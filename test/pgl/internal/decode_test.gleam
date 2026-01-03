@@ -133,7 +133,7 @@ pub fn decode_authentication_test() {
 
     decode.message(<<"R":utf8>>, payload)
     |> result.map(fn(msg) {
-      let assert True = msg == expected
+      assert msg == expected
     })
   })
 }
@@ -183,7 +183,7 @@ pub fn decode_error_response_test() {
     let assert Ok(internal.ErrorResponse(fields:)) =
       decode.message(<<"E":utf8>>, payload)
 
-    let assert True = expected_fields == fields
+    assert expected_fields == fields
   })
 
   decode.message(<<"E":utf8>>, <<>>)
@@ -248,8 +248,8 @@ pub fn decode_command_complete_test() {
     let assert Ok(internal.CommandComplete(command:, rows:)) =
       decode.message(<<"C":utf8>>, bits)
 
-    let assert True = expected_rows == rows
-    let assert True = expected_command == command
+    assert expected_rows == rows
+    assert expected_command == command
   })
 }
 
@@ -269,7 +269,7 @@ pub fn decode_command_complete_invalid_command_test() {
   let assert Error(internal.ProtocolError(internal.DecodingError, msg)) =
     decode.message(<<"C":utf8>>, invalid_bits)
 
-  let assert True = "Invalid " <> name <> " row count" == msg
+  assert "Invalid " <> name <> " row count" == msg
 }
 
 pub fn decode_command_complete_invalid_payload_test() {
@@ -278,34 +278,3 @@ pub fn decode_command_complete_invalid_payload_test() {
     message: "Unexpected payload for CommandComplete",
   )) = decode.message(<<"C":utf8>>, <<0:int-size(1)>>)
 }
-// pub fn decode_error_and_mention_field_type_test() {
-//   [
-//     #("S", internal.Severity),
-//     #("C", internal.Code),
-//     #("M", internal.Message),
-//     #("D", internal.Detail),
-//     #("H", internal.Hint),
-//     #("P", internal.Position),
-//     #("p", internal.InternalPosition),
-//     #("q", internal.InternalQuery),
-//     #("W", internal.Where),
-//     #("s", internal.Schema),
-//     #("t", internal.Table),
-//     #("c", internal.Column),
-//     #("d", internal.DataType),
-//     #("n", internal.Constraint),
-//     #("F", internal.File),
-//     #("L", internal.Line),
-//     #("R", internal.Routine),
-//     #("other", internal.Unknown(<<"other":utf8>>)),
-//   ]
-//   |> list.each(fn(field_type_expected) {
-//     let #(field_type, expected) = field_type_expected
-// 
-//     let assert Ok(internal.ErrorResponse(fields:)) =
-//       decode.message(<<"E":utf8>>, <<field_type:utf8>>)
-// 
-//     let assert Ok(field) = dict.get(fields, expected)
-//     echo field
-//   })
-// }

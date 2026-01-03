@@ -7,5 +7,5 @@ pub fn client_first_test() {
 
   let bits = scram.client_first(<<"username":utf8>>, <<nonce:bits>>)
 
-  let assert True = expected == bits
+  assert expected == bits
 }
