@@ -275,7 +275,7 @@ fn connect(next: fn(pgl.Connection) -> t) {
 // }
 
 fn with_setup_conn(db: pgl.Db, next: fn(pgl.Connection) -> t) {
-  use conn <- pgl.with_connection(db)
+  let conn = pgl.connection(db)
 
   let assert Ok(_) = pgl.execute(drop_table_sql, conn)
   let assert Ok(_) = pgl.execute(create_table_sql, conn)
@@ -286,7 +286,7 @@ fn with_setup_conn(db: pgl.Db, next: fn(pgl.Connection) -> t) {
 fn with_conn(next: fn(pgl.Connection) -> t) {
   let db = global_pool()
 
-  use conn <- pgl.with_connection(db)
+  let conn = pgl.connection(db)
 
   next(conn)
 }

@@ -473,8 +473,13 @@ fn authenticated_connection(
 /// })
 /// ```
 ///
+@deprecated("Use connection instead")
 pub fn with_connection(db: Db, next: fn(Connection) -> t) -> Result(t, PglError) {
   Pool(db:) |> next |> Ok
+}
+
+pub fn connection(db: Db) -> Connection {
+  Pool(db:)
 }
 
 fn pool_error_to_pgl_error(err: db_pool.PoolError(PglError)) -> PglError {
