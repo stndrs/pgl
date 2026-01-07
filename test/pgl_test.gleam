@@ -1,3 +1,4 @@
+import exception
 import gleam/dict
 import gleam/dynamic
 import gleam/dynamic/decode.{type Decoder}
@@ -1029,6 +1030,28 @@ pub fn transaction_rollback_test() {
   assert 0 == queried.count
 }
 
+pub fn transaction_exception_test() {
+  use conn <- connect()
+
+  setup_users_table(conn)
+
+  let assert Error(_) = {
+    use <- exception.rescue()
+    use tx <- pgl.transaction(conn)
+
+    let _id1 = insert_into_users_table(tx, "two")
+    let _id2 = insert_into_users_table(tx, "three")
+
+    panic as "transaction failure!"
+  }
+
+  let assert Ok(queried) =
+    pgl.sql("SELECT * FROM users")
+    |> pgl.query(conn)
+
+  assert 0 == queried.count
+}
+
 pub fn transaction_error_test() {
   use conn <- connect()
 
@@ -1120,6 +1143,83 @@ pub fn savepoint_release_test() {
 
             Error("Nah")
           })
+
+        Ok(id2)
+      })
+      |> result.map(fn(id2) { #(id1, id2) })
+    })
+
+  let assert Ok(queried) =
+    pgl.sql("SELECT * FROM users WHERE name IN ('one', 'two', 'three')")
+    |> pgl.query(conn)
+
+  assert 2 == queried.count
+}
+
+pub fn rollback_savepoint_test() {
+  use conn <- connect()
+
+  setup_users_table(conn)
+
+  let assert Ok(_) =
+    pgl.transaction(conn, fn(tx) {
+      let id1 = insert_into_users_table(tx, "one")
+
+      let assert Ok(_) = pgl.sql("SELECT 1") |> pgl.query(tx)
+
+      pgl.savepoint(tx, fn(tx2) {
+        let id2 = insert_into_users_table(tx2, "two")
+
+        let assert Ok(_) = pgl.sql("SELECT 2") |> pgl.query(tx2)
+
+        let assert Ok(_) =
+          pgl.savepoint(tx2, fn(tx3) {
+            let id3 = insert_into_users_table(tx3, "three")
+
+            let assert order.Gt = int.compare(id3, id2)
+
+            pgl.rollback(tx3)
+          })
+
+        Ok(id2)
+      })
+      |> result.map(fn(id2) { #(id1, id2) })
+    })
+
+  let assert Ok(queried) =
+    pgl.sql("SELECT * FROM users WHERE name IN ('one', 'two', 'three')")
+    |> pgl.query(conn)
+
+  assert 2 == queried.count
+}
+
+pub fn savepoint_exception_test() {
+  use conn <- connect()
+
+  setup_users_table(conn)
+
+  let assert Ok(_) =
+    pgl.transaction(conn, fn(tx) {
+      let id1 = insert_into_users_table(tx, "one")
+
+      let assert Ok(_) = pgl.sql("SELECT 1") |> pgl.query(tx)
+
+      pgl.savepoint(tx, fn(tx2) {
+        let id2 = insert_into_users_table(tx2, "two")
+
+        let assert Ok(_) = pgl.sql("SELECT 2") |> pgl.query(tx2)
+
+        let assert Error(_) = {
+          use <- exception.rescue()
+
+          pgl.savepoint(tx2, fn(tx3) {
+            let id3 = insert_into_users_table(tx3, "three")
+
+            let assert order.Gt = int.compare(id3, id2)
+
+            panic as "savepoint failure!"
+          })
+        }
 
         Ok(id2)
       })
