@@ -867,19 +867,25 @@ fn ensure_in_transaction(
 
 /// Creates a new savepoint.
 pub fn savepoint(
-  conn: Connection,
+  connection: Connection,
   next: fn(Connection) -> Result(t, error),
 ) -> Result(t, TransactionError(error)) {
-  use conn1 <- result.try(next_savepoint(conn))
+  use conn <- result.try(next_savepoint(connection))
 
-  exception.on_crash(fn() { rollback_and_release(conn1) }, fn() { next(conn1) })
+  exception.on_crash(
+    fn() {
+      let assert Ok(_) = rollback_and_release(conn)
+        as "RELEASE SAVEPOINT failed"
+    },
+    fn() { next(conn) },
+  )
   |> result.map_error(fn(err) {
-    case rollback_and_release(conn1) {
-      Ok(_conn1) -> RollbackError(err)
+    case rollback_and_release(conn) {
+      Ok(_conn) -> RollbackError(err)
       Error(err) -> err
     }
   })
-  |> result.try(fn(res) { release_savepoint(conn1) |> result.replace(res) })
+  |> result.try(fn(res) { release_savepoint(conn) |> result.replace(res) })
 }
 
 fn rollback_and_release(
