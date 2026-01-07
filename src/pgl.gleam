@@ -314,20 +314,23 @@ fn from_internal_error(err: internal.InternalError) -> PglError {
 
       PostgresError(code:, name:, message:, fields:)
     }
-    internal.AuthenticationError(_, _) -> {
-      err
-      |> internal.error_to_string
-      |> AuthenticationError
+    internal.AuthenticationError(kind, message) -> {
+      let message =
+        "[" <> internal.auth_error_to_string(kind) <> "] " <> message
+
+      AuthenticationError(message)
     }
-    internal.SocketError(_, _) -> {
-      err
-      |> internal.error_to_string
-      |> SocketError
+    internal.SocketError(code, message) -> {
+      let message =
+        "[" <> internal.posix_error_to_string(code) <> "] " <> message
+
+      SocketError(message)
     }
-    internal.ProtocolError(_, _) -> {
-      err
-      |> internal.error_to_string
-      |> ProtocolError
+    internal.ProtocolError(kind, message) -> {
+      let message =
+        "[" <> internal.protocol_error_to_string(kind) <> "] " <> message
+
+      ProtocolError(message)
     }
   }
 }

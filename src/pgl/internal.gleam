@@ -106,9 +106,9 @@ pub type InternalError {
 pub fn error_to_string(err: InternalError) -> String {
   case err {
     AuthenticationError(kind, msg) -> {
-      kind
-      |> auth_error_to_string
-      |> format_error(msg)
+      let name = "AuthenticationError[" <> auth_error_to_string(kind) <> "]"
+
+      format_error(name, msg)
     }
     SocketError(code, msg) -> {
       let name = "SocketError[" <> posix_error_to_string(code) <> "]"
@@ -116,9 +116,9 @@ pub fn error_to_string(err: InternalError) -> String {
       format_error(name, msg)
     }
     ProtocolError(kind, msg) -> {
-      kind
-      |> protocol_error_to_string
-      |> format_error(msg)
+      let name = "ProtocolError[" <> protocol_error_to_string(kind) <> "]"
+
+      format_error(name, msg)
     }
     PostgresError(code, name, message, _) ->
       format_error_with_values(
@@ -157,7 +157,7 @@ pub fn format_error_with_values(
   |> string.join(", ")
 }
 
-fn auth_error_to_string(err: AuthenticationError) -> String {
+pub fn auth_error_to_string(err: AuthenticationError) -> String {
   case err {
     AuthenticationFailed -> "AuthenticationFailed"
     MethodNotImplemented -> "MethodNotImplemented"
@@ -180,7 +180,7 @@ pub type ProtocolError {
   SslError
 }
 
-fn protocol_error_to_string(err: ProtocolError) {
+pub fn protocol_error_to_string(err: ProtocolError) {
   case err {
     SaslServerError -> "SaslServerError"
     SaslServerFinal -> "SaslServerFinal"
@@ -275,7 +275,7 @@ pub type PosixError {
   Exdev
 }
 
-fn posix_error_to_string(code: PosixError) -> String {
+pub fn posix_error_to_string(code: PosixError) -> String {
   case code {
     Closed -> "closed"
     Timeout -> "timeout"

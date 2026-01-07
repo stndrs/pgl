@@ -930,7 +930,7 @@ pub fn execute_with_wrong_number_of_arguments_test() {
   let sql = "SELECT * FROM users WHERE id = $1"
 
   let assert Error(pgl.ProtocolError(
-    "(ProcessingError) Failed to describe statement parameters",
+    "[ProcessingError] Failed to describe statement parameters",
   )) = pgl.execute(sql, conn)
 }
 
