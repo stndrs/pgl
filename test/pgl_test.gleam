@@ -1,4 +1,3 @@
-import exception
 import gleam/dict
 import gleam/dynamic
 import gleam/dynamic/decode.{type Decoder}
@@ -14,6 +13,7 @@ import global_value
 import pg_value
 import pg_value/interval
 import pgl
+import pgl/internal
 
 pub fn main() {
   gleeunit.main()
@@ -1036,7 +1036,7 @@ pub fn transaction_exception_test() {
   setup_users_table(conn)
 
   let assert Error(_) = {
-    use <- exception.rescue()
+    use <- internal.with_rescue()
     use tx <- pgl.transaction(conn)
 
     let _id1 = insert_into_users_table(tx, "two")
@@ -1210,7 +1210,7 @@ pub fn savepoint_exception_test() {
         let assert Ok(_) = pgl.sql("SELECT 2") |> pgl.query(tx2)
 
         let assert Error(_) = {
-          use <- exception.rescue()
+          use <- internal.with_rescue()
 
           pgl.savepoint(tx2, fn(tx3) {
             let id3 = insert_into_users_table(tx3, "three")

@@ -623,3 +623,25 @@ pub fn pg_error_code_name(error_code: String) -> Result(String, Nil) {
     _ -> Error(Nil)
   }
 }
+
+// ---------- Exceptions ---------- //
+
+@external(erlang, "pgl_ffi", "rescue")
+pub fn with_rescue(next: fn() -> t) -> Result(t, Nil)
+
+@external(erlang, "pgl_ffi", "handle_crash")
+pub fn on_crash(handler: fn() -> a, next: fn() -> b) -> b
+
+pub fn assert_on_crash(
+  handler: fn() -> Result(a, err),
+  message: String,
+  next: fn() -> b,
+) -> b {
+  let handler = fn() {
+    let message = message <> " failed!"
+
+    let assert Ok(_) = handler() as message
+  }
+
+  on_crash(handler, next)
+}

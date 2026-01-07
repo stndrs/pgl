@@ -16,6 +16,8 @@
   ets_lookup/2,
   ets_delete/1,
   ets_delete/2,
+  rescue/1,
+  handle_crash/2,
   binary_match/2,
   unique_int/0
 ]).
@@ -101,11 +103,6 @@ normalise({error, _} = E) -> E.
 
 %%% ETS %%%
 
-with_rescue(Fun) ->
-  try Fun()
-  catch error:badarg -> {error, nil}
-  end.
-
 ets_new(Name) ->
   ets:new(Name, [named_table, private]).
 
@@ -138,6 +135,25 @@ ets_delete(Name, Key) ->
 
     {ok, nil}
   end).
+
+%%% Exception handling %%%
+
+with_rescue(Fun) ->
+  try Fun()
+  catch error:badarg -> {error, nil}
+  end.
+
+rescue(Fun) ->
+  try {ok, Fun()}
+  catch _:_:_ -> {error, nil}
+  end.
+
+handle_crash(Handler, Fun) ->
+  try Fun()
+  catch Class:Reason:Stacktrace ->
+    Handler(),
+    erlang:raise(Class, Reason, Stacktrace)
+  end.
 
 %%% Helper functions %%%
 

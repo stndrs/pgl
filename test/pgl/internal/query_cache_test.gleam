@@ -1,4 +1,4 @@
-import exception
+import pgl/internal
 import pgl/internal/query_cache
 
 pub fn lookup_empty_test() {
@@ -32,7 +32,7 @@ pub fn insert_error_test() {
 
   // Exception raised because the process is DOWN
   let assert Error(_) =
-    exception.rescue(fn() {
+    internal.with_rescue(fn() {
       query_cache.insert(qc, "SELECT id FROM users", [23])
     })
 }

@@ -1,5 +1,6 @@
 import gleam/int
 import pgl/internal
+import pgl/internal/store
 
 pub fn format_error_test() {
   assert "(Name)" == internal.format_error("Name", "")
@@ -69,4 +70,53 @@ pub fn ssl_error_to_string_test() {
   assert "(ProtocolError[SSLError]) message"
     == internal.ProtocolError(internal.SslError, "message")
     |> internal.error_to_string
+}
+
+pub fn with_rescue_test() {
+  let assert Error(Nil) = {
+    use <- internal.with_rescue()
+
+    panic as "Failure"
+  }
+}
+
+pub fn on_crash_test() {
+  let data = store.new("on_crash_test")
+
+  let assert Error(Nil) = {
+    use <- internal.with_rescue()
+
+    use <- internal.on_crash(fn() { store.insert(data, "key", 10) })
+
+    panic as "Failure"
+  }
+
+  let assert Ok(10) = store.lookup(data, "key")
+}
+
+pub fn assert_on_crash_ok_test() {
+  let data = store.new("on_crash_test")
+
+  let assert Error(Nil) = {
+    use <- internal.with_rescue()
+
+    use <- internal.assert_on_crash(
+      fn() { store.insert(data, "key", 10) },
+      "message",
+    )
+
+    panic as "Failure"
+  }
+
+  let assert Ok(10) = store.lookup(data, "key")
+}
+
+pub fn assert_on_crash_error_test() {
+  let assert Error(Nil) = {
+    use <- internal.with_rescue()
+
+    use <- internal.assert_on_crash(fn() { Error(Nil) }, "message")
+
+    panic as "Failure"
+  }
 }

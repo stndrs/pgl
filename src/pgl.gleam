@@ -1,7 +1,6 @@
 //// PostgreSQL database client
 
 import db_pool
-import exception
 import gleam/dict.{type Dict}
 import gleam/dynamic.{type Dynamic}
 import gleam/erlang/process
@@ -768,11 +767,9 @@ fn do_transaction(
 ) -> Result(t, TransactionError(error)) {
   use conn <- result.try(transaction_query("BEGIN", conn))
 
-  exception.on_crash(
-    fn() {
-      let assert Ok(_) = transaction_query("ROLLBACK", conn)
-        as "ROLLBACK failed"
-    },
+  internal.assert_on_crash(
+    fn() { transaction_query("ROLLBACK", conn) },
+    "ROLLBACK",
     fn() { next(conn) },
   )
   |> result.map_error(fn(err) {
@@ -906,11 +903,9 @@ fn do_savepoint(
   conn.savepoint_statement(conn)
   |> transaction_query(conn)
   |> result.try(fn(conn) {
-    exception.on_crash(
-      fn() {
-        let assert Ok(_) = rollback_and_release(conn)
-          as "rollback and release savepoint failed"
-      },
+    internal.assert_on_crash(
+      fn() { rollback_and_release(conn) },
+      "rollback and release savepoint",
       fn() { next(conn) },
     )
     |> result.map_error(fn(err) {
