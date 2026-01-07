@@ -1,4 +1,21 @@
+import gleam/int
 import pgl/internal
+
+pub fn format_error_test() {
+  assert "(Name)" == internal.format_error("Name", "")
+
+  assert "(Name) message" == internal.format_error("Name", "message")
+}
+
+pub fn format_error_with_values() {
+  assert "(Name) message, first: 10, second: 20"
+    == internal.format_error_with_values(
+      "Name",
+      "message",
+      [#("first", 10), #("second", 20)],
+      int.to_string,
+    )
+}
 
 pub fn auth_failed_test() {
   assert "(AuthenticationFailed) message"

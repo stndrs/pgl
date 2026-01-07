@@ -5,6 +5,7 @@ import exception
 import gleam/dict.{type Dict}
 import gleam/dynamic.{type Dynamic}
 import gleam/erlang/process
+import gleam/function
 import gleam/int
 import gleam/list
 import gleam/option.{type Option, None, Some}
@@ -256,6 +257,27 @@ pub type PglError {
   )
 }
 
+pub fn error_to_string(err: PglError) -> String {
+  case err {
+    QueryError(message) -> internal.format_error("QueryError", message)
+    ConnectionError(message) ->
+      internal.format_error("ConnectionError", message)
+    ConnectionTimeout -> internal.format_error("ConnectionTimeout", "")
+    AuthenticationError(message) ->
+      internal.format_error("AuthenticationError", message)
+    ProtocolError(message) -> internal.format_error("ProtocolError", message)
+    SocketError(message) -> internal.format_error("SocketError", message)
+    PostgresError(code:, name:, message:, fields: _) -> {
+      internal.format_error_with_values(
+        "PostgresError",
+        "",
+        [#("code", code), #("name", name), #("message", message)],
+        function.identity,
+      )
+    }
+  }
+}
+
 // https://www.postgresql.org/docs/current/protocol-error-fields.html
 /// Error and notice message fields
 pub type Field {
@@ -343,7 +365,7 @@ pub type TransactionError(error) {
 /// before use. Once started, `Db` can be passed to `with_connection`.
 pub opaque type Db {
   Db(
-    pool: process.Name(db_pool.Message(Connection, PglError)),
+    pool: process.Name(db_pool.Message(Socket, PglError)),
     sockets: socket.Factory,
     type_cache: TypeCache,
     query_cache: QueryCache,
@@ -407,24 +429,13 @@ pub fn supervised(db: Db) -> supervision.ChildSpecification(Supervisor) {
   |> supervisor.supervised
 }
 
-fn connect(db: Db) -> Result(Connection, PglError) {
-  let Db(pool: _, sockets:, config:, type_cache:, query_cache:) = db
-
-  authenticated_connection(config, sockets)
-  |> result.map(fn(sock) {
-    Connection(
-      sock:,
-      savepoint: None,
-      type_cache:,
-      query_cache:,
-      rows_as_dict: config.rows_as_dict,
-    )
-  })
+fn connect(db: Db) -> Result(Socket, PglError) {
+  authenticated_connection(db.config, db.sockets)
   |> result.map_error(fn(_) { ConnectionError("Failed to open connection") })
 }
 
-fn disconnect(conn: Connection) -> Result(Nil, PglError) {
-  socket.shutdown(conn.sock)
+fn disconnect(sock: Socket) -> Result(Nil, PglError) {
+  socket.shutdown(sock)
   |> result.map_error(from_internal_error)
 }
 
@@ -449,8 +460,7 @@ fn authenticated_connection(
   })
 }
 
-/// Checks out a connection passes it to the provided function. After the provided
-/// function returns, the connection is checked back in.
+/// Creates a `Connection` and passes it to the provided function.
 ///
 /// Example:
 ///
@@ -461,18 +471,7 @@ fn authenticated_connection(
 /// ```
 ///
 pub fn with_connection(db: Db, next: fn(Connection) -> t) -> Result(t, PglError) {
-  let self = process.self()
-  let pool = process.named_subject(db.pool)
-
-  db_pool.checkout(pool, self, db.config.queue_target)
-  |> result.map_error(pool_error_to_pgl_error)
-  |> result.map(fn(conn) {
-    let res = next(conn)
-
-    db_pool.checkin(pool, conn, self)
-
-    res
-  })
+  Pool(db:) |> next |> Ok
 }
 
 fn pool_error_to_pgl_error(err: db_pool.PoolError(PglError)) -> PglError {
@@ -490,23 +489,56 @@ pub fn shutdown(db: Db) -> Result(Nil, PglError) {
   |> result.map_error(pool_error_to_pgl_error)
 }
 
-fn ping(conn: Connection) -> Result(Connection, PglError) {
-  protocol.ping(conn.sock)
-  |> result.replace(conn)
+fn ping(sock: Socket) -> Result(Socket, PglError) {
+  protocol.ping(sock)
   |> result.map_error(from_internal_error)
 }
 
 // ---------- Connection ---------- //
 
-/// A single database connection
+/// A `Connection` that can be reference to the connection pool, or a
+/// single connection.
 pub opaque type Connection {
-  Connection(
-    sock: Socket,
-    savepoint: Option(Int),
-    type_cache: TypeCache,
-    query_cache: QueryCache,
-    rows_as_dict: Bool,
-  )
+  Pool(db: Db)
+  Connection(conn: SingleConnection, db: Db)
+}
+
+type SingleConnection {
+  SingleConnection(sock: Socket, savepoint: Option(Int), caller: process.Pid)
+}
+
+fn with_single_connection(
+  conn: Connection,
+  next: fn(SingleConnection, Db) -> Result(t, PglError),
+) -> Result(t, PglError) {
+  case conn {
+    Pool(db:) -> {
+      let self = process.self()
+
+      use conn <- result.try(checkout(db, self))
+
+      let res = next(conn, db)
+
+      checkin(db, conn.sock, self)
+
+      res
+    }
+    Connection(conn:, db:) -> next(conn, db)
+  }
+}
+
+fn checkout(db: Db, self: process.Pid) -> Result(SingleConnection, PglError) {
+  db.pool
+  |> process.named_subject
+  |> db_pool.checkout(self, db.config.queue_target)
+  |> result.map(SingleConnection(_, savepoint: None, caller: self))
+  |> result.map_error(pool_error_to_pgl_error)
+}
+
+fn checkin(db: Db, sock: Socket, self: process.Pid) -> Nil {
+  db.pool
+  |> process.named_subject
+  |> db_pool.checkin(sock, self)
 }
 
 // ---------- Query ---------- //
@@ -535,9 +567,11 @@ pub fn params(q: Query, params: List(pg_value.Value)) -> Query {
 
 /// Perform a query with the given SQL string and list of parameters.
 pub fn query(q: Query, conn: Connection) -> Result(Queried, PglError) {
-  extended_query(q.sql, q.params, conn)
+  use conn, db <- with_single_connection(conn)
+
+  extended_query(q.sql, q.params, conn, db)
   |> result.map_error(from_internal_error)
-  |> result.try(to_queried(_, conn.rows_as_dict))
+  |> result.try(to_queried(_, db.config.rows_as_dict))
 }
 
 /// Uses [pipelining][1] to send multiple queries to the database server without
@@ -550,13 +584,15 @@ pub fn batch(
   queries: List(Query),
   conn: Connection,
 ) -> Result(List(Queried), PglError) {
+  use conn, db <- with_single_connection(conn)
+
   let messages =
     queries
     |> list.try_map(fn(query) {
       let Query(sql, params) = query
 
-      use oids <- result.try(query_cache.lookup(conn.query_cache, sql))
-      use info <- result.map(type_cache.lookup(conn.type_cache, oids))
+      use oids <- result.try(query_cache.lookup(db.query_cache, sql))
+      use info <- result.map(type_cache.lookup(db.type_cache, oids))
 
       encode.cached(sql, params, info, pg_value.encode)
     })
@@ -564,7 +600,7 @@ pub fn batch(
       list.map(queries, fn(q) { encode.uncached(q.sql, q.params) })
     })
 
-  let ext = extended(conn)
+  let ext = extended(db)
 
   protocol.pipeline()
   |> protocol.batch_process(ext, messages, conn.sock)
@@ -572,7 +608,7 @@ pub fn batch(
   |> result.try(fn(exts) {
     use ext <- list.try_map(exts)
 
-    to_queried(ext, conn.rows_as_dict)
+    to_queried(ext, db.config.rows_as_dict)
   })
 }
 
@@ -608,7 +644,9 @@ fn rows_to_dicts(
 /// Perform a query with the given SQL string. This function will send the
 /// SQL string as is to the postgres database server.
 pub fn execute(sql: String, on conn: Connection) -> Result(Int, PglError) {
-  extended_query(sql, [], conn)
+  use conn, db <- with_single_connection(conn)
+
+  extended_query(sql, [], conn, db)
   |> result.map(fn(rows) { rows.count })
   |> result.map_error(from_internal_error)
 }
@@ -616,21 +654,22 @@ pub fn execute(sql: String, on conn: Connection) -> Result(Int, PglError) {
 fn extended_query(
   sql: String,
   params: List(pg_value.Value),
-  conn: Connection,
+  conn: SingleConnection,
+  db: Db,
 ) -> Result(protocol.Extended(pg_value.Value), internal.InternalError) {
   let message =
-    encode_from_cache(sql, params, conn)
+    encode_from_cache(sql, params, db)
     |> result.lazy_unwrap(fn() { encode.uncached(sql, params) })
 
-  extended(conn)
+  extended(db)
   |> protocol.process(message, conn.sock)
 }
 
-fn extended(conn: Connection) -> protocol.Extended(pg_value.Value) {
+fn extended(db: Db) -> protocol.Extended(pg_value.Value) {
   protocol.extended()
-  |> protocol.on_decode_row(fn(vals, oids) { decode_row(vals, oids, conn) })
+  |> protocol.on_decode_row(fn(vals, oids) { decode_row(vals, oids, db) })
   |> protocol.on_param_description(fn(sql, params, oids) {
-    on_param_description(sql, params, oids, conn)
+    on_param_description(sql, params, oids, db)
     |> result.map_error(fn(_) {
       internal.ProtocolError(
         kind: internal.ProcessingError,
@@ -643,10 +682,10 @@ fn extended(conn: Connection) -> protocol.Extended(pg_value.Value) {
 fn encode_from_cache(
   sql: String,
   params: List(pg_value.Value),
-  conn: Connection,
+  db: Db,
 ) -> Result(encode.Query(pg_value.Value, TypeInfo), Nil) {
-  use oids <- result.try(query_cache.lookup(conn.query_cache, sql))
-  use info <- result.map(type_cache.lookup(conn.type_cache, oids))
+  use oids <- result.try(query_cache.lookup(db.query_cache, sql))
+  use info <- result.map(type_cache.lookup(db.type_cache, oids))
 
   encode.cached(sql, params, info, pg_value.encode)
   |> encode.with_sync
@@ -656,10 +695,10 @@ fn on_param_description(
   sql: String,
   params: List(pg_value.Value),
   oids: List(Int),
-  conn: Connection,
+  db: Db,
 ) -> Result(BitArray, Nil) {
-  use _ <- result.try(query_cache.insert(conn.query_cache, sql, oids))
-  use info <- result.try(type_cache.lookup(conn.type_cache, oids))
+  use _ <- result.try(query_cache.insert(db.query_cache, sql, oids))
+  use info <- result.try(type_cache.lookup(db.type_cache, oids))
 
   encode.cached(sql, params, info, pg_value.encode)
   |> encode.with_sync
@@ -670,9 +709,9 @@ fn on_param_description(
 fn decode_row(
   values: List(BitArray),
   oids: List(Int),
-  conn: Connection,
+  db: Db,
 ) -> Result(List(Dynamic), internal.InternalError) {
-  type_cache.lookup(conn.type_cache, oids)
+  type_cache.lookup(db.type_cache, oids)
   |> result.map_error(fn(_) {
     internal.ProtocolError(
       kind: internal.DecodingError,
@@ -707,62 +746,114 @@ fn decode_row_values(
 /// If the given function returns an error result, the transaction will also
 /// be rolled back and an error result returned.
 pub fn transaction(
-  conn: Connection,
+  connection: Connection,
   next: fn(Connection) -> Result(t, error),
 ) -> Result(t, TransactionError(error)) {
-  use tx <- result.try(begin(conn))
+  use tx_conn, db <- with_transaction(connection)
 
-  exception.on_crash(fn() { rollback(tx) }, fn() { next(tx) })
+  use _ <- result.try(transaction_query("BEGIN", tx_conn))
+
+  exception.on_crash(
+    fn() {
+      let assert Ok(_) = transaction_query("ROLLBACK", tx_conn)
+        as "ROLLBACK failed"
+    },
+    fn() { next(Connection(conn: tx_conn, db:)) },
+  )
   |> result.map_error(fn(err) {
-    case rollback(tx) {
+    case end_transaction("ROLLBACK", tx_conn, db) {
       Ok(_tx) -> RollbackError(err)
       Error(err) -> err
     }
   })
-  |> result.try(fn(res) { commit(tx) |> result.replace(res) })
-}
-
-/// Begins a transaction
-pub fn begin(conn: Connection) -> Result(Connection, TransactionError(error)) {
-  let packet = encode.query("BEGIN")
-
-  protocol.simple(packet, conn.sock)
-  |> result.replace(conn)
-  |> result.map_error(fn(err) {
-    err
-    |> internal.error_to_string
-    |> TransactionError
+  |> result.try(fn(res) {
+    end_transaction("COMMIT", tx_conn, db) |> result.replace(res)
   })
 }
 
-/// Commits a transaction
-pub fn commit(conn: Connection) -> Result(Connection, TransactionError(error)) {
-  let packet = encode.query("COMMIT")
+/// Begins a transaction.
+///
+/// You should typically use `pgl.transaction` to take care of starting and
+/// ending transactions.
+pub fn begin(
+  connection: Connection,
+) -> Result(Connection, TransactionError(error)) {
+  use conn, db <- with_transaction(connection)
 
-  protocol.simple(packet, conn.sock)
-  |> result.replace(conn)
-  |> result.map_error(fn(err) {
-    err
-    |> internal.error_to_string
-    |> TransactionError
-  })
+  transaction_query("BEGIN", conn)
+  |> result.map(fn(_) { Connection(conn:, db:) })
 }
 
-/// Rolls back a transaction
-pub fn rollback(conn: Connection) -> Result(Connection, TransactionError(error)) {
-  case conn.savepoint {
-    Some(num) -> rollback_savepoint(num, conn)
-    None -> {
-      let packet = encode.query("ROLLBACK")
+fn with_transaction(
+  connection: Connection,
+  next: fn(SingleConnection, Db) -> Result(t, TransactionError(error)),
+) -> Result(t, TransactionError(error)) {
+  case connection {
+    Pool(db:) -> {
+      let self = process.self()
 
-      protocol.simple(packet, conn.sock)
-      |> result.replace(conn)
-      |> result.map_error(fn(err) {
-        err
-        |> internal.error_to_string
+      checkout(db, self)
+      |> result.map_error(fn(pgl_error) {
+        pgl_error
+        |> error_to_string
         |> TransactionError
       })
+      |> result.try(next(_, db))
     }
+    Connection(conn:, db:) -> next(conn, db)
+  }
+}
+
+/// Commits a transaction.
+///
+/// You should typically use `pgl.transaction` to take care of starting and
+/// ending transactions.
+pub fn commit(
+  connection: Connection,
+) -> Result(Connection, TransactionError(error)) {
+  use conn, db <- ensure_in_transaction(connection)
+
+  end_transaction("COMMIT", conn, db)
+}
+
+/// Rolls back to a savepoint if one exists, otherwise rolls back the transaction.
+///
+/// You should typically use `pgl.transaction` to take care of starting and
+/// ending transactions.
+pub fn rollback(
+  connection: Connection,
+) -> Result(Connection, TransactionError(error)) {
+  use conn, db <- ensure_in_transaction(connection)
+
+  case conn.savepoint {
+    Some(num) -> {
+      rollback_savepoint(num, conn)
+      |> result.replace(connection)
+    }
+    None -> end_transaction("ROLLBACK", conn, db)
+  }
+}
+
+fn end_transaction(
+  query: String,
+  conn: SingleConnection,
+  db: Db,
+) -> Result(Connection, TransactionError(error)) {
+  transaction_query(query, conn)
+  |> result.map(fn(_) {
+    checkin(db, conn.sock, conn.caller)
+
+    Pool(db:)
+  })
+}
+
+fn ensure_in_transaction(
+  conn: Connection,
+  next: fn(SingleConnection, Db) -> Result(t, TransactionError(error)),
+) -> Result(t, TransactionError(error)) {
+  case conn {
+    Pool(..) -> Error(NotInTransaction)
+    Connection(conn:, db:) -> next(conn, db)
   }
 }
 
@@ -793,8 +884,10 @@ fn rollback_and_release(
 const savepoint_name = "pgl_savepoint"
 
 fn next_savepoint(
-  conn: Connection,
+  connection: Connection,
 ) -> Result(Connection, TransactionError(error)) {
+  use conn, db <- ensure_in_transaction(connection)
+
   let num = case conn.savepoint {
     Some(num) -> num
     None -> 0
@@ -806,7 +899,11 @@ fn next_savepoint(
   let packet = encode.query(statement)
 
   protocol.simple(packet, conn.sock)
-  |> result.map(fn(_) { set_savepoint(conn, savepoint) })
+  |> result.map(fn(_) {
+    conn
+    |> set_savepoint(savepoint)
+    |> Connection(db)
+  })
   |> result.map_error(fn(err) {
     err
     |> internal.error_to_string
@@ -814,14 +911,16 @@ fn next_savepoint(
   })
 }
 
-fn set_savepoint(conn: Connection, savepoint: Int) -> Connection {
-  Connection(..conn, savepoint: Some(savepoint))
+fn set_savepoint(conn: SingleConnection, savepoint: Int) -> SingleConnection {
+  SingleConnection(..conn, savepoint: Some(savepoint))
 }
 
 /// Releases a savepoint.
 pub fn release_savepoint(
-  conn: Connection,
+  connection: Connection,
 ) -> Result(Connection, TransactionError(error)) {
+  use conn, _db <- ensure_in_transaction(connection)
+
   case conn.savepoint {
     Some(num) -> {
       let statement =
@@ -830,7 +929,7 @@ pub fn release_savepoint(
       let packet = encode.query(statement)
 
       protocol.simple(packet, conn.sock)
-      |> result.replace(conn)
+      |> result.replace(connection)
       |> result.map_error(fn(err) {
         err
         |> internal.error_to_string
@@ -843,8 +942,8 @@ pub fn release_savepoint(
 
 fn rollback_savepoint(
   num: Int,
-  conn: Connection,
-) -> Result(Connection, TransactionError(error)) {
+  conn: SingleConnection,
+) -> Result(List(List(BitArray)), TransactionError(error)) {
   let savepoint = num - 1
   let statement =
     "ROLLBACK TO SAVEPOINT "
@@ -852,10 +951,16 @@ fn rollback_savepoint(
     <> int.to_string(savepoint)
     <> ";"
 
-  let packet = encode.query(statement)
+  transaction_query(statement, conn)
+}
+
+fn transaction_query(
+  query: String,
+  conn: SingleConnection,
+) -> Result(List(List(BitArray)), TransactionError(error)) {
+  let packet = encode.query(query)
 
   protocol.simple(packet, conn.sock)
-  |> result.replace(conn)
   |> result.map_error(fn(err) {
     err
     |> internal.error_to_string

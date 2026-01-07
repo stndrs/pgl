@@ -950,6 +950,34 @@ pub fn insert_with_values_test() {
   let assert Ok(_) = pgl.query(query, conn)
 }
 
+pub fn begin_commit_test() {
+  use conn <- connect()
+
+  let assert Ok(conn) = pgl.begin(conn)
+
+  let assert Ok(_conn) = pgl.commit(conn)
+}
+
+pub fn begin_rollback_test() {
+  use conn <- connect()
+
+  let assert Ok(conn) = pgl.begin(conn)
+
+  let assert Ok(_conn) = pgl.rollback(conn)
+}
+
+pub fn commit_error_test() {
+  use conn <- connect()
+
+  let assert Error(pgl.NotInTransaction) = pgl.commit(conn)
+}
+
+pub fn rollback_error_test() {
+  use conn <- connect()
+
+  let assert Error(pgl.NotInTransaction) = pgl.rollback(conn)
+}
+
 pub fn transaction_commit_test() {
   use conn <- connect()
 
@@ -1151,4 +1179,67 @@ fn decode_date() -> Decoder(calendar.Date) {
     Ok(month) -> decode.success(calendar.Date(year, month, day))
     _ -> decode.failure(calendar.Date(1970, calendar.January, 1), "Date")
   }
+}
+
+pub fn error_to_string_query_error_test() {
+  let err = pgl.QueryError("Failed to process queried rows")
+  let result = pgl.error_to_string(err)
+
+  assert "(QueryError) Failed to process queried rows" == result
+}
+
+pub fn error_to_string_connection_error_test() {
+  let err = pgl.ConnectionError("unable to connect to database")
+  let result = pgl.error_to_string(err)
+
+  assert "(ConnectionError) unable to connect to database" == result
+}
+
+pub fn error_to_string_connection_timeout_test() {
+  let err = pgl.ConnectionTimeout
+  let result = pgl.error_to_string(err)
+
+  assert "(ConnectionTimeout)" == result
+}
+
+pub fn error_to_string_authentication_error_test() {
+  let err = pgl.AuthenticationError("invalid password")
+  let result = pgl.error_to_string(err)
+
+  assert "(AuthenticationError) invalid password" == result
+}
+
+pub fn error_to_string_protocol_error_test() {
+  let err = pgl.ProtocolError("unexpected message received")
+  let result = pgl.error_to_string(err)
+
+  assert "(ProtocolError) unexpected message received" == result
+}
+
+pub fn error_to_string_socket_error_test() {
+  let err = pgl.SocketError("connection reset by peer")
+  let result = pgl.error_to_string(err)
+
+  assert "(SocketError) connection reset by peer" == result
+}
+
+pub fn error_to_string_postgres_error_test() {
+  let err =
+    pgl.PostgresError(
+      code: "42P01",
+      name: "undefined_table",
+      message: "relation \"foo\" does not exist",
+      fields: dict.new(),
+    )
+  let result = pgl.error_to_string(err)
+
+  assert "(PostgresError), code: 42P01, name: undefined_table, message: relation \"foo\" does not exist"
+    == result
+}
+
+pub fn error_to_string_empty_message_test() {
+  let err = pgl.QueryError("")
+  let result = pgl.error_to_string(err)
+
+  assert "(QueryError)" == result
 }

@@ -1,4 +1,7 @@
 import gleam/dict.{type Dict}
+import gleam/function
+import gleam/list
+import gleam/string
 
 pub const protocol_version_major = <<3:int-size(16)>>
 
@@ -103,22 +106,55 @@ pub type InternalError {
 pub fn error_to_string(err: InternalError) -> String {
   case err {
     AuthenticationError(kind, msg) -> {
-      "(" <> auth_error_to_string(kind) <> ") " <> msg
+      kind
+      |> auth_error_to_string
+      |> format_error(msg)
     }
     SocketError(code, msg) -> {
-      "(SocketError[" <> posix_error_to_string(code) <> "]) " <> msg
+      let name = "SocketError[" <> posix_error_to_string(code) <> "]"
+
+      format_error(name, msg)
     }
     ProtocolError(kind, msg) -> {
-      "(" <> protocol_error_to_string(kind) <> ") " <> msg
+      kind
+      |> protocol_error_to_string
+      |> format_error(msg)
     }
     PostgresError(code, name, message, _) ->
-      "(PostgresError) code:"
-      <> code
-      <> ", name: "
-      <> name
-      <> ", message: "
-      <> message
+      format_error_with_values(
+        "PostgresError",
+        "",
+        [#("code", code), #("name", name), #("message", message)],
+        function.identity,
+      )
   }
+}
+
+pub fn format_error(name: String, message: String) -> String {
+  format_error_with_values(name, message, [], function.identity)
+}
+
+pub fn format_error_with_values(
+  name: String,
+  message: String,
+  key_vals: List(#(String, a)),
+  value_formatter: fn(a) -> String,
+) -> String {
+  let format_key_vals = fn() {
+    key_vals
+    |> list.map(fn(key_val) {
+      let #(key, val) = key_val
+
+      key <> ": " <> value_formatter(val)
+    })
+  }
+
+  case name, message {
+    "", "" -> []
+    name, "" -> ["(" <> name <> ")", ..format_key_vals()]
+    name, message -> ["(" <> name <> ") " <> message, ..format_key_vals()]
+  }
+  |> string.join(", ")
 }
 
 fn auth_error_to_string(err: AuthenticationError) -> String {
