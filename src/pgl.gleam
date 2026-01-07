@@ -922,6 +922,7 @@ fn do_savepoint(
 }
 
 /// Releases a savepoint.
+@deprecated("use savepoint instead")
 pub fn release_savepoint(
   connection: Connection,
 ) -> Result(Connection, TransactionError(error)) {
