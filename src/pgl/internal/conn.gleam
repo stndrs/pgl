@@ -3,6 +3,10 @@ import gleam/int
 import gleam/option.{type Option, None, Some}
 import pgl/internal/socket.{type Socket}
 
+const starting_index = 1
+
+const savepoint_name = "pgl_savepoint"
+
 pub type Conn {
   Conn(sock: Socket, savepoint: Option(Int), caller: process.Pid)
 }
@@ -14,7 +18,7 @@ pub fn new(sock: Socket, caller: process.Pid) -> Conn {
 pub fn next_savepoint(conn: Conn) -> Conn {
   let savepoint = case conn.savepoint {
     Some(num) -> Some(num + 1)
-    None -> Some(0)
+    None -> Some(starting_index)
   }
 
   Conn(..conn, savepoint:)
@@ -29,12 +33,10 @@ pub fn prev_savepoint(conn: Conn) -> Conn {
   Conn(..conn, savepoint:)
 }
 
-const savepoint_name = "pgl_savepoint"
-
 pub fn savepoint_statement(conn: Conn) -> String {
   let num = case conn.savepoint {
     Some(num) -> num
-    None -> 0
+    None -> starting_index
   }
 
   "SAVEPOINT " <> savepoint_name <> int.to_string(num)

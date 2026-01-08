@@ -5,7 +5,7 @@ import pgl/internal/socket_test
 pub fn savepoint_statement_test() {
   let conn = connection()
 
-  assert "SAVEPOINT pgl_savepoint0" == conn.savepoint_statement(conn)
+  assert "SAVEPOINT pgl_savepoint1" == conn.savepoint_statement(conn)
 }
 
 pub fn release_savepoint_statement_test() {
@@ -13,7 +13,7 @@ pub fn release_savepoint_statement_test() {
     connection()
     |> conn.next_savepoint()
 
-  let assert Ok("RELEASE SAVEPOINT pgl_savepoint0") =
+  let assert Ok("RELEASE SAVEPOINT pgl_savepoint1") =
     conn.release_savepoint_statement(conn)
 }
 
@@ -28,7 +28,7 @@ pub fn rollback_savepoint_statement_test() {
     connection()
     |> conn.next_savepoint()
 
-  let assert Ok("ROLLBACK TO SAVEPOINT pgl_savepoint0;") =
+  let assert Ok("ROLLBACK TO SAVEPOINT pgl_savepoint1;") =
     conn.rollback_savepoint_statement(conn)
 }
 
