@@ -477,6 +477,7 @@ pub fn with_connection(db: Db, next: fn(Connection) -> t) -> Result(t, PglError)
   Pool(db:) |> next |> Ok
 }
 
+/// Creates a `Connection`.
 pub fn connection(db: Db) -> Connection {
   Pool(db:)
 }
