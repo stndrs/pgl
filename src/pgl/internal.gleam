@@ -1,4 +1,7 @@
 import gleam/dict.{type Dict}
+import gleam/function
+import gleam/list
+import gleam/string
 
 pub const protocol_version_major = <<3:int-size(16)>>
 
@@ -103,25 +106,58 @@ pub type InternalError {
 pub fn error_to_string(err: InternalError) -> String {
   case err {
     AuthenticationError(kind, msg) -> {
-      "(" <> auth_error_to_string(kind) <> ") " <> msg
+      let name = "AuthenticationError[" <> auth_error_to_string(kind) <> "]"
+
+      format_error(name, msg)
     }
     SocketError(code, msg) -> {
-      "(SocketError[" <> posix_error_to_string(code) <> "]) " <> msg
+      let name = "SocketError[" <> posix_error_to_string(code) <> "]"
+
+      format_error(name, msg)
     }
     ProtocolError(kind, msg) -> {
-      "(" <> protocol_error_to_string(kind) <> ") " <> msg
+      let name = "ProtocolError[" <> protocol_error_to_string(kind) <> "]"
+
+      format_error(name, msg)
     }
     PostgresError(code, name, message, _) ->
-      "(PostgresError) code:"
-      <> code
-      <> ", name: "
-      <> name
-      <> ", message: "
-      <> message
+      format_error_with_values(
+        "PostgresError",
+        "",
+        [#("code", code), #("name", name), #("message", message)],
+        function.identity,
+      )
   }
 }
 
-fn auth_error_to_string(err: AuthenticationError) -> String {
+pub fn format_error(name: String, message: String) -> String {
+  format_error_with_values(name, message, [], function.identity)
+}
+
+pub fn format_error_with_values(
+  name: String,
+  message: String,
+  key_vals: List(#(String, a)),
+  value_formatter: fn(a) -> String,
+) -> String {
+  let format_key_vals = fn() {
+    key_vals
+    |> list.map(fn(key_val) {
+      let #(key, val) = key_val
+
+      key <> ": " <> value_formatter(val)
+    })
+  }
+
+  case name, message {
+    "", "" -> []
+    name, "" -> ["(" <> name <> ")", ..format_key_vals()]
+    name, message -> ["(" <> name <> ") " <> message, ..format_key_vals()]
+  }
+  |> string.join(", ")
+}
+
+pub fn auth_error_to_string(err: AuthenticationError) -> String {
   case err {
     AuthenticationFailed -> "AuthenticationFailed"
     MethodNotImplemented -> "MethodNotImplemented"
@@ -144,7 +180,7 @@ pub type ProtocolError {
   SslError
 }
 
-fn protocol_error_to_string(err: ProtocolError) {
+pub fn protocol_error_to_string(err: ProtocolError) {
   case err {
     SaslServerError -> "SaslServerError"
     SaslServerFinal -> "SaslServerFinal"
@@ -239,7 +275,7 @@ pub type PosixError {
   Exdev
 }
 
-fn posix_error_to_string(code: PosixError) -> String {
+pub fn posix_error_to_string(code: PosixError) -> String {
   case code {
     Closed -> "closed"
     Timeout -> "timeout"
@@ -586,4 +622,26 @@ pub fn pg_error_code_name(error_code: String) -> Result(String, Nil) {
     "XX002" -> Ok("index_corrupted")
     _ -> Error(Nil)
   }
+}
+
+// ---------- Exceptions ---------- //
+
+@external(erlang, "pgl_ffi", "rescue")
+pub fn with_rescue(next: fn() -> t) -> Result(t, Nil)
+
+@external(erlang, "pgl_ffi", "handle_crash")
+pub fn on_crash(handler: fn() -> a, next: fn() -> b) -> b
+
+pub fn assert_on_crash(
+  handler: fn() -> Result(a, err),
+  message: String,
+  next: fn() -> b,
+) -> b {
+  let handler = fn() {
+    let message = message <> " failed!"
+
+    let assert Ok(_) = handler() as message
+  }
+
+  on_crash(handler, next)
 }

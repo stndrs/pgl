@@ -1,13 +1,31 @@
+import gleam/int
 import pgl/internal
+import pgl/internal/store
+
+pub fn format_error_test() {
+  assert "(Name)" == internal.format_error("Name", "")
+
+  assert "(Name) message" == internal.format_error("Name", "message")
+}
+
+pub fn format_error_with_values() {
+  assert "(Name) message, first: 10, second: 20"
+    == internal.format_error_with_values(
+      "Name",
+      "message",
+      [#("first", 10), #("second", 20)],
+      int.to_string,
+    )
+}
 
 pub fn auth_failed_test() {
-  assert "(AuthenticationFailed) message"
+  assert "(AuthenticationError[AuthenticationFailed]) message"
     == internal.AuthenticationError(internal.AuthenticationFailed, "message")
     |> internal.error_to_string
 }
 
 pub fn method_not_implemented_error_to_string_test() {
-  assert "(MethodNotImplemented) message"
+  assert "(AuthenticationError[MethodNotImplemented]) message"
     == internal.AuthenticationError(internal.MethodNotImplemented, "message")
     |> internal.error_to_string
 }
@@ -19,37 +37,86 @@ pub fn socket_error_to_string_test() {
 }
 
 pub fn sasl_server_error_to_string_test() {
-  assert "(SaslServerError) message"
+  assert "(ProtocolError[SaslServerError]) message"
     == internal.ProtocolError(internal.SaslServerError, "message")
     |> internal.error_to_string
 }
 
 pub fn sasl_server_final_to_string_test() {
-  assert "(SaslServerFinal) message"
+  assert "(ProtocolError[SaslServerFinal]) message"
     == internal.ProtocolError(internal.SaslServerFinal, "message")
     |> internal.error_to_string
 }
 
 pub fn sasl_server_first_to_string_test() {
-  assert "(SaslServerFirst) message"
+  assert "(ProtocolError[SaslServerFirst]) message"
     == internal.ProtocolError(internal.SaslServerFirst, "message")
     |> internal.error_to_string
 }
 
 pub fn decoding_error_to_string_test() {
-  assert "(DecodingError) message"
+  assert "(ProtocolError[DecodingError]) message"
     == internal.ProtocolError(internal.DecodingError, "message")
     |> internal.error_to_string
 }
 
 pub fn message_error_to_string_test() {
-  assert "(MessageError) message"
+  assert "(ProtocolError[MessageError]) message"
     == internal.ProtocolError(internal.MessageError, "message")
     |> internal.error_to_string
 }
 
 pub fn ssl_error_to_string_test() {
-  assert "(SSLError) message"
+  assert "(ProtocolError[SSLError]) message"
     == internal.ProtocolError(internal.SslError, "message")
     |> internal.error_to_string
+}
+
+pub fn with_rescue_test() {
+  let assert Error(Nil) = {
+    use <- internal.with_rescue()
+
+    panic as "Failure"
+  }
+}
+
+pub fn on_crash_test() {
+  let data = store.new("on_crash_test")
+
+  let assert Error(Nil) = {
+    use <- internal.with_rescue()
+
+    use <- internal.on_crash(fn() { store.insert(data, "key", 10) })
+
+    panic as "Failure"
+  }
+
+  let assert Ok(10) = store.lookup(data, "key")
+}
+
+pub fn assert_on_crash_ok_test() {
+  let data = store.new("on_crash_test")
+
+  let assert Error(Nil) = {
+    use <- internal.with_rescue()
+
+    use <- internal.assert_on_crash(
+      fn() { store.insert(data, "key", 10) },
+      "message",
+    )
+
+    panic as "Failure"
+  }
+
+  let assert Ok(10) = store.lookup(data, "key")
+}
+
+pub fn assert_on_crash_error_test() {
+  let assert Error(Nil) = {
+    use <- internal.with_rescue()
+
+    use <- internal.assert_on_crash(fn() { Error(Nil) }, "message")
+
+    panic as "Failure"
+  }
 }

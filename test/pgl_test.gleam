@@ -13,6 +13,7 @@ import global_value
 import pg_value
 import pg_value/interval
 import pgl
+import pgl/internal
 
 pub fn main() {
   gleeunit.main()
@@ -275,7 +276,7 @@ fn connect(next: fn(pgl.Connection) -> t) {
 // }
 
 fn with_setup_conn(db: pgl.Db, next: fn(pgl.Connection) -> t) {
-  use conn <- pgl.with_connection(db)
+  let conn = pgl.connection(db)
 
   let assert Ok(_) = pgl.execute(drop_table_sql, conn)
   let assert Ok(_) = pgl.execute(create_table_sql, conn)
@@ -286,7 +287,7 @@ fn with_setup_conn(db: pgl.Db, next: fn(pgl.Connection) -> t) {
 fn with_conn(next: fn(pgl.Connection) -> t) {
   let db = global_pool()
 
-  use conn <- pgl.with_connection(db)
+  let conn = pgl.connection(db)
 
   next(conn)
 }
@@ -930,7 +931,7 @@ pub fn execute_with_wrong_number_of_arguments_test() {
   let sql = "SELECT * FROM users WHERE id = $1"
 
   let assert Error(pgl.ProtocolError(
-    "(ProcessingError) Failed to describe statement parameters",
+    "[ProcessingError] Failed to describe statement parameters",
   )) = pgl.execute(sql, conn)
 }
 
@@ -948,6 +949,34 @@ pub fn insert_with_values_test() {
     ])
 
   let assert Ok(_) = pgl.query(query, conn)
+}
+
+pub fn begin_commit_test() {
+  use conn <- connect()
+
+  let assert Ok(conn) = pgl.begin(conn)
+
+  let assert Ok(_conn) = pgl.commit(conn)
+}
+
+pub fn begin_rollback_test() {
+  use conn <- connect()
+
+  let assert Ok(conn) = pgl.begin(conn)
+
+  let assert Ok(_conn) = pgl.rollback(conn)
+}
+
+pub fn commit_error_test() {
+  use conn <- connect()
+
+  let assert Error(pgl.NotInTransaction) = pgl.commit(conn)
+}
+
+pub fn rollback_error_test() {
+  use conn <- connect()
+
+  let assert Error(pgl.NotInTransaction) = pgl.rollback(conn)
 }
 
 pub fn transaction_commit_test() {
@@ -993,6 +1022,28 @@ pub fn transaction_rollback_test() {
   let _id2 = insert_into_users_table(tx, "three")
 
   let assert Ok(conn) = pgl.rollback(tx)
+
+  let assert Ok(queried) =
+    pgl.sql("SELECT * FROM users")
+    |> pgl.query(conn)
+
+  assert 0 == queried.count
+}
+
+pub fn transaction_exception_test() {
+  use conn <- connect()
+
+  setup_users_table(conn)
+
+  let assert Error(_) = {
+    use <- internal.with_rescue()
+    use tx <- pgl.transaction(conn)
+
+    let _id1 = insert_into_users_table(tx, "two")
+    let _id2 = insert_into_users_table(tx, "three")
+
+    panic as "transaction failure!"
+  }
 
   let assert Ok(queried) =
     pgl.sql("SELECT * FROM users")
@@ -1105,6 +1156,83 @@ pub fn savepoint_release_test() {
   assert 2 == queried.count
 }
 
+pub fn rollback_savepoint_test() {
+  use conn <- connect()
+
+  setup_users_table(conn)
+
+  let assert Ok(_) =
+    pgl.transaction(conn, fn(tx) {
+      let id1 = insert_into_users_table(tx, "one")
+
+      let assert Ok(_) = pgl.sql("SELECT 1") |> pgl.query(tx)
+
+      pgl.savepoint(tx, fn(tx2) {
+        let id2 = insert_into_users_table(tx2, "two")
+
+        let assert Ok(_) = pgl.sql("SELECT 2") |> pgl.query(tx2)
+
+        let assert Ok(_) =
+          pgl.savepoint(tx2, fn(tx3) {
+            let id3 = insert_into_users_table(tx3, "three")
+
+            let assert order.Gt = int.compare(id3, id2)
+
+            pgl.rollback(tx3)
+          })
+
+        Ok(id2)
+      })
+      |> result.map(fn(id2) { #(id1, id2) })
+    })
+
+  let assert Ok(queried) =
+    pgl.sql("SELECT * FROM users WHERE name IN ('one', 'two', 'three')")
+    |> pgl.query(conn)
+
+  assert 2 == queried.count
+}
+
+pub fn savepoint_exception_test() {
+  use conn <- connect()
+
+  setup_users_table(conn)
+
+  let assert Ok(_) =
+    pgl.transaction(conn, fn(tx) {
+      let id1 = insert_into_users_table(tx, "one")
+
+      let assert Ok(_) = pgl.sql("SELECT 1") |> pgl.query(tx)
+
+      pgl.savepoint(tx, fn(tx2) {
+        let id2 = insert_into_users_table(tx2, "two")
+
+        let assert Ok(_) = pgl.sql("SELECT 2") |> pgl.query(tx2)
+
+        let assert Error(_) = {
+          use <- internal.with_rescue()
+
+          pgl.savepoint(tx2, fn(tx3) {
+            let id3 = insert_into_users_table(tx3, "three")
+
+            let assert order.Gt = int.compare(id3, id2)
+
+            panic as "savepoint failure!"
+          })
+        }
+
+        Ok(id2)
+      })
+      |> result.map(fn(id2) { #(id1, id2) })
+    })
+
+  let assert Ok(queried) =
+    pgl.sql("SELECT * FROM users WHERE name IN ('one', 'two', 'three')")
+    |> pgl.query(conn)
+
+  assert 2 == queried.count
+}
+
 // Transaction helper functions
 
 fn setup_users_table(conn: pgl.Connection) {
@@ -1151,4 +1279,67 @@ fn decode_date() -> Decoder(calendar.Date) {
     Ok(month) -> decode.success(calendar.Date(year, month, day))
     _ -> decode.failure(calendar.Date(1970, calendar.January, 1), "Date")
   }
+}
+
+pub fn error_to_string_query_error_test() {
+  let err = pgl.QueryError("Failed to process queried rows")
+  let result = pgl.error_to_string(err)
+
+  assert "(QueryError) Failed to process queried rows" == result
+}
+
+pub fn error_to_string_connection_error_test() {
+  let err = pgl.ConnectionError("unable to connect to database")
+  let result = pgl.error_to_string(err)
+
+  assert "(ConnectionError) unable to connect to database" == result
+}
+
+pub fn error_to_string_connection_timeout_test() {
+  let err = pgl.ConnectionTimeout
+  let result = pgl.error_to_string(err)
+
+  assert "(ConnectionTimeout)" == result
+}
+
+pub fn error_to_string_authentication_error_test() {
+  let err = pgl.AuthenticationError("invalid password")
+  let result = pgl.error_to_string(err)
+
+  assert "(AuthenticationError) invalid password" == result
+}
+
+pub fn error_to_string_protocol_error_test() {
+  let err = pgl.ProtocolError("unexpected message received")
+  let result = pgl.error_to_string(err)
+
+  assert "(ProtocolError) unexpected message received" == result
+}
+
+pub fn error_to_string_socket_error_test() {
+  let err = pgl.SocketError("connection reset by peer")
+  let result = pgl.error_to_string(err)
+
+  assert "(SocketError) connection reset by peer" == result
+}
+
+pub fn error_to_string_postgres_error_test() {
+  let err =
+    pgl.PostgresError(
+      code: "42P01",
+      name: "undefined_table",
+      message: "relation \"foo\" does not exist",
+      fields: dict.new(),
+    )
+  let result = pgl.error_to_string(err)
+
+  assert "(PostgresError), code: 42P01, name: undefined_table, message: relation \"foo\" does not exist"
+    == result
+}
+
+pub fn error_to_string_empty_message_test() {
+  let err = pgl.QueryError("")
+  let result = pgl.error_to_string(err)
+
+  assert "(QueryError)" == result
 }
