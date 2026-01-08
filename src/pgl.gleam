@@ -797,6 +797,8 @@ pub fn begin(
   |> result.map(Connection(_, db:))
 }
 
+// Checks out a connection but does not check it back in automatically.
+// Must call `commit` or `rollback` to check the connection back in.
 fn with_transaction(
   connection: Connection,
   next: fn(conn.Conn, Db) -> Result(t, TransactionError(error)),
@@ -824,14 +826,17 @@ fn with_transaction(
 pub fn commit(
   connection: Connection,
 ) -> Result(Connection, TransactionError(error)) {
-  use conn, db <- ensure_in_transaction(connection)
+  case connection {
+    Pool(..) -> Error(NotInTransaction)
+    Connection(conn:, db:) -> {
+      transaction_query("COMMIT", conn)
+      |> result.map(fn(_) {
+        checkin(db, conn.sock, conn.caller)
 
-  transaction_query("COMMIT", conn)
-  |> result.map(fn(_) {
-    checkin(db, conn.sock, conn.caller)
-
-    Pool(db:)
-  })
+        Pool(db:)
+      })
+    }
+  }
 }
 
 /// Rolls back to a savepoint if one exists, otherwise rolls back the transaction.
@@ -841,10 +846,13 @@ pub fn commit(
 pub fn rollback(
   connection: Connection,
 ) -> Result(Connection, TransactionError(error)) {
-  use conn, db <- ensure_in_transaction(connection)
-
-  do_rollback(conn, db)
-  |> result.map(fn(_) { Pool(db:) })
+  case connection {
+    Pool(..) -> Error(NotInTransaction)
+    Connection(conn:, db:) -> {
+      do_rollback(conn, db)
+      |> result.map(fn(_) { Pool(db:) })
+    }
+  }
 }
 
 fn do_rollback(
@@ -867,25 +875,19 @@ fn do_rollback(
   }
 }
 
-fn ensure_in_transaction(
-  connection: Connection,
-  next: fn(conn.Conn, Db) -> Result(t, TransactionError(error)),
-) -> Result(t, TransactionError(error)) {
-  case connection {
-    Pool(..) -> Error(NotInTransaction)
-    Connection(conn:, db:) -> next(conn, db)
-  }
-}
-
 /// Creates a new savepoint.
 pub fn savepoint(
   connection: Connection,
   next: fn(Connection) -> Result(t, error),
 ) -> Result(t, TransactionError(error)) {
-  use conn, db <- ensure_in_transaction(connection)
-  use conn <- do_savepoint(conn, db)
+  case connection {
+    Pool(..) -> Error(NotInTransaction)
+    Connection(conn:, db:) -> {
+      use conn <- do_savepoint(conn, db)
 
-  Connection(conn:, db:) |> next
+      Connection(conn:, db:) |> next
+    }
+  }
 }
 
 fn do_savepoint(
@@ -926,10 +928,13 @@ fn do_savepoint(
 pub fn release_savepoint(
   connection: Connection,
 ) -> Result(Connection, TransactionError(error)) {
-  use conn, db <- ensure_in_transaction(connection)
-
-  do_release_savepoint(conn)
-  |> result.map(Connection(_, db:))
+  case connection {
+    Pool(..) -> Error(NotInTransaction)
+    Connection(conn:, db:) -> {
+      do_release_savepoint(conn)
+      |> result.map(Connection(_, db:))
+    }
+  }
 }
 
 fn do_release_savepoint(
