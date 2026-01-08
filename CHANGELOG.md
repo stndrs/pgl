@@ -11,3 +11,4 @@
 - `commit` and `rollback` check in single connections.
 - Added `connection` function to create a `Connection` from the provided `Db`.
 - Deprecated `release_savepoint`
+- Added `pgl.error_to_string` function

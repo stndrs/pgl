@@ -256,6 +256,7 @@ pub type PglError {
   )
 }
 
+/// Returns a formatted string representation of the provided error.
 pub fn error_to_string(err: PglError) -> String {
   case err {
     QueryError(message) -> internal.format_error("QueryError", message)
