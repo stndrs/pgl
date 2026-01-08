@@ -1,5 +1,8 @@
 # PGL
 
+[![Package Version](https://img.shields.io/hexpm/v/pgl)](https://hex.pm/packages/pgl)
+[![Hex Docs](https://img.shields.io/badge/hex-docs-ffaff3)](https://hexdocs.pm/pgl/)
+
 `pgl` is a PostgreSQL client written in Gleam.
 
 ## Features
@@ -47,6 +50,15 @@ pub fn main() {
 
 ```
 gleam add pgl
+```
+
+Further documentation can be found at <https://hexdocs.pm/valet>.
+
+## Development
+
+```sh
+gleam run   # Run the project
+gleam test  # Run the tests
 ```
 
 ### Acknowledgements
