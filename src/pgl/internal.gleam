@@ -42,7 +42,7 @@ pub type Message {
   FunctionCallResponse
   NoData
   NoticeResponse(fields: Dict(BitArray, String))
-  NotificationResponse(proc_id: Int, channel: BitArray, payload: BitArray)
+  NotificationResponse(proc_id: Int, channel: String, payload: String)
   ParameterDescription(count: Int, data_types: List(Int))
   ParameterStatus(name: String, value: String)
   ParseComplete
