@@ -99,6 +99,21 @@ pub fn decode_parameter_status_test() {
     decode.message(<<"S":utf8>>, <<"TimeZone":utf8, 0, "Etc/UTC":utf8, 0>>)
 }
 
+pub fn decode_notification_response_test() {
+  let assert Ok(internal.NotificationResponse(
+    proc_id: 758,
+    channel: "test_channel",
+    payload: "test_payload",
+  )) =
+    decode.message(<<"A":utf8>>, <<
+      758:size(32),
+      "test_channel":utf8,
+      0,
+      "test_payload":utf8,
+      0,
+    >>)
+}
+
 pub fn decode_authentication_test() {
   [
     #(<<0:int-size(32)>>, internal.AuthenticationOk),
