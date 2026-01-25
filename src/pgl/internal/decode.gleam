@@ -14,6 +14,7 @@ pub fn message(
     <<"1":utf8>> -> parse_complete(payload)
     <<"2":utf8>> -> bind_complete(payload)
     <<"3":utf8>> -> close_complete(payload)
+    <<"A":utf8>> -> notification_response(payload)
     <<"C":utf8>> -> command_complete(payload)
     <<"D":utf8>> -> data_row(payload)
     <<"E":utf8>> -> error_response(payload)
@@ -179,6 +180,41 @@ fn parameter_status(
       }
     }
   })
+}
+
+fn notification_response(
+  payload: BitArray,
+) -> Result(internal.Message, internal.InternalError) {
+  case payload {
+    <<proc_id:int-size(32), rest:bytes>> ->
+      bit_array.to_string(rest)
+      |> result.map_error(fn(_) {
+        internal.DecodingError
+        |> internal.ProtocolError("Unexpected payload for NotificationResponse")
+      })
+      |> result.try(fn(str) {
+        case string.split(str, on: "\u{0000}") {
+          [channel, payload, _] ->
+            Ok(internal.NotificationResponse(
+              proc_id: proc_id,
+              channel:,
+              payload:,
+            ))
+          _ ->
+            internal.DecodingError
+            |> internal.ProtocolError(
+              message: "Unexpected payload for NotificationResponse",
+            )
+            |> Error
+        }
+      })
+    _ ->
+      internal.DecodingError
+      |> internal.ProtocolError(
+        message: "Unexpected payload for NotificationResponse",
+      )
+      |> Error
+  }
 }
 
 fn authentication(
