@@ -317,11 +317,15 @@ pub type HandleParamDescription(v) =
 pub type HandleDecodeRow =
   fn(Row, List(Int)) -> Result(List(Dynamic), internal.InternalError)
 
+pub type HandleNotificationResponse =
+  fn(Int, String, String) -> Nil
+
 pub type Extended(v) {
   Extended(
     needs_sync: Bool,
     handle_decode_row: HandleDecodeRow,
     handle_param_description: HandleParamDescription(v),
+    handle_notification_response: HandleNotificationResponse,
     descriptions: List(internal.RowDescriptionField),
     fields: List(String),
     values: List(List(Dynamic)),
@@ -336,6 +340,7 @@ pub fn extended() -> Extended(v) {
     handle_param_description: fn(_, _, _) {
       panic as "Extended flow not configured"
     },
+    handle_notification_response: fn(_, _, _) { Nil },
     descriptions: [],
     fields: [],
     values: [],
@@ -355,6 +360,13 @@ pub fn on_decode_row(
   handle_decode_row: HandleDecodeRow,
 ) -> Extended(v) {
   Extended(..ext, handle_decode_row:)
+}
+
+pub fn on_notification(
+  ext: Extended(v),
+  handle_notification_response: HandleNotificationResponse,
+) -> Extended(v) {
+  Extended(..ext, handle_notification_response:)
 }
 
 pub fn process(
@@ -496,6 +508,7 @@ fn do_pipeline(
           needs_sync: ext.needs_sync,
           handle_decode_row: ext.handle_decode_row,
           handle_param_description: ext.handle_param_description,
+          handle_notification_response: ext.handle_notification_response,
           descriptions: [],
           fields: [],
           values: [],
@@ -516,8 +529,10 @@ fn do_pipeline(
     }
     internal.NoData -> do_pipeline(pl, ext, queries, sock)
     internal.NoticeResponse(_) -> do_pipeline(pl, ext, queries, sock)
-    internal.NotificationResponse(_, _, _) ->
+    internal.NotificationResponse(proc_id, channel, payload) -> {
+      ext.handle_notification_response(proc_id, channel, payload)
       do_pipeline(pl, ext, queries, sock)
+    }
     internal.ParameterDescription(_, data_types:) ->
       handle_parameter_description(pl, queries, ext, data_types, sock)
     internal.ParseComplete -> do_pipeline(pl, ext, queries, sock)
