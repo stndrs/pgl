@@ -442,6 +442,7 @@ fn disconnect(sock: Socket) -> Result(Nil, PglError) {
   |> result.map_error(from_internal_error)
 }
 
+// TODO: temporary
 pub fn create_socket(db: Db) -> Result(Socket, Nil) {
   authenticated_connection(db.config, db.sockets)
 }
@@ -645,6 +646,7 @@ pub fn execute(sql: String, on connection: Connection) -> Result(Int, PglError) 
   |> result.map_error(from_internal_error)
 }
 
+// TODO: temporarily pub
 pub fn extended_query(
   sql: String,
   params: List(pg_value.Value),
