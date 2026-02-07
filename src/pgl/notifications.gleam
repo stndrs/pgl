@@ -52,8 +52,8 @@ type ManagerMessage {
 
 type ManagerSubscribingState {
   ManagerIdle
-  ManagerSubscribing(channel: String, handle: NotificationHandle)
-  ManagerUnsubscribing(channel: String, handle: NotificationHandle)
+  ManagerSubscribing(channel: String)
+  ManagerUnsubscribing(channel: String)
 }
 
 type ManagerState {
@@ -144,18 +144,23 @@ fn handle_manager_message(
             Ok(monitor) -> {
               let listeners = dict.get(state.listeners, channel)
 
+              process.send(reply, Ok(NotificationHandle(monitor)))
+
               case listeners {
                 Error(Nil) ->
                   case stop_reading(state.sock) {
-                    Ok(Nil) ->
+                    Ok(Nil) -> {
+
                       actor.continue(
                         NotificationManagerState(
                           ..state,
+                          inner_state: ManagerSubscribing(channel),
                           listeners: dict.insert(state.listeners, channel, [
                             #(monitor, receiver),
                           ]),
                         ),
                       )
+}
                     Error(error) ->
                       actor.stop_abnormal(
                         "error while writing sync to socket "
