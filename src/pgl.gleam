@@ -442,6 +442,10 @@ fn disconnect(sock: Socket) -> Result(Nil, PglError) {
   |> result.map_error(from_internal_error)
 }
 
+pub fn create_socket(db: Db) -> Result(Socket, Nil) {
+  authenticated_connection(db.config, db.sockets)
+}
+
 fn authenticated_connection(
   config: Config,
   sockets: socket.Factory,
@@ -559,7 +563,7 @@ pub fn params(q: Query, params: List(pg_value.Value)) -> Query {
 pub fn query(q: Query, connection: Connection) -> Result(Queried, PglError) {
   use conn, db <- with_single_connection(connection)
 
-  extended_query(q.sql, q.params, conn, db)
+  extended_query(q.sql, q.params, conn, db, option.None)
   |> result.map_error(from_internal_error)
   |> result.try(to_queried(_, db.config.rows_as_dict))
 }
@@ -636,22 +640,30 @@ fn rows_to_dicts(
 pub fn execute(sql: String, on connection: Connection) -> Result(Int, PglError) {
   use conn, db <- with_single_connection(connection)
 
-  extended_query(sql, [], conn, db)
+  extended_query(sql, [], conn, db, option.None)
   |> result.map(fn(rows) { rows.count })
   |> result.map_error(from_internal_error)
 }
 
-fn extended_query(
+pub fn extended_query(
   sql: String,
   params: List(pg_value.Value),
   conn: conn.Conn,
   db: Db,
+  handle_notification: option.Option(protocol.HandleNotificationResponse),
 ) -> Result(protocol.Extended(pg_value.Value), internal.InternalError) {
   let message =
     encode_from_cache(sql, params, db)
     |> result.lazy_unwrap(fn() { encode.uncached(sql, params) })
 
-  extended(db)
+  let query = extended(db)
+
+  let query = case handle_notification {
+    option.Some(handler) -> query |> protocol.on_notification(handler)
+    option.None -> query
+  }
+
+  query
   |> protocol.process(message, conn.sock)
 }
 

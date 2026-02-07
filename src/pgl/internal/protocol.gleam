@@ -418,7 +418,7 @@ fn handle_data_row(
   Extended(..rows, values:)
 }
 
-fn receive_message(
+pub fn receive_message(
   sock: Socket,
 ) -> Result(internal.Message, internal.InternalError) {
   use data <- result.try(socket.receive(sock, internal.header_size))
