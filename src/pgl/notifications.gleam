@@ -78,7 +78,7 @@ pub fn start(
     notifications.db,
     reader_subject,
   ))
-  |> static_supervisor.auto_shutdown(static_supervisor.AnySignificant)
+  |> static_supervisor.restart_tolerance(0, 1)
   |> static_supervisor.start
 }
 
@@ -194,8 +194,7 @@ fn supervised_manager(
 ) -> supervision.ChildSpecification(Nil) {
   supervision.worker(fn() { start_manager(name, db, reader) })
   |> supervision.timeout(1000)
-  |> supervision.restart(supervision.Permanent)
-  |> supervision.significant(True)
+  |> supervision.restart(supervision.Transient)
 }
 
 fn handle_manager_message(
@@ -468,9 +467,8 @@ fn supervised_reader(
 ) -> supervision.ChildSpecification(Nil) {
   supervision.worker(fn() { start_reader(name) })
   |> supervision.timeout(1000)
-  |> supervision.restart(supervision.Permanent)
+  |> supervision.restart(supervision.Transient)
   |> supervision.map_data(fn(_) { Nil })
-  |> supervision.significant(True)
 }
 
 fn handle_reader_message(
