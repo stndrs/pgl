@@ -3,6 +3,8 @@
 ## Unreleased
 
 - Update [`pg_value`](https://hexdocs.pm/pg_value/pg_value.html) to v2.0.0
+- Removed deprecated function `release_savepoint`
+- Removed deprecated function `with_connection`
 
 ## v1.1.0
 

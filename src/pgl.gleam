@@ -463,21 +463,6 @@ fn authenticated_connection(
   })
 }
 
-/// Creates a `Connection` and passes it to the provided function.
-///
-/// Example:
-///
-/// ```gleam
-/// pgl.with_connection(db, fn(conn) {
-///   pgl.query(sql, [], conn)
-/// })
-/// ```
-///
-@deprecated("Use connection instead")
-pub fn with_connection(db: Db, next: fn(Connection) -> t) -> Result(t, PglError) {
-  Pool(db:) |> next |> Ok
-}
-
 /// Creates a `Connection`.
 pub fn connection(db: Db) -> Connection {
   Pool(db:)
@@ -923,20 +908,6 @@ fn do_savepoint(
     do_release_savepoint(conn)
     |> result.replace(res)
   })
-}
-
-/// Releases a savepoint.
-@deprecated("use savepoint instead")
-pub fn release_savepoint(
-  connection: Connection,
-) -> Result(Connection, TransactionError(error)) {
-  case connection {
-    Pool(..) -> Error(NotInTransaction)
-    Connection(conn:, db:) -> {
-      do_release_savepoint(conn)
-      |> result.map(Connection(_, db:))
-    }
-  }
 }
 
 fn do_release_savepoint(
