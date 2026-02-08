@@ -1,5 +1,35 @@
 //// PostgreSQL notification client
 
+// notification system
+// This notification system is very loosely based on the `pgo_notifications` module.
+// Requirements while building:
+// 1. Use paramaterised queries for LISTEN and UNLISTEN commands.
+// 2. Reuse existing code for sending extended queries to database.
+// This leads to a problem:
+// - We need direct access to the socket for sending these subscribe messages.
+// - A process needs to be constantly reading from this socket in order to receive
+// notifications.
+// - We don't have a good way to interrupt a read in gleam.
+// - My initial idea, having two processes reading and writing messages on the the socket,
+// then communicating with a manager process doesn't work, as it violates requirement 2.
+// To solve this we have the following architecture:
+// - One manager process which keeps track of which channels we're subscribed to and
+// who needs to be notified on the arrival of a notification.
+// - One reader process which constantly reads on the socket and sends incoming notifications
+// to the manager process, which then forwards them on.
+// - When the manager needs exclusive access to the socket for sending LISTEN and UNLISTEN
+// commands, it writes a `Sync` message to the socket. This results in a `ReadyForQuery` message
+// arriving at the reader, which uses this as a signal to quit reading.
+//
+// Notes:
+// - If the manager crashes, we lose all state of what processes have subscribed to
+// which channels and which channels we're even subscribed to.
+// - For this reason, both processes are marked as `significant` causing the 
+// supervisor to crash when they crash. A crash leaves all listening processes
+// in a broken state, since they believe they're still subscribed, but they're not,
+// they should crash by either linking to the manager process using `manager_pid`
+// or being in a supervisor which gets restarted when the notification supervisor restarts.
+
 import gleam/dict
 import gleam/erlang/process
 import gleam/list
@@ -35,6 +65,7 @@ pub fn new(db: pgl.Db) -> Notifications {
   )
 }
 
+
 pub fn start(
   notifications: Notifications,
 ) -> actor.StartResult(static_supervisor.Supervisor) {
@@ -47,6 +78,7 @@ pub fn start(
     notifications.db,
     reader_subject,
   ))
+  |> static_supervisor.auto_shutdown(static_supervisor.AnySignificant)
   |> static_supervisor.start
 }
 
@@ -163,6 +195,7 @@ fn supervised_manager(
   supervision.worker(fn() { start_manager(name, db, reader) })
   |> supervision.timeout(1000)
   |> supervision.restart(supervision.Permanent)
+  |> supervision.significant(True)
 }
 
 fn handle_manager_message(
@@ -437,6 +470,7 @@ fn supervised_reader(
   |> supervision.timeout(1000)
   |> supervision.restart(supervision.Permanent)
   |> supervision.map_data(fn(_) { Nil })
+  |> supervision.significant(True)
 }
 
 fn handle_reader_message(
