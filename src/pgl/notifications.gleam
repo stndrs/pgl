@@ -125,7 +125,11 @@ type ManagerMessage {
 
 type ManagerSubscribingState {
   ManagerIdle
-  ManagerSubscribing(channel: String)
+  ManagerSubscribing(
+    channel: String,
+    reply: process.Subject(Result(NotificationHandle, Nil)),
+    handle: NotificationHandle,
+  )
   ManagerUnsubscribing(channel: String)
 }
 
@@ -215,9 +219,10 @@ fn handle_manager_message(
     }
     ReceivedNotification(StoppedReading) ->
       case state.inner_state {
-        ManagerSubscribing(channel) -> {
+        ManagerSubscribing(channel, reply, handle) -> {
           case subscribe(state, channel) {
             Ok(Nil) -> {
+              process.send(reply, Ok(handle))
               start_reading(state.reader, state.sock, state.reader_receiver)
               actor.continue(
                 NotificationManagerState(..state, inner_state: ManagerIdle),
@@ -266,21 +271,23 @@ fn handle_manager_message(
             Ok(monitor) -> {
               let channel_listeners = dict.get(state.listeners, channel)
 
-              process.send(reply, Ok(NotificationHandle(monitor)))
 
               case channel_listeners {
                 Error(Nil) ->
                   stop_reading(
                     NotificationManagerState(
                       ..state,
-                      inner_state: ManagerSubscribing(channel),
+                      inner_state: ManagerSubscribing(channel, reply, NotificationHandle(monitor)),
                       listeners: dict.insert(state.listeners, channel, [
                         #(monitor, receiver),
                       ]),
                     ),
                     state.sock,
                   )
-                Ok(channel_listeners) ->
+                Ok(channel_listeners) -> {
+                  // Since we're already subscribed we'll immediately get any
+                  // notifications.
+                  process.send(reply, Ok(NotificationHandle(monitor)))
                   actor.continue(
                     NotificationManagerState(
                       ..state,
@@ -290,6 +297,7 @@ fn handle_manager_message(
                       ]),
                     ),
                   )
+                }
               }
             }
             Error(Nil) -> {
