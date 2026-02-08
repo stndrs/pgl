@@ -31,6 +31,7 @@
 // they should crash by either linking to the manager process using `manager_pid`
 // or being in a supervisor which gets restarted when the notification supervisor restarts.
 
+import pg_value
 import gleam/dict
 import gleam/erlang/process
 import gleam/list
@@ -406,8 +407,8 @@ fn subscribe(
 ) -> Result(Nil, internal.InternalError) {
   let connection = conn.new(state.sock, process.self())
   pgl.extended_query(
-    "LISTEN " <> escape_channel(channel),
-    [],
+    "LISTEN \"$1\"",
+    [pg_value.text(channel)],
     connection,
     state.db,
     // Forwarding any notifications received during the query
@@ -430,8 +431,8 @@ fn unsubscribe(
 ) -> Result(Nil, internal.InternalError) {
   let connection = conn.new(state.sock, process.self())
   pgl.extended_query(
-    "UNLISTEN " <> escape_channel(channel),
-    [],
+    "UNLISTEN \"$1\"",
+    [pg_value.text(channel)],
     connection,
     state.db,
     // Forwarding any notifications received during the query
