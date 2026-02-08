@@ -205,24 +205,16 @@ fn handle_manager_message(
 
               case channel_listeners {
                 Error(Nil) ->
-                  case stop_reading(state.sock) {
-                    Ok(Nil) -> {
-                      actor.continue(
-                        NotificationManagerState(
-                          ..state,
-                          inner_state: ManagerSubscribing(channel),
-                          listeners: dict.insert(state.listeners, channel, [
-                            #(monitor, receiver),
-                          ]),
-                        ),
-                      )
-                    }
-                    Error(error) ->
-                      actor.stop_abnormal(
-                        "error while writing sync to socket "
-                        <> string.inspect(error),
-                      )
-                  }
+                  stop_reading(
+                    NotificationManagerState(
+                      ..state,
+                      inner_state: ManagerSubscribing(channel),
+                      listeners: dict.insert(state.listeners, channel, [
+                        #(monitor, receiver),
+                      ]),
+                    ),
+                    state.sock,
+                  )
                 Ok(channel_listeners) ->
                   actor.continue(
                     NotificationManagerState(
@@ -268,19 +260,15 @@ fn handle_manager_message(
 
               case channel_listeners {
                 // We need to unsubscribe from this channel
-                [_] -> {
-                  case stop_reading(state.sock) {
-                    Ok(Nil) -> {
-                      actor.continue(NotificationManagerState(..state, listeners: dict.delete(state.listeners, channel), inner_state: ManagerUnsubscribing(channel)))
-                    }
-                    Error(error) -> {
-                      actor.stop_abnormal(
-                        "error while writing sync to socket "
-                        <> string.inspect(error),
-                      )
-                    }
-                  }
-                }
+                [_] ->
+                  stop_reading(
+                    NotificationManagerState(
+                      ..state,
+                      listeners: dict.delete(state.listeners, channel),
+                      inner_state: ManagerUnsubscribing(channel),
+                    ),
+                    state.sock,
+                  )
                 _ -> {
                   let channel_listeners =
                     list.filter(channel_listeners, fn(channel_listener) {
@@ -319,8 +307,20 @@ fn requeue_message(
 
 // The reader process stops reading, when the servers sends the
 // `ReadyForQuery` response due to our `Sync` command.
-fn stop_reading(sock: socket.Socket) -> Result(Nil, internal.InternalError) {
-  socket.send(sock, encode.sync()) |> result.replace(Nil)
+fn stop_reading(
+  new_state: ManagerState,
+  sock: socket.Socket,
+) -> actor.Next(ManagerState, ManagerMessage) {
+  case socket.send(sock, encode.sync()) |> result.replace(Nil) {
+    Ok(Nil) -> {
+      actor.continue(new_state)
+    }
+    Error(error) -> {
+      actor.stop_abnormal(
+        "error while writing sync to socket " <> string.inspect(error),
+      )
+    }
+  }
 }
 
 fn subscribe(
