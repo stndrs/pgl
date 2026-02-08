@@ -191,7 +191,48 @@ fn handle_manager_message(
       }
     Unlisten(handle) ->
       case state.inner_state {
-        ManagerIdle -> todo
+        ManagerIdle -> {
+          process.demonitor_process(handle.monitor)
+
+          case
+            dict.fold(state.listeners, option.None, fn(acc, channel, listeners) {
+              case acc {
+                option.Some(_) -> acc
+                option.None ->
+                  case list.any(listeners, fn(v) { v.0 == handle.monitor }) {
+                    True -> option.Some(channel)
+                    False -> acc
+                  }
+              }
+            })
+          {
+            option.Some(channel) -> {
+              let assert Ok(channel_listeners) = dict.get(state.listeners, channel)
+
+              case channel_listeners {
+                // We need to unsubscribe from this channel
+                [_] -> {
+                  case stop_reading(state.sock) {
+                    Ok(Nil) -> {
+                      actor.continue(NotificationManagerState(..state, listeners: dict.delete(state.listeners, channel), inner_state: ManagerUnsubscribing(channel)))
+                    }
+                    Error(error) -> {
+                      actor.stop_abnormal(
+                        "error while writing sync to socket "
+                        <> string.inspect(error),
+                      )
+                    }
+                  }
+                }
+                _ -> {
+                  let channel_listeners = list.filter(channel_listeners, fn(channel_listener) { channel_listener.0 == handle.monitor })
+                  actor.continue(NotificationManagerState(..state, listeners: dict.insert(state.listeners, channel, channel_listeners)))
+                }
+              }
+            }
+            option.None -> actor.continue(state)
+          }
+        }
         _ -> {
           process.send(state.self_subject, message)
           actor.continue(state)
