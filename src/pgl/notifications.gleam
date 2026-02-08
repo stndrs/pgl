@@ -127,6 +127,20 @@ fn handle_manager_message(
     }
     ReceivedNotification(StoppedReading) ->
       case state.inner_state {
+        ManagerSubscribing(channel) -> {
+          start_reading(state.reader, state.sock, state.reader_receiver)
+          case subscribe(state, channel) {
+            Ok(Nil) -> actor.continue(NotificationManagerState(..state, inner_state: ManagerIdle))
+            Error(error) -> actor.stop_abnormal("failure to subscribe to channel " <> channel <> " " <> string.inspect(error))
+          }
+        }
+        ManagerUnsubscribing(channel) -> {
+          start_reading(state.reader, state.sock, state.reader_receiver)
+          case unsubscribe(state, channel) {
+            Ok(Nil) -> actor.continue(NotificationManagerState(..state, inner_state: ManagerIdle))
+            Error(error) -> actor.stop_abnormal("failure to unsubscribe from channel " <> channel <> " " <> string.inspect(error))
+          }
+        }
         // StoppedReading should only be received, if we issued a sync before.
         ManagerIdle ->
           actor.stop_abnormal(
@@ -309,6 +323,10 @@ type ReaderNotification {
 
 type ReaderMessage {
   Read(socket: socket.Socket, receiver: process.Subject(ReaderNotification))
+}
+
+fn start_reading(reader: process.Subject(ReaderMessage), socket: socket.Socket, receiver: process.Subject(ReaderNotification)) {
+  process.send(reader, Read(socket:, receiver:))
 }
 
 fn start_reader(
