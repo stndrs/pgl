@@ -170,6 +170,8 @@ fn start_manager(
       |> result.replace_error("unable to create socket"),
     )
 
+    start_reading(reader, sock, reader_receiver)
+
     NotificationManagerState(
       inner_state: ManagerIdle,
       db:,
