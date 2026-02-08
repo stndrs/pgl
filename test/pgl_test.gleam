@@ -1,3 +1,4 @@
+import gleam/bool
 import gleam/dict
 import gleam/dynamic
 import gleam/dynamic/decode.{type Decoder}
@@ -794,13 +795,36 @@ pub fn uuid_v7_decoding_test() {
   use db <- with_db()
   use conn <- with_conn(db)
 
-  let sql = "SELECT uuidv7()"
+  let pg_version = server_version(conn)
+
+  // Only run if pg_version is 18 or higher
+  use <- bool.guard(when: pg_version < 180_000, return: Nil)
 
   let assert Ok(result) =
-    pgl.sql(sql)
+    "SELECT uuidv7()"
+    |> pgl.sql
     |> pgl.query(conn)
 
   assert 1 == result.count
+}
+
+fn server_version(conn: pgl.Connection) -> Int {
+  let assert Ok(queried) =
+    "SHOW server_version_num"
+    |> pgl.sql
+    |> pgl.query(conn)
+
+  let assert Ok(row) = list.first(queried.rows)
+
+  let assert Ok(version) =
+    decode.run(row, {
+      use ver <- decode.field(0, decode.string)
+      decode.success(ver)
+    })
+
+  let assert Ok(version) = int.parse(version)
+
+  version
 }
 
 pub fn uuid_test() {
