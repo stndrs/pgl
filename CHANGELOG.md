@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Update [`pg_value`](https://hexdocs.pm/pg_value/pg_value.html) to v2.0.0
+
 ## v1.1.0
 
 - Added internal `conn` module for handling single connections
