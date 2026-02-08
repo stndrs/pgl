@@ -38,10 +38,6 @@ pub fn start(
   |> static_supervisor.start
 }
 
-pub fn manager_pid(notifications: Notifications) -> option.Option(process.Pid) {
-  process.named(notifications.manager) |> option.from_result
-}
-
 pub fn supervised(
   notifications: Notifications,
   db: pgl.Db,
