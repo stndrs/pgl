@@ -208,10 +208,8 @@ pub fn query_params_test() {
   let assert [pg_value.Int(10)] = query.params
 }
 
-// Database tests
-
 fn pg_15_pool() -> pgl.Db {
-  use <- global_value.create_with_unique_name("pg_15_pool_test")
+  use <- global_value.create_with_unique_name("pg_15_pool")
 
   let assert Ok(conf) =
     "postgres://postgres:postgres@127.0.0.1:5415/gleam_pgl_test"
@@ -227,7 +225,7 @@ fn pg_15_pool() -> pgl.Db {
 }
 
 fn pg_16_pool() -> pgl.Db {
-  use <- global_value.create_with_unique_name("pg_16_pool_test")
+  use <- global_value.create_with_unique_name("pg_16_pool")
 
   let assert Ok(conf) =
     "postgres://postgres:postgres@127.0.0.1:5416/gleam_pgl_test"
@@ -243,7 +241,7 @@ fn pg_16_pool() -> pgl.Db {
 }
 
 fn pg_17_pool() -> pgl.Db {
-  use <- global_value.create_with_unique_name("pg_17_pool_test")
+  use <- global_value.create_with_unique_name("pg_17_pool")
 
   let assert Ok(conf) =
     "postgres://postgres:postgres@127.0.0.1:5432/gleam_pgl_test"
@@ -259,7 +257,7 @@ fn pg_17_pool() -> pgl.Db {
 }
 
 fn pg_18_pool() -> pgl.Db {
-  use <- global_value.create_with_unique_name("pg_18_pool_test")
+  use <- global_value.create_with_unique_name("pg_18_pool")
 
   let assert Ok(conf) =
     "postgres://postgres:postgres@127.0.0.1:5418/gleam_pgl_test"
@@ -274,19 +272,73 @@ fn pg_18_pool() -> pgl.Db {
   db
 }
 
-// fn pg_17_pool_ssl() -> pgl.Db {
-//   use <- global_value.create_with_unique_name("pgl_pool_ssl_test")
-// 
-//   let assert Ok(conf) =
-//     "postgres://postgres:postgres@127.0.0.1:5433/gleam_pgl_test?sslmode=require"
-//     |> pgl.from_url
-// 
-//   let db = pgl.new(conf)
-// 
-//   let assert Ok(_) = pgl.start(db)
-// 
-//   db
-// }
+fn pg_15_pool_ssl() -> pgl.Db {
+  use <- global_value.create_with_unique_name("pg_15_ssl_pool")
+
+  let assert Ok(conf) =
+    "postgres://postgres:postgres@127.0.0.1:5415/gleam_pgl_test?sslmode=require"
+    |> pgl.from_url
+
+  assert 5415 == conf.port
+  assert pgl.SslUnverified == conf.ssl
+
+  let db = pgl.new(conf)
+
+  let assert Ok(_) = pgl.start(db)
+
+  db
+}
+
+fn pg_16_pool_ssl() -> pgl.Db {
+  use <- global_value.create_with_unique_name("pg_16_ssl_pool")
+
+  let assert Ok(conf) =
+    "postgres://postgres:postgres@127.0.0.1:5416/gleam_pgl_test?sslmode=require"
+    |> pgl.from_url
+
+  assert 5416 == conf.port
+  assert pgl.SslUnverified == conf.ssl
+
+  let db = pgl.new(conf)
+
+  let assert Ok(_) = pgl.start(db)
+
+  db
+}
+
+fn pg_17_pool_ssl() -> pgl.Db {
+  use <- global_value.create_with_unique_name("pg_17_ssl_pool")
+
+  let assert Ok(conf) =
+    "postgres://postgres:postgres@127.0.0.1:5432/gleam_pgl_test?sslmode=require"
+    |> pgl.from_url
+
+  assert 5432 == conf.port
+  assert pgl.SslUnverified == conf.ssl
+
+  let db = pgl.new(conf)
+
+  let assert Ok(_) = pgl.start(db)
+
+  db
+}
+
+fn pg_18_pool_ssl() -> pgl.Db {
+  use <- global_value.create_with_unique_name("pg_18_ssl_pool")
+
+  let assert Ok(conf) =
+    "postgres://postgres:postgres@127.0.0.1:5418/gleam_pgl_test?sslmode=require"
+    |> pgl.from_url
+
+  assert 5418 == conf.port
+  assert pgl.SslUnverified == conf.ssl
+
+  let db = pgl.new(conf)
+
+  let assert Ok(_) = pgl.start(db)
+
+  db
+}
 
 fn pg_17_pool_rows_as_maps() -> pgl.Db {
   use <- global_value.create_with_unique_name("pgl_pool_rows_as_maps_test")
@@ -367,9 +419,13 @@ fn with_hstore(conn: pgl.Connection, next: fn(pgl.Connection) -> t) -> t {
 fn with_db(next: fn(pgl.Db) -> t) {
   [
     pg_15_pool(),
+    pg_15_pool_ssl(),
     pg_16_pool(),
+    pg_16_pool_ssl(),
     pg_17_pool(),
+    pg_17_pool_ssl(),
     pg_18_pool(),
+    pg_18_pool_ssl(),
   ]
   |> list.map(next)
 }
@@ -396,8 +452,8 @@ fn user_decoder() -> Decoder(User) {
   use name <- decode.field(1, decode.string)
   use active <- decode.field(2, decode.bool)
   use nicknames <- decode.field(3, decode.list(of: decode.string))
-  use birthday <- decode.field(4, decode_date())
-  use created_at <- decode.field(5, decode_timestamp())
+  use birthday <- decode.field(4, pg_value.date_decoder())
+  use created_at <- decode.field(5, pg_value.timestamp_decoder())
 
   User(id:, name:, active:, nicknames:, created_at:, birthday:)
   |> decode.success
@@ -746,8 +802,8 @@ fn user_with_fields_decoder() -> Decoder(User) {
   use name <- decode.field("name", decode.string)
   use active <- decode.field("active", decode.bool)
   use nicknames <- decode.field("nicknames", decode.list(of: decode.string))
-  use birthday <- decode.field("birthday", decode_date())
-  use created_at <- decode.field("created_at", decode_timestamp())
+  use birthday <- decode.field("birthday", pg_value.date_decoder())
+  use created_at <- decode.field("created_at", pg_value.timestamp_decoder())
 
   User(id:, name:, active:, nicknames:, created_at:, birthday:)
   |> decode.success
@@ -1628,28 +1684,6 @@ fn insert_into_users_table(conn: pgl.Connection, name: String) {
   let assert Ok(ids) = decode.run(row, decode.list(of: decode.int))
   let assert Ok(id) = list.first(ids)
   id
-}
-
-// Decoders
-
-fn decode_timestamp() -> Decoder(timestamp.Timestamp) {
-  decode.one_of(decode.int, or: [decode.string |> decode.map(fn(_) { 0 })])
-  |> decode.map(fn(usecs) {
-    usecs
-    |> int.multiply(1000)
-    |> timestamp.from_unix_seconds_and_nanoseconds(0, _)
-  })
-}
-
-fn decode_date() -> Decoder(calendar.Date) {
-  use year <- decode.field(0, decode.int)
-  use month <- decode.field(1, decode.int)
-  use day <- decode.field(2, decode.int)
-
-  case calendar.month_from_int(month) {
-    Ok(month) -> decode.success(calendar.Date(year, month, day))
-    _ -> decode.failure(calendar.Date(1970, calendar.January, 1), "Date")
-  }
 }
 
 pub fn error_to_string_query_error_test() {

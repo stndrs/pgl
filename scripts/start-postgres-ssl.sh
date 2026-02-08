@@ -14,6 +14,7 @@ chmod 644 /var/lib/postgresql/server.crt
 
 # Start PostgreSQL with SSL enabled
 exec docker-entrypoint.sh postgres \
+  -c log_statement=all \
   -c ssl=on \
   -c ssl_cert_file=/var/lib/postgresql/server.crt \
   -c ssl_key_file=/var/lib/postgresql/server.key
