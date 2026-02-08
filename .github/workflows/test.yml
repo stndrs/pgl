@@ -7,11 +7,10 @@ on:
   pull_request:
 
 jobs:
-  test:
+  test_pg_15:
     runs-on: ubuntu-latest
-    # container: ubuntu:20.04
     services:
-      pg_15:
+      postgres:
         image: postgres:15
         env:
           POSTGRES_USER: postgres
@@ -23,8 +22,22 @@ jobs:
           --health-timeout 5s
           --health-retries 5
         ports:
-          - 5415:5432
-      pg_16:
+          - 5432:5432
+    steps:
+      - uses: actions/checkout@v3
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: "28"
+          gleam-version: "1.14.0"
+          rebar3-version: "3"
+          # ImageOS: ubuntu20
+      - run: gleam build
+      - run: gleam test
+      - run: gleam format --check src test
+  test_pg_16:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
         image: postgres:16
         env:
           POSTGRES_USER: postgres
@@ -36,8 +49,22 @@ jobs:
           --health-timeout 5s
           --health-retries 5
         ports:
-          - 5416:5432
-      pg_17:
+          - 5432:5432
+    steps:
+      - uses: actions/checkout@v3
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: "28"
+          gleam-version: "1.14.0"
+          rebar3-version: "3"
+          # ImageOS: ubuntu20
+      - run: gleam build
+      - run: gleam test
+      - run: gleam format --check src test
+  test_pg_17:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
         image: postgres:17
         env:
           POSTGRES_USER: postgres
@@ -49,8 +76,23 @@ jobs:
           --health-timeout 5s
           --health-retries 5
         ports:
-          - 5417:5432
-      pg_18:
+          - 5432:5432
+    steps:
+      - uses: actions/checkout@v3
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: "28"
+          gleam-version: "1.14.0"
+          rebar3-version: "3"
+          # ImageOS: ubuntu20
+      - run: gleam build
+      - run: gleam test
+      - run: gleam format --check src test
+  test:
+    runs-on: ubuntu-latest
+    # container: ubuntu:20.04
+    services:
+      postgres:
         image: postgres:18
         env:
           POSTGRES_USER: postgres

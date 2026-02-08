@@ -1,4 +1,4 @@
-import gleam/dict.{type Dict}
+import gleam/dict
 import gleam/dynamic
 import gleam/dynamic/decode.{type Decoder}
 import gleam/int
@@ -208,62 +208,6 @@ pub fn query_params_test() {
   let assert [pg_value.Int(10)] = query.params
 }
 
-type PgVersion {
-  Pg15
-  // Pg15Ssl
-  Pg16
-  // Pg16Ssl
-  Pg17
-  // Pg17Ssl
-  Pg18
-  // Pg18Ssl
-}
-
-fn dbs() -> Dict(PgVersion, pgl.Db) {
-  use <- global_value.create_with_unique_name("pgl_pools")
-
-  let base_config =
-    pgl.default
-    |> pgl.username("postgres")
-    |> pgl.password("postgres")
-
-  let pg_15_conf = base_config |> pgl.port(5415)
-  // let pg_15_ssl_conf = pg_15_conf |> pgl.ssl(pgl.SslUnverified)
-  let pg_16_conf = base_config |> pgl.port(5416)
-  // let pg_16_ssl_conf = pg_16_conf |> pgl.ssl(pgl.SslUnverified)
-  let pg_17_conf = base_config |> pgl.port(5417)
-  // let pg_17_ssl_conf = pg_17_conf |> pgl.ssl(pgl.SslUnverified)
-  let pg_18_conf = base_config |> pgl.port(5432)
-  // let pg_18_ssl_conf = pg_18_conf |> pgl.ssl(pgl.SslUnverified)
-
-  [
-    #(Pg15, pg_15_conf),
-    // #(Pg15Ssl, pg_15_ssl_conf),
-    #(Pg16, pg_16_conf),
-    // #(Pg16Ssl, pg_16_ssl_conf),
-    #(Pg17, pg_17_conf),
-    // #(Pg17Ssl, pg_17_ssl_conf),
-    #(Pg18, pg_18_conf),
-    // #(Pg18Ssl, pg_18_ssl_conf),
-  ]
-  |> dict.from_list
-  |> dict.map_values(with: fn(_, conf) { start_db(conf) })
-}
-
-fn version(dbs: Dict(PgVersion, pgl.Db), version: PgVersion) -> pgl.Db {
-  let assert Ok(db) = dict.get(dbs, version)
-
-  db
-}
-
-fn start_db(conf: pgl.Config) -> pgl.Db {
-  let db = pgl.new(conf)
-
-  let assert Ok(_) = pgl.start(db)
-
-  db
-}
-
 fn pg_17_pool_rows_as_maps() -> pgl.Db {
   use <- global_value.create_with_unique_name("pgl_pool_rows_as_maps_test")
 
@@ -336,9 +280,21 @@ fn with_hstore(conn: pgl.Connection, next: fn(pgl.Connection) -> t) -> t {
 }
 
 fn with_db(next: fn(pgl.Db) -> t) {
-  dbs()
-  |> dict.to_list
-  |> list.map(fn(ver_db) { next(ver_db.1) })
+  let db = {
+    use <- global_value.create_with_unique_name("pgl_pools")
+
+    let db =
+      pgl.default
+      |> pgl.username("postgres")
+      |> pgl.password("postgres")
+      |> pgl.new
+
+    let assert Ok(_) = pgl.start(db)
+
+    db
+  }
+
+  next(db)
 }
 
 fn with_conn(db: pgl.Db, next: fn(pgl.Connection) -> t) {
@@ -835,12 +791,7 @@ pub fn uuid_v4_decoding_test() {
 
 // Postgres 18 provides native uuid v7 support
 pub fn uuid_v7_decoding_test() {
-  let dbs = dbs()
-
-  // use db <- list.map([version(dbs, Pg18), version(dbs, Pg18Ssl)])
-
-  let db = version(dbs, Pg18)
-
+  use db <- with_db()
   use conn <- with_conn(db)
 
   let sql = "SELECT uuidv7()"
