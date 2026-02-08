@@ -132,7 +132,7 @@ fn handle_manager_message(
             "unexpected message ReceivedNotification(StoppedReading)",
           )
       }
-    Listen(reply:, receiver:, channel:) ->
+    Listen(reply, receiver, channel) ->
       case state.inner_state {
         ManagerIdle -> {
           case
@@ -188,7 +188,7 @@ fn handle_manager_message(
           actor.continue(state)
         }
       }
-    Unlisten(handle:) ->
+    Unlisten(handle) ->
       case state.inner_state {
         ManagerIdle -> todo
         _ -> {
@@ -196,7 +196,7 @@ fn handle_manager_message(
           actor.continue(state)
         }
       }
-    ListenerDown(monitor:) ->
+    ListenerDown(monitor) ->
       case state.inner_state {
         ManagerIdle -> todo
         _ -> {
