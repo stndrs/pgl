@@ -142,11 +142,11 @@ fn handle_manager_message(
             })
           {
             Ok(monitor) -> {
-              let listeners = dict.get(state.listeners, channel)
+              let channel_listeners = dict.get(state.listeners, channel)
 
               process.send(reply, Ok(NotificationHandle(monitor)))
 
-              case listeners {
+              case channel_listeners {
                 Error(Nil) ->
                   case stop_reading(state.sock) {
                     Ok(Nil) -> {
@@ -166,13 +166,13 @@ fn handle_manager_message(
                         <> string.inspect(error),
                       )
                   }
-                Ok(listeners) ->
+                Ok(channel_listeners) ->
                   actor.continue(
                     NotificationManagerState(
                       ..state,
                       listeners: dict.insert(state.listeners, channel, [
                         #(monitor, receiver),
-                        ..listeners
+                        ..channel_listeners
                       ]),
                     ),
                   )
