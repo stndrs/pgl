@@ -247,8 +247,10 @@ fn handle_message(
       actor.continue(sock)
     }
     Receive(client:, receive:, length:, timeout:) -> {
-      receive(sock, length, timeout)
-      |> actor.send(client, _)
+      process.spawn(fn() {
+        receive(sock, length, timeout)
+        |> actor.send(client, _)
+      })
 
       actor.continue(sock)
     }
