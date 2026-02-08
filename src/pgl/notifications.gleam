@@ -7,7 +7,6 @@ import gleam/otp/static_supervisor
 import gleam/otp/supervision
 import gleam/result
 import gleam/string
-import gleam/time/timestamp
 import pg_value
 import pgl
 import pgl/internal
@@ -150,7 +149,6 @@ fn handle_manager_message(
                 Error(Nil) ->
                   case stop_reading(state.sock) {
                     Ok(Nil) -> {
-
                       actor.continue(
                         NotificationManagerState(
                           ..state,
@@ -160,7 +158,7 @@ fn handle_manager_message(
                           ]),
                         ),
                       )
-}
+                    }
                     Error(error) ->
                       actor.stop_abnormal(
                         "error while writing sync to socket "
