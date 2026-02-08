@@ -46,7 +46,6 @@ type ManagerMessage {
   )
   Unlisten(handle: NotificationHandle)
   ReceivedNotification(notification: ReaderNotification)
-  ListenerDown(monitor: process.Monitor)
 }
 
 type ManagerSubscribingState {
@@ -86,7 +85,9 @@ fn start_manager(
       |> process.select_map(reader_receiver, fn(reader) {
         ReceivedNotification(reader)
       })
-      |> process.select_monitors(fn(down) { ListenerDown(down.monitor) })
+      |> process.select_monitors(fn(down) {
+        Unlisten(NotificationHandle(down.monitor))
+      })
 
     use sock <- result.try(
       pgl.create_socket(db) |> result.replace_error("unable to create socket"),
@@ -189,14 +190,6 @@ fn handle_manager_message(
         }
       }
     Unlisten(handle) ->
-      case state.inner_state {
-        ManagerIdle -> todo
-        _ -> {
-          process.send(state.self_subject, message)
-          actor.continue(state)
-        }
-      }
-    ListenerDown(monitor) ->
       case state.inner_state {
         ManagerIdle -> todo
         _ -> {
