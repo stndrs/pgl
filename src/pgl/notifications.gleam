@@ -216,12 +216,13 @@ fn handle_manager_message(
     ReceivedNotification(StoppedReading) ->
       case state.inner_state {
         ManagerSubscribing(channel) -> {
-          start_reading(state.reader, state.sock, state.reader_receiver)
           case subscribe(state, channel) {
-            Ok(Nil) ->
+            Ok(Nil) -> {
+              start_reading(state.reader, state.sock, state.reader_receiver)
               actor.continue(
                 NotificationManagerState(..state, inner_state: ManagerIdle),
               )
+            }
             Error(error) ->
               actor.stop_abnormal(
                 "failure to subscribe to channel "
@@ -232,12 +233,13 @@ fn handle_manager_message(
           }
         }
         ManagerUnsubscribing(channel) -> {
-          start_reading(state.reader, state.sock, state.reader_receiver)
           case unsubscribe(state, channel) {
-            Ok(Nil) ->
+            Ok(Nil) -> {
+              start_reading(state.reader, state.sock, state.reader_receiver)
               actor.continue(
                 NotificationManagerState(..state, inner_state: ManagerIdle),
               )
+            }
             Error(error) ->
               actor.stop_abnormal(
                 "failure to unsubscribe from channel "
