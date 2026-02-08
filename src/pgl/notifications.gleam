@@ -185,8 +185,7 @@ fn handle_manager_message(
           }
         }
         _ -> {
-          process.send(state.self_subject, message)
-          actor.continue(state)
+          requeue_message(state, message)
         }
       }
     Unlisten(handle) ->
@@ -234,11 +233,15 @@ fn handle_manager_message(
           }
         }
         _ -> {
-          process.send(state.self_subject, message)
-          actor.continue(state)
+          requeue_message(state, message)
         }
       }
   }
+}
+
+fn requeue_message(state: ManagerState, message: ManagerMessage) -> actor.Next(ManagerState, ManagerMessage) {
+  process.send(state.self_subject, message)
+  actor.continue(state)
 }
 
 // The reader process stops reading, when the servers sends the
