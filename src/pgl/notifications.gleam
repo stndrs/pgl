@@ -3,7 +3,8 @@
 // notification system
 // This notification system is very loosely based on the `pgo_notifications` module.
 // Requirements while building:
-// 1. Use paramaterised queries for LISTEN and UNLISTEN commands.
+// 1. ~~Use paramaterised queries for LISTEN and UNLISTEN commands.~~
+//   - so turns out you can't use query parameters for the channel part of a LISTEN statement.
 // 2. Reuse existing code for sending extended queries to database.
 // This leads to a problem:
 // - We need direct access to the socket for sending these subscribe messages.
@@ -39,7 +40,6 @@ import gleam/otp/static_supervisor
 import gleam/otp/supervision
 import gleam/result
 import gleam/string
-import pg_value
 import pgl
 import pgl/internal
 import pgl/internal/conn
@@ -64,7 +64,6 @@ pub fn new(db: pgl.Db) -> Notifications {
     db:,
   )
 }
-
 
 pub fn start(
   notifications: Notifications,
@@ -387,14 +386,18 @@ fn stop_reading(
   }
 }
 
+fn escape_channel(raw_channel: String) -> String {
+  "\"" <> string.replace(raw_channel, "\"", "\\\"") <> "\""
+}
+
 fn subscribe(
   state: ManagerState,
   channel: String,
 ) -> Result(Nil, internal.InternalError) {
   let connection = conn.new(state.sock, process.self())
   pgl.extended_query(
-    "LISTEN $1",
-    [pg_value.text(channel)],
+    "LISTEN " <> escape_channel(channel),
+    [],
     connection,
     state.db,
     // Forwarding any notifications received during the query
@@ -417,8 +420,8 @@ fn unsubscribe(
 ) -> Result(Nil, internal.InternalError) {
   let connection = conn.new(state.sock, process.self())
   pgl.extended_query(
-    "UNLISTEN $1",
-    [pg_value.text(channel)],
+    "UNLISTEN " <> escape_channel(channel),
+    [],
     connection,
     state.db,
     // Forwarding any notifications received during the query
