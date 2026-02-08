@@ -49,6 +49,24 @@ pub fn supervised(
   supervision.supervisor(fn() { start(notifications, db) })
 }
 
+pub fn listen(
+  notifications: Notifications,
+  channel: String,
+  receiver: process.Subject(Notification),
+) -> NotificationHandle {
+  let manager = process.named_subject(notifications.manager)
+
+  let assert Ok(handle) =
+    actor.call(manager, 1000, fn(reply) { Listen(reply:, receiver:, channel:) })
+
+  handle
+}
+
+pub fn unlisten(notifications: Notifications, handle: NotificationHandle) {
+  let manager = process.named_subject(notifications.manager)
+  actor.send(manager, Unlisten(handle))
+}
+
 pub opaque type NotificationHandle {
   NotificationHandle(monitor: process.Monitor)
 }
