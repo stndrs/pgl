@@ -1,4 +1,4 @@
-import gleam/dict
+import gleam/dict.{type Dict}
 import gleam/dynamic
 import gleam/dynamic/decode.{type Decoder}
 import gleam/int
@@ -208,131 +208,55 @@ pub fn query_params_test() {
   let assert [pg_value.Int(10)] = query.params
 }
 
-fn pg_15_pool() -> pgl.Db {
-  use <- global_value.create_with_unique_name("pg_15_pool")
+type PgVersion {
+  Pg15
+  // Pg15Ssl
+  Pg16
+  // Pg16Ssl
+  Pg17
+  // Pg17Ssl
+  Pg18
+  // Pg18Ssl
+}
 
-  let assert Ok(conf) =
-    "postgres://postgres:postgres@127.0.0.1:5415/gleam_pgl_test"
-    |> pgl.from_url
+fn dbs() -> Dict(PgVersion, pgl.Db) {
+  use <- global_value.create_with_unique_name("pgl_pools")
 
-  assert 5415 == conf.port
+  let base_config =
+    pgl.default
+    |> pgl.username("postgres")
+    |> pgl.password("postgres")
 
-  let db = pgl.new(conf)
+  let pg_15_conf = base_config |> pgl.port(5415)
+  // let pg_15_ssl_conf = pg_15_conf |> pgl.ssl(pgl.SslUnverified)
+  let pg_16_conf = base_config |> pgl.port(5416)
+  // let pg_16_ssl_conf = pg_16_conf |> pgl.ssl(pgl.SslUnverified)
+  let pg_17_conf = base_config |> pgl.port(5432)
+  // let pg_17_ssl_conf = pg_17_conf |> pgl.ssl(pgl.SslUnverified)
+  let pg_18_conf = base_config |> pgl.port(5418)
+  // let pg_18_ssl_conf = pg_18_conf |> pgl.ssl(pgl.SslUnverified)
 
-  let assert Ok(_) = pgl.start(db)
+  [
+    #(Pg15, pg_15_conf),
+    // #(Pg15Ssl, pg_15_ssl_conf),
+    #(Pg16, pg_16_conf),
+    // #(Pg16Ssl, pg_16_ssl_conf),
+    #(Pg17, pg_17_conf),
+    // #(Pg17Ssl, pg_17_ssl_conf),
+    #(Pg18, pg_18_conf),
+    // #(Pg18Ssl, pg_18_ssl_conf),
+  ]
+  |> dict.from_list
+  |> dict.map_values(with: fn(_, conf) { start_db(conf) })
+}
+
+fn version(dbs: Dict(PgVersion, pgl.Db), version: PgVersion) -> pgl.Db {
+  let assert Ok(db) = dict.get(dbs, version)
 
   db
 }
 
-fn pg_16_pool() -> pgl.Db {
-  use <- global_value.create_with_unique_name("pg_16_pool")
-
-  let assert Ok(conf) =
-    "postgres://postgres:postgres@127.0.0.1:5416/gleam_pgl_test"
-    |> pgl.from_url
-
-  assert 5416 == conf.port
-
-  let db = pgl.new(conf)
-
-  let assert Ok(_) = pgl.start(db)
-
-  db
-}
-
-fn pg_17_pool() -> pgl.Db {
-  use <- global_value.create_with_unique_name("pg_17_pool")
-
-  let assert Ok(conf) =
-    "postgres://postgres:postgres@127.0.0.1:5432/gleam_pgl_test"
-    |> pgl.from_url
-
-  assert 5432 == conf.port
-
-  let db = pgl.new(conf)
-
-  let assert Ok(_) = pgl.start(db)
-
-  db
-}
-
-fn pg_18_pool() -> pgl.Db {
-  use <- global_value.create_with_unique_name("pg_18_pool")
-
-  let assert Ok(conf) =
-    "postgres://postgres:postgres@127.0.0.1:5418/gleam_pgl_test"
-    |> pgl.from_url
-
-  assert 5418 == conf.port
-
-  let db = pgl.new(conf)
-
-  let assert Ok(_) = pgl.start(db)
-
-  db
-}
-
-fn pg_15_pool_ssl() -> pgl.Db {
-  use <- global_value.create_with_unique_name("pg_15_ssl_pool")
-
-  let assert Ok(conf) =
-    "postgres://postgres:postgres@127.0.0.1:5415/gleam_pgl_test?sslmode=require"
-    |> pgl.from_url
-
-  assert 5415 == conf.port
-  assert pgl.SslUnverified == conf.ssl
-
-  let db = pgl.new(conf)
-
-  let assert Ok(_) = pgl.start(db)
-
-  db
-}
-
-fn pg_16_pool_ssl() -> pgl.Db {
-  use <- global_value.create_with_unique_name("pg_16_ssl_pool")
-
-  let assert Ok(conf) =
-    "postgres://postgres:postgres@127.0.0.1:5416/gleam_pgl_test?sslmode=require"
-    |> pgl.from_url
-
-  assert 5416 == conf.port
-  assert pgl.SslUnverified == conf.ssl
-
-  let db = pgl.new(conf)
-
-  let assert Ok(_) = pgl.start(db)
-
-  db
-}
-
-fn pg_17_pool_ssl() -> pgl.Db {
-  use <- global_value.create_with_unique_name("pg_17_ssl_pool")
-
-  let assert Ok(conf) =
-    "postgres://postgres:postgres@127.0.0.1:5432/gleam_pgl_test?sslmode=require"
-    |> pgl.from_url
-
-  assert 5432 == conf.port
-  assert pgl.SslUnverified == conf.ssl
-
-  let db = pgl.new(conf)
-
-  let assert Ok(_) = pgl.start(db)
-
-  db
-}
-
-fn pg_18_pool_ssl() -> pgl.Db {
-  use <- global_value.create_with_unique_name("pg_18_ssl_pool")
-
-  let assert Ok(conf) =
-    "postgres://postgres:postgres@127.0.0.1:5418/gleam_pgl_test?sslmode=require"
-    |> pgl.from_url
-
-  assert 5418 == conf.port
-  assert pgl.SslUnverified == conf.ssl
-
+fn start_db(conf: pgl.Config) -> pgl.Db {
   let db = pgl.new(conf)
 
   let assert Ok(_) = pgl.start(db)
@@ -411,23 +335,10 @@ fn with_hstore(conn: pgl.Connection, next: fn(pgl.Connection) -> t) -> t {
   with_table("hstore_test", "(id SERIAL PRIMARY KEY, data hstore)", conn, next)
 }
 
-// fn start_ssl(next: fn(pgl.Connection) -> t) {
-//   pg_17_pool_ssl()
-//   |> with_setup_conn(next)
-// }
-
 fn with_db(next: fn(pgl.Db) -> t) {
-  [
-    pg_15_pool(),
-    pg_15_pool_ssl(),
-    pg_16_pool(),
-    pg_16_pool_ssl(),
-    pg_17_pool(),
-    pg_17_pool_ssl(),
-    pg_18_pool(),
-    pg_18_pool_ssl(),
-  ]
-  |> list.map(next)
+  dbs()
+  |> dict.to_list
+  |> list.map(fn(ver_db) { next(ver_db.1) })
 }
 
 fn with_conn(db: pgl.Db, next: fn(pgl.Connection) -> t) {
@@ -516,12 +427,6 @@ pub fn ipv6_test() {
 
   let assert Ok(_) = pgl.start(db)
 }
-
-// pub fn inserting_new_rows_ssl_test() {
-//   use conn <- start_ssl()
-// 
-//   inserting_new_rows(conn)
-// }
 
 pub fn inserting_new_rows_and_returning_test() {
   use db <- with_db()
@@ -930,7 +835,12 @@ pub fn uuid_v4_decoding_test() {
 
 // Postgres 18 provides native uuid v7 support
 pub fn uuid_v7_decoding_test() {
-  let db = pg_18_pool()
+  let dbs = dbs()
+
+  // use db <- list.map([version(dbs, Pg18), version(dbs, Pg18Ssl)])
+
+  let db = version(dbs, Pg18)
+
   use conn <- with_conn(db)
 
   let sql = "SELECT uuidv7()"

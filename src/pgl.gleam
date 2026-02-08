@@ -70,7 +70,7 @@ pub const default = Config(
   ssl: SslDisabled,
   rows_as_dict: False,
   ip_version: Ipv4,
-  pool_size: 1,
+  pool_size: 5,
   idle_interval: 1000,
   queue_target: 50,
 )
