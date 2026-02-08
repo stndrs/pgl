@@ -396,7 +396,9 @@ pub fn new(config: Config) -> Db {
 
   let type_cache =
     type_cache.new()
-    |> type_cache.on_connect(fn() { authenticated_connection(config, sockets) })
+    |> type_cache.on_connect(fn() {
+      authenticated_connection(config, sockets, option.None)
+    })
 
   Db(pool:, sockets:, type_cache:, query_cache:, config:)
 }
@@ -433,7 +435,7 @@ pub fn supervised(db: Db) -> supervision.ChildSpecification(Supervisor) {
 }
 
 fn connect(db: Db) -> Result(Socket, PglError) {
-  authenticated_connection(db.config, db.sockets)
+  authenticated_connection(db.config, db.sockets, option.None)
   |> result.map_error(fn(_) { ConnectionError("Failed to open connection") })
 }
 
@@ -443,13 +445,14 @@ fn disconnect(sock: Socket) -> Result(Nil, PglError) {
 }
 
 // TODO: temporary
-pub fn create_socket(db: Db) -> Result(Socket, Nil) {
-  authenticated_connection(db.config, db.sockets)
+pub fn create_socket(db: Db, timeout: socket.Timeout) -> Result(Socket, Nil) {
+  authenticated_connection(db.config, db.sockets, option.Some(timeout))
 }
 
 fn authenticated_connection(
   config: Config,
   sockets: socket.Factory,
+  set_timeout: option.Option(socket.Timeout),
 ) -> Result(Socket, Nil) {
   let conf =
     protocol.config
@@ -459,8 +462,10 @@ fn authenticated_connection(
     |> protocol.password(config.password)
     |> protocol.database(config.database)
 
-  sockets
-  |> socket.connect
+  case set_timeout {
+    option.None -> sockets |> socket.connect
+    option.Some(timeout) -> sockets |> socket.connect_timeout(timeout)
+  }
   |> result.map_error(fn(_) { Nil })
   |> result.try(fn(sock) {
     protocol.auth(sock, conf)

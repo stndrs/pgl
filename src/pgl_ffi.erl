@@ -6,6 +6,7 @@
   gen_tcp_connect/3,
   gen_tcp_send/2,
   gen_tcp_recv/3,
+  gen_tcp_recv_infinity/2,
   gen_tcp_shutdown/1,
   ssl_connect/3,
   ssl_send/2,
@@ -69,6 +70,10 @@ gen_tcp_shutdown(Socket) ->
 
 gen_tcp_recv(Socket, Size, Timeout) ->
   Resp = gen_tcp:recv(Socket, Size, Timeout),
+  normalise(Resp).
+
+gen_tcp_recv_infinity(Socket, Size) ->
+  Resp = gen_tcp:recv(Socket, Size),
   normalise(Resp).
 
 gen_tcp_send(Socket, Packet) ->

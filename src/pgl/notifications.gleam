@@ -166,7 +166,8 @@ fn start_manager(
       })
 
     use sock <- result.try(
-      pgl.create_socket(db) |> result.replace_error("unable to create socket"),
+      pgl.create_socket(db, socket.Infinite)
+      |> result.replace_error("unable to create socket"),
     )
 
     NotificationManagerState(
