@@ -24,14 +24,29 @@ pub opaque type Notifications {
 
 pub fn start(
   notifications: Notifications,
+  db: pgl.Db,
 ) -> actor.StartResult(static_supervisor.Supervisor) {
+  let reader_subject = process.named_subject(notifications.reader)
+
   static_supervisor.new(static_supervisor.OneForAll)
   |> static_supervisor.add(supervised_reader(notifications.reader))
+  |> static_supervisor.add(supervised_manager(
+    notifications.manager,
+    db,
+    reader_subject,
+  ))
   |> static_supervisor.start
 }
 
 pub fn manager_pid(notifications: Notifications) -> option.Option(process.Pid) {
   process.named(notifications.manager) |> option.from_result
+}
+
+pub fn supervised(
+  notifications: Notifications,
+  db: pgl.Db,
+) -> supervision.ChildSpecification(static_supervisor.Supervisor) {
+  supervision.supervisor(fn() { start(notifications, db) })
 }
 
 pub opaque type NotificationHandle {
@@ -109,6 +124,16 @@ fn start_manager(
   |> actor.named(name)
   |> actor.on_message(handle_manager_message)
   |> actor.start
+}
+
+fn supervised_manager(
+  name: process.Name(ManagerMessage),
+  db: pgl.Db,
+  reader: process.Subject(ReaderMessage),
+) -> supervision.ChildSpecification(Nil) {
+  supervision.worker(fn() { start_manager(name, db, reader) })
+  |> supervision.timeout(1000)
+  |> supervision.restart(supervision.Permanent)
 }
 
 fn handle_manager_message(
@@ -381,7 +406,7 @@ fn supervised_reader(
 ) -> supervision.ChildSpecification(Nil) {
   supervision.worker(fn() { start_reader(name) })
   |> supervision.timeout(1000)
-  |> supervision.restart(supervision.Transient)
+  |> supervision.restart(supervision.Permanent)
   |> supervision.map_data(fn(_) { Nil })
 }
 
