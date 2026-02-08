@@ -3,6 +3,7 @@ import gleam/dynamic
 import gleam/dynamic/decode.{type Decoder}
 import gleam/int
 import gleam/list
+import gleam/option.{None, Some}
 import gleam/order
 import gleam/result
 import gleam/string
@@ -209,24 +210,14 @@ pub fn query_params_test() {
 
 // Database tests
 
-const drop_table_sql = "DROP TABLE IF EXISTS users;"
-
-const create_table_sql = "
- CREATE TABLE IF NOT EXISTS users (
-   id SERIAL PRIMARY KEY,
-   name VARCHAR(50) NOT NULL,
-   active boolean NOT NULL DEFAULT true,
-   nicknames VARCHAR(50)[] NOT NULL,
-   birthday DATE NOT NULL,
-   created_at TIMESTAMP NOT NULL
- );"
-
-fn global_pool() -> pgl.Db {
-  use <- global_value.create_with_unique_name("pgl_pool_test")
+fn pg_15_pool() -> pgl.Db {
+  use <- global_value.create_with_unique_name("pg_15_pool_test")
 
   let assert Ok(conf) =
-    "postgres://postgres:postgres@127.0.0.1/gleam_pgl_test"
+    "postgres://postgres:postgres@127.0.0.1:5415/gleam_pgl_test"
     |> pgl.from_url
+
+  assert 5415 == conf.port
 
   let db = pgl.new(conf)
 
@@ -235,7 +226,55 @@ fn global_pool() -> pgl.Db {
   db
 }
 
-// fn global_pool_ssl() -> pgl.Db {
+fn pg_16_pool() -> pgl.Db {
+  use <- global_value.create_with_unique_name("pg_16_pool_test")
+
+  let assert Ok(conf) =
+    "postgres://postgres:postgres@127.0.0.1:5416/gleam_pgl_test"
+    |> pgl.from_url
+
+  assert 5416 == conf.port
+
+  let db = pgl.new(conf)
+
+  let assert Ok(_) = pgl.start(db)
+
+  db
+}
+
+fn pg_17_pool() -> pgl.Db {
+  use <- global_value.create_with_unique_name("pg_17_pool_test")
+
+  let assert Ok(conf) =
+    "postgres://postgres:postgres@127.0.0.1:5432/gleam_pgl_test"
+    |> pgl.from_url
+
+  assert 5432 == conf.port
+
+  let db = pgl.new(conf)
+
+  let assert Ok(_) = pgl.start(db)
+
+  db
+}
+
+fn pg_18_pool() -> pgl.Db {
+  use <- global_value.create_with_unique_name("pg_18_pool_test")
+
+  let assert Ok(conf) =
+    "postgres://postgres:postgres@127.0.0.1:5418/gleam_pgl_test"
+    |> pgl.from_url
+
+  assert 5418 == conf.port
+
+  let db = pgl.new(conf)
+
+  let assert Ok(_) = pgl.start(db)
+
+  db
+}
+
+// fn pg_17_pool_ssl() -> pgl.Db {
 //   use <- global_value.create_with_unique_name("pgl_pool_ssl_test")
 // 
 //   let assert Ok(conf) =
@@ -249,7 +288,7 @@ fn global_pool() -> pgl.Db {
 //   db
 // }
 
-fn global_pool_rows_as_maps() -> pgl.Db {
+fn pg_17_pool_rows_as_maps() -> pgl.Db {
   use <- global_value.create_with_unique_name("pgl_pool_rows_as_maps_test")
 
   let assert Ok(conf) =
@@ -265,31 +304,80 @@ fn global_pool_rows_as_maps() -> pgl.Db {
   db
 }
 
-fn connect(next: fn(pgl.Connection) -> t) {
-  global_pool()
-  |> with_setup_conn(next)
+fn with_extension(
+  name: String,
+  conn: pgl.Connection,
+  next: fn(pgl.Connection) -> t,
+) -> t {
+  let create_sql = "CREATE EXTENSION IF NOT EXISTS " <> name <> ";"
+
+  let assert Ok(_) = pgl.execute(create_sql, conn)
+
+  let res = next(conn)
+
+  let drop_sql = "DROP EXTENSION IF EXISTS " <> name <> ";"
+  let assert Ok(_) = pgl.execute(drop_sql, conn)
+
+  res
+}
+
+fn with_table(
+  name: String,
+  definition: String,
+  conn: pgl.Connection,
+  next: fn(pgl.Connection) -> t,
+) -> t {
+  let create_sql = "CREATE TABLE IF NOT EXISTS " <> name <> definition <> ";"
+
+  let assert Ok(_) = pgl.execute(create_sql, conn)
+
+  let res = next(conn)
+
+  let drop_sql = "DROP TABLE IF EXISTS " <> name <> ";"
+  let assert Ok(_) = pgl.execute(drop_sql, conn)
+
+  res
+}
+
+fn with_users_table(conn: pgl.Connection, next: fn(pgl.Connection) -> t) -> t {
+  let users_table_def =
+    "
+   (
+     id SERIAL PRIMARY KEY,
+     name VARCHAR(50) NOT NULL,
+     active boolean NOT NULL DEFAULT true,
+     nicknames VARCHAR(50)[] NOT NULL,
+     birthday DATE NOT NULL,
+     created_at TIMESTAMP NOT NULL
+   )"
+
+  with_table("users", users_table_def, conn, next)
+}
+
+fn with_hstore(conn: pgl.Connection, next: fn(pgl.Connection) -> t) -> t {
+  use conn <- with_extension("hstore", conn)
+  with_table("hstore_test", "(id SERIAL PRIMARY KEY, data hstore)", conn, next)
 }
 
 // fn start_ssl(next: fn(pgl.Connection) -> t) {
-//   global_pool_ssl()
+//   pg_17_pool_ssl()
 //   |> with_setup_conn(next)
 // }
 
-fn with_setup_conn(db: pgl.Db, next: fn(pgl.Connection) -> t) {
-  let conn = pgl.connection(db)
-
-  let assert Ok(_) = pgl.execute(drop_table_sql, conn)
-  let assert Ok(_) = pgl.execute(create_table_sql, conn)
-
-  next(conn)
+fn with_db(next: fn(pgl.Db) -> t) {
+  [
+    pg_15_pool(),
+    pg_16_pool(),
+    pg_17_pool(),
+    pg_18_pool(),
+  ]
+  |> list.map(next)
 }
 
-fn with_conn(next: fn(pgl.Connection) -> t) {
-  let db = global_pool()
-
-  let conn = pgl.connection(db)
-
-  next(conn)
+fn with_conn(db: pgl.Db, next: fn(pgl.Connection) -> t) {
+  db
+  |> pgl.connection
+  |> next
 }
 
 pub type User {
@@ -353,7 +441,9 @@ fn inserting_new_rows(conn: pgl.Connection) {
 }
 
 pub fn inserting_new_rows_test() {
-  use conn <- connect()
+  use db <- with_db()
+  use conn <- with_conn(db)
+  use conn <- with_users_table(conn)
 
   inserting_new_rows(conn)
 }
@@ -378,7 +468,9 @@ pub fn ipv6_test() {
 // }
 
 pub fn inserting_new_rows_and_returning_test() {
-  use conn <- connect()
+  use db <- with_db()
+  use conn <- with_conn(db)
+  use conn <- with_users_table(conn)
 
   let assert Ok(returned) =
     insert_into_users([
@@ -398,7 +490,9 @@ pub fn inserting_new_rows_and_returning_test() {
 }
 
 pub fn pipeline_multiple_query_test() {
-  use conn <- connect()
+  use db <- with_db()
+  use conn <- with_conn(db)
+  use conn <- with_users_table(conn)
 
   let insert1 =
     insert_into_users([
@@ -422,7 +516,9 @@ pub fn pipeline_multiple_query_test() {
 }
 
 pub fn pipeline_multiple_different_queries_test() {
-  use conn <- connect()
+  use db <- with_db()
+  use conn <- with_conn(db)
+  use conn <- with_users_table(conn)
 
   let insert1 =
     insert_into_users([
@@ -468,7 +564,8 @@ pub fn pipeline_dependent_queries_test() {
      name VARCHAR(20) NOT NULL
    );"
 
-  use conn <- with_conn()
+  use db <- with_db()
+  use conn <- with_conn(db)
 
   let assert Ok(_) = pgl.execute(drop1, conn)
   let assert Ok(_) = pgl.execute(drop2, conn)
@@ -614,33 +711,34 @@ fn returning(sql: String, columns: List(String)) -> String {
 }
 
 pub fn rows_as_maps_test() {
-  let db = global_pool_rows_as_maps()
+  let db = pg_17_pool_rows_as_maps()
 
-  with_setup_conn(db, fn(conn) {
-    let sql =
-      insert_into_users([
-        "DEFAULT, 'James', true, ARRAY['Jim'], '2233-04-22', '2263-01-09 11:30:22'",
-        "DEFAULT, 'William', false, ARRAY['William', 'Will'], '1990-02-09', '2025-09-30 09:17:30.100'",
-        "DEFAULT, 'Stephen', true, ARRAY['Steve'], '1993-01-01', '2025-01-06 20:01:06.000'",
-      ])
+  use conn <- with_conn(db)
+  use conn <- with_users_table(conn)
 
-    let assert Ok(count) = pgl.execute(sql, conn)
-    assert 3 == count
+  let sql =
+    insert_into_users([
+      "DEFAULT, 'James', true, ARRAY['Jim'], '2233-04-22', '2263-01-09 11:30:22'",
+      "DEFAULT, 'William', false, ARRAY['William', 'Will'], '1990-02-09', '2025-09-30 09:17:30.100'",
+      "DEFAULT, 'Stephen', true, ARRAY['Steve'], '1993-01-01', '2025-01-06 20:01:06.000'",
+    ])
 
-    let assert Ok(queried) =
-      pgl.sql("SELECT * FROM users")
-      |> pgl.query(conn)
+  let assert Ok(count) = pgl.execute(sql, conn)
+  assert 3 == count
 
-    assert 3 == queried.count
+  let assert Ok(queried) =
+    pgl.sql("SELECT * FROM users")
+    |> pgl.query(conn)
 
-    let assert Ok([james, william, steve]) =
-      queried.rows
-      |> list.try_map(decode.run(_, user_with_fields_decoder()))
+  assert 3 == queried.count
 
-    assert 1 == james.id
-    assert 2 == william.id
-    assert 3 == steve.id
-  })
+  let assert Ok([james, william, steve]) =
+    queried.rows
+    |> list.try_map(decode.run(_, user_with_fields_decoder()))
+
+  assert 1 == james.id
+  assert 2 == william.id
+  assert 3 == steve.id
 }
 
 fn user_with_fields_decoder() -> Decoder(User) {
@@ -656,7 +754,10 @@ fn user_with_fields_decoder() -> Decoder(User) {
 }
 
 pub fn selecting_rows_test() {
-  use conn <- connect()
+  use db <- with_db()
+  use conn <- with_conn(db)
+  use conn <- with_users_table(conn)
+
   let sql =
     insert_into_users([
       "DEFAULT, 'James', true, ARRAY['Jim'], '2233-04-22', '2263-01-09 11:30:22'",
@@ -694,7 +795,8 @@ pub fn selecting_rows_test() {
 }
 
 pub fn varchar_encoding_test() {
-  use conn <- with_conn()
+  use db <- with_db()
+  use conn <- with_conn(db)
 
   let sql = "SELECT $1::VARCHAR, $2::VARCHAR, $3::VARCHAR"
   let params = [
@@ -721,7 +823,8 @@ pub fn varchar_encoding_test() {
 }
 
 pub fn null_encoding_test() {
-  use conn <- with_conn()
+  use db <- with_db()
+  use conn <- with_conn(db)
 
   let sql = "SELECT $1::TEXT, $1 IS NULL, $2::INT"
   let params = [pg_value.null, pg_value.int(42)]
@@ -739,8 +842,236 @@ pub fn null_encoding_test() {
     ]
 }
 
+pub fn uuid_v4_encoding_test() {
+  use db <- with_db()
+  use conn <- with_conn(db)
+
+  let v4_uuid = 0x85eab1c37acc4d8288e45fc1a9daa9d8
+
+  let sql = "SELECT $1::UUID"
+  let params = [pg_value.uuid(<<v4_uuid:big-int-size(128)>>)]
+
+  let assert Ok(result) =
+    pgl.sql(sql)
+    |> pgl.params(params)
+    |> pgl.query(conn)
+
+  assert 1 == result.count
+}
+
+pub fn uuid_v4_decoding_test() {
+  use db <- with_db()
+  use conn <- with_conn(db)
+
+  let sql = "SELECT gen_random_uuid()"
+
+  let assert Ok(result) =
+    pgl.sql(sql)
+    |> pgl.query(conn)
+
+  assert 1 == result.count
+}
+
+// Postgres 18 provides native uuid v7 support
+pub fn uuid_v7_decoding_test() {
+  let db = pg_18_pool()
+  use conn <- with_conn(db)
+
+  let sql = "SELECT uuidv7()"
+
+  let assert Ok(result) =
+    pgl.sql(sql)
+    |> pgl.query(conn)
+
+  assert 1 == result.count
+}
+
+pub fn uuid_test() {
+  use db <- with_db()
+  use conn <- with_conn(db)
+  use conn <- with_table(
+    "uuid_test",
+    "(id SERIAL PRIMARY KEY, identifier UUID)",
+    conn,
+  )
+
+  let v4_uuid = 0x85eab1c37acc4d8288e45fc1a9daa9d8
+
+  let assert Ok(result) =
+    "INSERT INTO uuid_test (identifier) VALUES ($1)"
+    |> pgl.sql
+    |> pgl.params([pg_value.uuid(<<v4_uuid:big-int-size(128)>>)])
+    |> pgl.query(conn)
+
+  assert 1 == result.count
+
+  let assert Ok(result) =
+    "SELECT * FROM uuid_test"
+    |> pgl.sql
+    |> pgl.query(conn)
+
+  assert 1 == result.count
+}
+
+pub fn hstore_test() {
+  use db <- with_db()
+  use conn <- with_conn(db)
+  use conn <- with_hstore(conn)
+
+  let data =
+    dict.new()
+    |> dict.insert("first", Some("foo"))
+    |> dict.insert("second", Some("bar"))
+    |> dict.insert("third", None)
+
+  let hstore = pg_value.hstore(data)
+
+  let assert Ok(queried) =
+    "INSERT INTO hstore_test (data) VALUES ($1) RETURNING id"
+    |> pgl.sql
+    |> pgl.params([hstore])
+    |> pgl.query(conn)
+
+  assert 1 == queried.count
+
+  let assert Ok(row) = list.first(queried.rows)
+
+  let assert Ok(id) =
+    decode.run(row, {
+      use id <- decode.field(0, decode.int)
+
+      decode.success(id)
+    })
+
+  let assert Ok(queried) =
+    { "SELECT * FROM hstore_test WHERE id=" <> int.to_string(id) }
+    |> pgl.sql
+    |> pgl.query(conn)
+
+  let assert Ok(row) = list.first(queried.rows)
+
+  let assert Ok(decoded) =
+    decode.run(row, {
+      use _id <- decode.field(0, decode.int)
+      use hstore <- decode.field(1, {
+        decode.dict(decode.string, decode.optional(decode.string))
+      })
+
+      decode.success(hstore)
+    })
+
+  assert data == decoded
+}
+
+pub fn hstore_string_constant_test() {
+  use db <- with_db()
+  use conn <- with_conn(db)
+  use conn <- with_hstore(conn)
+
+  let data =
+    dict.new()
+    |> dict.insert("first", Some("foo"))
+    |> dict.insert("second", Some("bar"))
+    |> dict.insert("third", None)
+
+  let hstore = pg_value.hstore(data)
+
+  let val = pg_value.to_string(hstore)
+
+  assert "'first=>foo, second=>bar, third=>NULL'" == val
+
+  let assert Ok(queried) =
+    { "INSERT INTO hstore_test (data) VALUES (" <> val <> ") RETURNING id" }
+    |> pgl.sql
+    |> pgl.query(conn)
+
+  assert 1 == queried.count
+
+  let assert Ok(row) = list.first(queried.rows)
+
+  let assert Ok(id) =
+    decode.run(row, {
+      use id <- decode.field(0, decode.int)
+
+      decode.success(id)
+    })
+
+  let assert Ok(queried) =
+    { "SELECT * FROM hstore_test WHERE id=" <> int.to_string(id) }
+    |> pgl.sql
+    |> pgl.query(conn)
+
+  let assert Ok(row) = list.first(queried.rows)
+
+  let assert Ok(decoded) =
+    decode.run(row, {
+      use _id <- decode.field(0, decode.int)
+      use hstore <- decode.field(1, {
+        decode.dict(decode.string, decode.optional(decode.string))
+      })
+
+      decode.success(hstore)
+    })
+
+  assert data == decoded
+}
+
+pub fn hstore_string_constant_escape_test() {
+  use db <- with_db()
+  use conn <- with_conn(db)
+  use conn <- with_hstore(conn)
+
+  let data =
+    dict.new()
+    |> dict.insert("firs't", Some("foo"))
+    |> dict.insert("sec\\ond", Some("b\"ar"))
+    |> dict.insert("third", None)
+
+  let hstore = pg_value.hstore(data)
+
+  let val = pg_value.to_string(hstore)
+
+  assert "'firs''t=>foo, sec\\\\ond=>b\\\"ar, third=>NULL'" == val
+
+  let assert Ok(queried) =
+    { "INSERT INTO hstore_test (data) VALUES (" <> val <> ") RETURNING id" }
+    |> pgl.sql
+    |> pgl.query(conn)
+
+  assert 1 == queried.count
+
+  let assert Ok(row) = list.first(queried.rows)
+
+  let assert Ok(id) =
+    decode.run(row, {
+      use id <- decode.field(0, decode.int)
+
+      decode.success(id)
+    })
+
+  let assert Ok(queried) =
+    { "SELECT * FROM hstore_test WHERE id =" <> int.to_string(id) }
+    |> pgl.sql
+    |> pgl.query(conn)
+
+  let assert Ok(row) = list.first(queried.rows)
+
+  let assert Ok(decoded) =
+    decode.run(row, {
+      use _id <- decode.field(0, decode.int)
+      use hstore <- decode.field(1, {
+        decode.dict(decode.string, decode.optional(decode.string))
+      })
+
+      decode.success(hstore)
+    })
+
+  assert data == decoded
+}
+
 pub fn interval_encoding_test() {
-  use conn <- with_conn()
+  use db <- with_db()
+  use conn <- with_conn(db)
 
   let sql = "SELECT 'P14MT86430S'::INTERVAL"
 
@@ -759,7 +1090,8 @@ pub fn interval_encoding_test() {
 }
 
 pub fn interval_roundtrip_test() {
-  use conn <- with_conn()
+  use db <- with_db()
+  use conn <- with_conn(db)
 
   let sql = "SELECT $1::INTERVAL"
 
@@ -787,7 +1119,8 @@ pub fn interval_roundtrip_test() {
 }
 
 pub fn array_encoding_test() {
-  use conn <- with_conn()
+  use db <- with_db()
+  use conn <- with_conn(db)
 
   let sql =
     "SELECT ARRAY['howdy', 'postgres']::TEXT[], ARRAY[1, 2, 3]::INT[], ARRAY[]::TEXT[]"
@@ -814,7 +1147,9 @@ pub fn array_encoding_test() {
 }
 
 pub fn mixed_types_with_encoding_test() {
-  use conn <- connect()
+  use db <- with_db()
+  use conn <- with_conn(db)
+  use conn <- with_users_table(conn)
 
   let sql =
     insert_into_users([
@@ -849,7 +1184,8 @@ pub fn mixed_types_with_encoding_test() {
 }
 
 pub fn error_handling_test() {
-  use conn <- with_conn()
+  use db <- with_db()
+  use conn <- with_conn(db)
 
   let sql = "SELECT * FROM non_existent_table"
 
@@ -862,7 +1198,8 @@ pub fn error_handling_test() {
 }
 
 pub fn invalid_sql_test() {
-  use conn <- with_conn()
+  use db <- with_db()
+  use conn <- with_conn(db)
   let sql = "select       select"
 
   let assert Error(pgl.PostgresError(code:, name:, message:, fields: _)) =
@@ -874,7 +1211,9 @@ pub fn invalid_sql_test() {
 }
 
 pub fn insert_constraint_error_test() {
-  use conn <- connect()
+  use db <- with_db()
+  use conn <- with_conn(db)
+  use conn <- with_users_table(conn)
 
   let assert Error(pgl.PostgresError(code:, name:, message:, fields:)) =
     insert_into_users([
@@ -902,7 +1241,8 @@ pub fn insert_constraint_error_test() {
 }
 
 pub fn select_from_unknown_table_test() {
-  use conn <- with_conn()
+  use db <- with_db()
+  use conn <- with_conn(db)
   let sql = "SELECT * FROM unknown"
 
   let assert Error(pgl.PostgresError(code:, name:, message:, fields: _)) =
@@ -914,7 +1254,9 @@ pub fn select_from_unknown_table_test() {
 }
 
 pub fn insert_with_incorrect_type_test() {
-  use conn <- connect()
+  use db <- with_db()
+  use conn <- with_conn(db)
+  use conn <- with_users_table(conn)
 
   let assert Error(pgl.PostgresError(code:, name:, message:, fields: _)) =
     insert_into_users(["true, true, true, true"])
@@ -927,7 +1269,10 @@ pub fn insert_with_incorrect_type_test() {
 }
 
 pub fn execute_with_wrong_number_of_arguments_test() {
-  use conn <- connect()
+  use db <- with_db()
+  use conn <- with_conn(db)
+  use conn <- with_users_table(conn)
+
   let sql = "SELECT * FROM users WHERE id = $1"
 
   let assert Error(pgl.ProtocolError(
@@ -936,7 +1281,9 @@ pub fn execute_with_wrong_number_of_arguments_test() {
 }
 
 pub fn insert_with_values_test() {
-  use conn <- connect()
+  use db <- with_db()
+  use conn <- with_conn(db)
+  use conn <- with_users_table(conn)
 
   let query =
     "INSERT INTO users (name, nicknames, birthday, created_at) VALUES ($1, $2, $3, $4)"
@@ -952,7 +1299,9 @@ pub fn insert_with_values_test() {
 }
 
 pub fn begin_commit_test() {
-  use conn <- connect()
+  use db <- with_db()
+  use conn <- with_conn(db)
+  use conn <- with_users_table(conn)
 
   let assert Ok(conn) = pgl.begin(conn)
 
@@ -960,7 +1309,9 @@ pub fn begin_commit_test() {
 }
 
 pub fn begin_rollback_test() {
-  use conn <- connect()
+  use db <- with_db()
+  use conn <- with_conn(db)
+  use conn <- with_users_table(conn)
 
   let assert Ok(conn) = pgl.begin(conn)
 
@@ -968,19 +1319,25 @@ pub fn begin_rollback_test() {
 }
 
 pub fn commit_error_test() {
-  use conn <- connect()
+  use db <- with_db()
+  use conn <- with_conn(db)
+  use conn <- with_users_table(conn)
 
   let assert Error(pgl.NotInTransaction) = pgl.commit(conn)
 }
 
 pub fn rollback_error_test() {
-  use conn <- connect()
+  use db <- with_db()
+  use conn <- with_conn(db)
+  use conn <- with_users_table(conn)
 
   let assert Error(pgl.NotInTransaction) = pgl.rollback(conn)
 }
 
 pub fn transaction_commit_test() {
-  use conn <- connect()
+  use db <- with_db()
+  use conn <- with_conn(db)
+  use conn <- with_users_table(conn)
 
   setup_users_table(conn)
 
@@ -1012,7 +1369,9 @@ pub fn transaction_commit_test() {
 }
 
 pub fn transaction_rollback_test() {
-  use conn <- connect()
+  use db <- with_db()
+  use conn <- with_conn(db)
+  use conn <- with_users_table(conn)
 
   setup_users_table(conn)
 
@@ -1031,7 +1390,9 @@ pub fn transaction_rollback_test() {
 }
 
 pub fn transaction_exception_test() {
-  use conn <- connect()
+  use db <- with_db()
+  use conn <- with_conn(db)
+  use conn <- with_users_table(conn)
 
   setup_users_table(conn)
 
@@ -1053,7 +1414,9 @@ pub fn transaction_exception_test() {
 }
 
 pub fn transaction_error_test() {
-  use conn <- connect()
+  use db <- with_db()
+  use conn <- with_conn(db)
+  use conn <- with_users_table(conn)
 
   let assert Ok(_) =
     "DROP TABLE IF EXISTS tx_test"
@@ -1098,7 +1461,9 @@ pub fn transaction_error_test() {
 }
 
 pub fn savepoint_test() {
-  use conn <- connect()
+  use db <- with_db()
+  use conn <- with_conn(db)
+  use conn <- with_users_table(conn)
 
   setup_users_table(conn)
 
@@ -1120,7 +1485,9 @@ pub fn savepoint_test() {
 }
 
 pub fn savepoint_release_test() {
-  use conn <- connect()
+  use db <- with_db()
+  use conn <- with_conn(db)
+  use conn <- with_users_table(conn)
 
   setup_users_table(conn)
 
@@ -1157,7 +1524,9 @@ pub fn savepoint_release_test() {
 }
 
 pub fn rollback_savepoint_test() {
-  use conn <- connect()
+  use db <- with_db()
+  use conn <- with_conn(db)
+  use conn <- with_users_table(conn)
 
   setup_users_table(conn)
 
@@ -1194,7 +1563,9 @@ pub fn rollback_savepoint_test() {
 }
 
 pub fn savepoint_exception_test() {
-  use conn <- connect()
+  use db <- with_db()
+  use conn <- with_conn(db)
+  use conn <- with_users_table(conn)
 
   setup_users_table(conn)
 

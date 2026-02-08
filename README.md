@@ -1,5 +1,6 @@
 # PGL
 
+[![test](https://github.com/stndrs/pgl/actions/workflows/test.yml/badge.svg)](https://github.com/stndrs/pgl/actions/workflows/test.yml)
 [![Package Version](https://img.shields.io/hexpm/v/pgl)](https://hex.pm/packages/pgl)
 [![Hex Docs](https://img.shields.io/badge/hex-docs-ffaff3)](https://hexdocs.pm/pgl/)
 
