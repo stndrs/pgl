@@ -2,6 +2,7 @@ import gleam/bool
 import gleam/dict
 import gleam/dynamic
 import gleam/dynamic/decode.{type Decoder}
+import gleam/erlang/process
 import gleam/int
 import gleam/list
 import gleam/option.{None, Some}
@@ -16,6 +17,7 @@ import pg_value
 import pg_value/interval
 import pgl
 import pgl/internal
+import pgl/notifications
 
 pub fn main() {
   gleeunit.main()
@@ -296,6 +298,26 @@ fn with_db(next: fn(pgl.Db) -> t) {
   }
 
   next(db)
+}
+
+fn with_db_and_notifications(next: fn(pgl.Db, notifications.Notifications) -> t) {
+  let #(db, notifications) = {
+    use <- global_value.create_with_unique_name("pgl_pools")
+
+    let db =
+      pgl.default
+      |> pgl.username("postgres")
+      |> pgl.password("postgres")
+      |> pgl.new
+
+    let assert Ok(_) = pgl.start(db)
+
+    let notifs = notifications.new(db)
+
+    let assert Ok(_) = notifications.start(notifs)
+
+    #(db, notifs)
+  }
 }
 
 fn with_conn(db: pgl.Db, next: fn(pgl.Connection) -> t) {
@@ -1632,4 +1654,17 @@ pub fn error_to_string_empty_message_test() {
   let result = pgl.error_to_string(err)
 
   assert "(QueryError)" == result
+}
+
+pub fn notifications_test() {
+  use db, notif <- with_db_and_notifications()
+  use conn <- with_conn(db)
+
+  let receiver = process.new_subject()
+  notifications.listen(notif, "pgl_testing", receiver)
+
+  let assert Ok(_) = "NOTIFY pgl_testing, 'test'" |> pgl.sql |> pgl.query(conn)
+
+  let assert Ok(notifications.Notification("pgl_testing", "test")) =
+    process.receive(receiver, 1000)
 }
