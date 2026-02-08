@@ -238,7 +238,7 @@ fn handle_manager_message(
                   }
                 }
                 _ -> {
-                  let channel_listeners = list.filter(channel_listeners, fn(channel_listener) { channel_listener.0 == handle.monitor })
+                  let channel_listeners = list.filter(channel_listeners, fn(channel_listener) { channel_listener.0 != handle.monitor })
                   actor.continue(NotificationManagerState(..state, listeners: dict.insert(state.listeners, channel, channel_listeners)))
                 }
               }
