@@ -1,3 +1,5 @@
+//// PostgreSQL notification client
+
 import gleam/dict
 import gleam/erlang/process
 import gleam/list
@@ -15,16 +17,26 @@ import pgl/internal/encode
 import pgl/internal/protocol
 import pgl/internal/socket
 
+/// A configured `Notifications` client. Must be started via
+/// `notifications.start` or `notifications.supervised`.
 pub opaque type Notifications {
   Notifications(
     manager: process.Name(ManagerMessage),
     reader: process.Name(ReaderMessage),
+    db: pgl.Db,
+  )
+}
+
+pub fn new(db: pgl.Db) -> Notifications {
+  Notifications(
+    manager: process.new_name("pgl_notifications_manager"),
+    reader: process.new_name("pgl_notifications_reader"),
+    db:,
   )
 }
 
 pub fn start(
   notifications: Notifications,
-  db: pgl.Db,
 ) -> actor.StartResult(static_supervisor.Supervisor) {
   let reader_subject = process.named_subject(notifications.reader)
 
@@ -32,7 +44,7 @@ pub fn start(
   |> static_supervisor.add(supervised_reader(notifications.reader))
   |> static_supervisor.add(supervised_manager(
     notifications.manager,
-    db,
+    notifications.db,
     reader_subject,
   ))
   |> static_supervisor.start
@@ -44,9 +56,8 @@ pub fn manager_pid(notifications: Notifications) -> option.Option(process.Pid) {
 
 pub fn supervised(
   notifications: Notifications,
-  db: pgl.Db,
 ) -> supervision.ChildSpecification(static_supervisor.Supervisor) {
-  supervision.supervisor(fn() { start(notifications, db) })
+  supervision.supervisor(fn() { start(notifications) })
 }
 
 pub fn listen(
