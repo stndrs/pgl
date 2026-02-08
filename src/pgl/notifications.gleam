@@ -45,7 +45,7 @@ type ManagerMessage {
     receiver: process.Subject(Notification),
     channel: String,
   )
-  Unlisten(handle: NotificationHandle, channel: String)
+  Unlisten(handle: NotificationHandle)
   ReceivedNotification(notification: ReaderNotification)
   ListenerDown(monitor: process.Monitor)
 }
@@ -190,7 +190,7 @@ fn handle_manager_message(
           actor.continue(state)
         }
       }
-    Unlisten(handle:, channel:) ->
+    Unlisten(handle:) ->
       case state.inner_state {
         ManagerIdle -> todo
         _ -> {
