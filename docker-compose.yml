@@ -45,7 +45,7 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: gleam_pgl_test
     ports:
-      - 5432:5432
+      - 5417:5432
     volumes:
       - ./scripts/start-postgres-ssl.sh:/start-postgres-ssl.sh:ro
     entrypoint: ["/bin/bash", "/start-postgres-ssl.sh"]
@@ -63,7 +63,7 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: gleam_pgl_test
     ports:
-      - 5418:5432
+      - 5432:5432
     volumes:
       - ./scripts/start-postgres-ssl.sh:/start-postgres-ssl.sh:ro
     entrypoint: ["/bin/bash", "/start-postgres-ssl.sh"]

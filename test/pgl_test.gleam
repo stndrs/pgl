@@ -231,9 +231,9 @@ fn dbs() -> Dict(PgVersion, pgl.Db) {
   // let pg_15_ssl_conf = pg_15_conf |> pgl.ssl(pgl.SslUnverified)
   let pg_16_conf = base_config |> pgl.port(5416)
   // let pg_16_ssl_conf = pg_16_conf |> pgl.ssl(pgl.SslUnverified)
-  let pg_17_conf = base_config |> pgl.port(5432)
+  let pg_17_conf = base_config |> pgl.port(5417)
   // let pg_17_ssl_conf = pg_17_conf |> pgl.ssl(pgl.SslUnverified)
-  let pg_18_conf = base_config |> pgl.port(5418)
+  let pg_18_conf = base_config |> pgl.port(5432)
   // let pg_18_ssl_conf = pg_18_conf |> pgl.ssl(pgl.SslUnverified)
 
   [
