@@ -31,6 +31,7 @@
 // they should crash by either linking to the manager process using `manager_pid`
 // or being in a supervisor which gets restarted when the notification supervisor restarts.
 
+import gleam/deque
 import gleam/dict
 import gleam/erlang/process
 import gleam/list
@@ -136,6 +137,7 @@ type ManagerSubscribingState {
 type ManagerState {
   NotificationManagerState(
     inner_state: ManagerSubscribingState,
+    postponed: deque.Deque(ManagerMessage),
     db: pgl.Db,
     sock: socket.Socket,
     listeners: dict.Dict(
@@ -177,6 +179,7 @@ fn start_manager(
 
     NotificationManagerState(
       inner_state: ManagerIdle,
+      postponed: deque.new(),
       db:,
       sock:,
       listeners: dict.new(),
@@ -189,7 +192,7 @@ fn start_manager(
     |> Ok
   })
   |> actor.named(name)
-  |> actor.on_message(handle_manager_message)
+  |> actor.on_message(on_manager_message)
   |> actor.start
 }
 
@@ -203,10 +206,51 @@ fn supervised_manager(
   |> supervision.restart(supervision.Transient)
 }
 
-fn handle_manager_message(
+fn on_manager_message(
   state: ManagerState,
   message: ManagerMessage,
 ) -> actor.Next(ManagerState, ManagerMessage) {
+  let start_state_is_idle = state.inner_state == ManagerIdle
+  case handle_manager_message(state, message) {
+    Ok(state) -> {
+      let end_state_is_idle = state.inner_state == ManagerIdle
+      let maybe_postponed_work = { !start_state_is_idle } && end_state_is_idle
+      case maybe_postponed_work {
+        True -> {
+          handle_postponed_work(state)
+        }
+        False -> {
+          actor.continue(state)
+        }
+      }
+    }
+    Error(reason) -> actor.stop_abnormal(reason)
+  }
+}
+
+fn handle_postponed_work(
+  state: ManagerState,
+) -> actor.Next(ManagerState, ManagerMessage) {
+  case deque.pop_back(state.postponed) {
+    Error(Nil) -> actor.continue(state)
+    Ok(#(postponed_message, postponed)) -> {
+      let state = NotificationManagerState(..state, postponed:)
+      case handle_manager_message(state, postponed_message) {
+        Ok(state) ->
+          case state.inner_state {
+            ManagerIdle -> handle_postponed_work(state)
+            _ -> actor.continue(state)
+          }
+        Error(reason) -> actor.stop_abnormal(reason)
+      }
+    }
+  }
+}
+
+fn handle_manager_message(
+  state: ManagerState,
+  message: ManagerMessage,
+) -> Result(ManagerState, String) {
   case message {
     ReceivedNotification(ReaderNotification(notification)) -> {
       let receivers =
@@ -215,7 +259,7 @@ fn handle_manager_message(
         let #(_, receiver) = receiver
         process.send(receiver, notification)
       })
-      actor.continue(state)
+      Ok(state)
     }
     ReceivedNotification(StoppedReading) ->
       case state.inner_state {
@@ -224,12 +268,10 @@ fn handle_manager_message(
             Ok(Nil) -> {
               process.send(reply, Ok(handle))
               start_reading(state.reader, state.sock, state.reader_receiver)
-              actor.continue(
-                NotificationManagerState(..state, inner_state: ManagerIdle),
-              )
+              Ok(NotificationManagerState(..state, inner_state: ManagerIdle))
             }
             Error(error) ->
-              actor.stop_abnormal(
+              Error(
                 "failure to subscribe to channel "
                 <> channel
                 <> " "
@@ -241,12 +283,10 @@ fn handle_manager_message(
           case unsubscribe(state, channel) {
             Ok(Nil) -> {
               start_reading(state.reader, state.sock, state.reader_receiver)
-              actor.continue(
-                NotificationManagerState(..state, inner_state: ManagerIdle),
-              )
+              Ok(NotificationManagerState(..state, inner_state: ManagerIdle))
             }
             Error(error) ->
-              actor.stop_abnormal(
+              Error(
                 "failure to unsubscribe from channel "
                 <> channel
                 <> " "
@@ -256,9 +296,7 @@ fn handle_manager_message(
         }
         // StoppedReading should only be received, if we issued a sync before.
         ManagerIdle ->
-          actor.stop_abnormal(
-            "unexpected message ReceivedNotification(StoppedReading)",
-          )
+          Error("unexpected message ReceivedNotification(StoppedReading)")
       }
     Listen(reply, receiver, channel) ->
       case state.inner_state {
@@ -271,13 +309,16 @@ fn handle_manager_message(
             Ok(monitor) -> {
               let channel_listeners = dict.get(state.listeners, channel)
 
-
               case channel_listeners {
                 Error(Nil) ->
                   stop_reading(
                     NotificationManagerState(
                       ..state,
-                      inner_state: ManagerSubscribing(channel, reply, NotificationHandle(monitor)),
+                      inner_state: ManagerSubscribing(
+                        channel,
+                        reply,
+                        NotificationHandle(monitor),
+                      ),
                       listeners: dict.insert(state.listeners, channel, [
                         #(monitor, receiver),
                       ]),
@@ -288,7 +329,7 @@ fn handle_manager_message(
                   // Since we're already subscribed we'll immediately get any
                   // notifications.
                   process.send(reply, Ok(NotificationHandle(monitor)))
-                  actor.continue(
+                  Ok(
                     NotificationManagerState(
                       ..state,
                       listeners: dict.insert(state.listeners, channel, [
@@ -302,12 +343,12 @@ fn handle_manager_message(
             }
             Error(Nil) -> {
               process.send(reply, Error(Nil))
-              actor.continue(state)
+              Ok(state)
             }
           }
         }
         _ -> {
-          requeue_message(state, message)
+          postpone_message(state, message)
         }
       }
     Unlisten(handle) ->
@@ -347,7 +388,7 @@ fn handle_manager_message(
                     list.filter(channel_listeners, fn(channel_listener) {
                       channel_listener.0 != handle.monitor
                     })
-                  actor.continue(
+                  Ok(
                     NotificationManagerState(
                       ..state,
                       listeners: dict.insert(
@@ -360,22 +401,26 @@ fn handle_manager_message(
                 }
               }
             }
-            option.None -> actor.continue(state)
+            option.None -> Ok(state)
           }
         }
         _ -> {
-          requeue_message(state, message)
+          postpone_message(state, message)
         }
       }
   }
 }
 
-fn requeue_message(
+fn postpone_message(
   state: ManagerState,
   message: ManagerMessage,
-) -> actor.Next(ManagerState, ManagerMessage) {
-  process.send(state.self_subject, message)
-  actor.continue(state)
+) -> Result(ManagerState, String) {
+  Ok(
+    NotificationManagerState(
+      ..state,
+      postponed: deque.push_front(state.postponed, message),
+    ),
+  )
 }
 
 // The reader process stops reading, when the servers sends the
@@ -383,15 +428,13 @@ fn requeue_message(
 fn stop_reading(
   new_state: ManagerState,
   sock: socket.Socket,
-) -> actor.Next(ManagerState, ManagerMessage) {
+) -> Result(ManagerState, String) {
   case socket.send(sock, encode.sync()) |> result.replace(Nil) {
     Ok(Nil) -> {
-      actor.continue(new_state)
+      Ok(new_state)
     }
     Error(error) -> {
-      actor.stop_abnormal(
-        "error while writing sync to socket " <> string.inspect(error),
-      )
+      Error("error while writing sync to socket " <> string.inspect(error))
     }
   }
 }
