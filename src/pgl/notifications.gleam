@@ -25,8 +25,8 @@
 // Notes:
 // - If the manager crashes, we lose all state of what processes have subscribed to
 // which channels and which channels we're even subscribed to.
-// - For this reason, both processes are marked as `significant` causing the 
-// supervisor to crash when they crash. A crash leaves all listening processes
+// - For this reason, the supervisor has a max restart intensity of 0 causing the
+// supervisor to crash when either process crashes. A crash leaves all listening processes
 // in a broken state, since they believe they're still subscribed, but they're not,
 // they should crash by either linking to the manager process using `manager_pid`
 // or being in a supervisor which gets restarted when the notification supervisor restarts.
