@@ -1,61 +1,7 @@
 version: "3.1"
 
 services:
-  pg_15:
-    image: postgres:15
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: gleam_pgl_test
-    ports:
-      - 5415:5432
-    volumes:
-      - ./scripts/start-postgres-ssl.sh:/start-postgres-ssl.sh:ro
-    entrypoint: ["/bin/bash", "/start-postgres-ssl.sh"]
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 1s
-      timeout: 5s
-      retries: 10
-
-  pg_16:
-    image: postgres:16
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: gleam_pgl_test
-    ports:
-      - 5416:5432
-    volumes:
-      - ./scripts/start-postgres-ssl.sh:/start-postgres-ssl.sh:ro
-    entrypoint: ["/bin/bash", "/start-postgres-ssl.sh"]
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 1s
-      timeout: 5s
-      retries: 10
-
-  pg_17:
-    image: postgres:17
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: gleam_pgl_test
-    ports:
-      - 5417:5432
-    volumes:
-      - ./scripts/start-postgres-ssl.sh:/start-postgres-ssl.sh:ro
-    entrypoint: ["/bin/bash", "/start-postgres-ssl.sh"]
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 1s
-      timeout: 5s
-      retries: 10
-
-  pg_18:
+  postgres:
     image: postgres:18
     restart: unless-stopped
     environment:
