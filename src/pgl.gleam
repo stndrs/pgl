@@ -47,7 +47,7 @@ pub type Config {
     rows_as_dict: Bool,
     /// (default: Ipv4) The IP version to use
     ip_version: IpVersion,
-    /// (default: 1) Connection pool size.
+    /// (default: 5) Connection pool size.
     pool_size: Int,
     /// (default: 1000) Idle connections ping the database every `idle_interval`.
     idle_interval: Int,
@@ -56,7 +56,7 @@ pub type Config {
   )
 }
 
-/// A default configuration with a connection pool size of 1.
+/// A default configuration with a connection pool size of 5.
 /// At minimum you need to set the username, password, and
 /// database values.
 pub const default = Config(
