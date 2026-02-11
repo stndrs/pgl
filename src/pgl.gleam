@@ -396,7 +396,9 @@ pub fn new(config: Config) -> Db {
 
   let type_cache =
     type_cache.new()
-    |> type_cache.on_connect(fn() { authenticated_connection(config, sockets) })
+    |> type_cache.on_connect(fn() {
+      authenticated_connection(config, sockets, option.None)
+    })
 
   Db(pool:, sockets:, type_cache:, query_cache:, config:)
 }
@@ -433,7 +435,7 @@ pub fn supervised(db: Db) -> supervision.ChildSpecification(Supervisor) {
 }
 
 fn connect(db: Db) -> Result(Socket, PglError) {
-  authenticated_connection(db.config, db.sockets)
+  authenticated_connection(db.config, db.sockets, option.None)
   |> result.map_error(fn(_) { ConnectionError("Failed to open connection") })
 }
 
@@ -442,9 +444,15 @@ fn disconnect(sock: Socket) -> Result(Nil, PglError) {
   |> result.map_error(from_internal_error)
 }
 
+// TODO: temporary
+pub fn create_socket(db: Db, timeout: socket.Timeout) -> Result(Socket, Nil) {
+  authenticated_connection(db.config, db.sockets, option.Some(timeout))
+}
+
 fn authenticated_connection(
   config: Config,
   sockets: socket.Factory,
+  set_timeout: option.Option(socket.Timeout),
 ) -> Result(Socket, Nil) {
   let conf =
     protocol.config
@@ -454,8 +462,10 @@ fn authenticated_connection(
     |> protocol.password(config.password)
     |> protocol.database(config.database)
 
-  sockets
-  |> socket.connect
+  case set_timeout {
+    option.None -> sockets |> socket.connect
+    option.Some(timeout) -> sockets |> socket.connect_timeout(timeout)
+  }
   |> result.map_error(fn(_) { Nil })
   |> result.try(fn(sock) {
     protocol.auth(sock, conf)
@@ -559,7 +569,7 @@ pub fn params(q: Query, params: List(pg_value.Value)) -> Query {
 pub fn query(q: Query, connection: Connection) -> Result(Queried, PglError) {
   use conn, db <- with_single_connection(connection)
 
-  extended_query(q.sql, q.params, conn, db)
+  extended_query(q.sql, q.params, conn, db, option.None)
   |> result.map_error(from_internal_error)
   |> result.try(to_queried(_, db.config.rows_as_dict))
 }
@@ -636,22 +646,31 @@ fn rows_to_dicts(
 pub fn execute(sql: String, on connection: Connection) -> Result(Int, PglError) {
   use conn, db <- with_single_connection(connection)
 
-  extended_query(sql, [], conn, db)
+  extended_query(sql, [], conn, db, option.None)
   |> result.map(fn(rows) { rows.count })
   |> result.map_error(from_internal_error)
 }
 
-fn extended_query(
+// TODO: temporarily pub
+pub fn extended_query(
   sql: String,
   params: List(pg_value.Value),
   conn: conn.Conn,
   db: Db,
+  handle_notification: option.Option(protocol.HandleNotificationResponse),
 ) -> Result(protocol.Extended(pg_value.Value), internal.InternalError) {
   let message =
     encode_from_cache(sql, params, db)
     |> result.lazy_unwrap(fn() { encode.uncached(sql, params) })
 
-  extended(db)
+  let query = extended(db)
+
+  let query = case handle_notification {
+    option.Some(handler) -> query |> protocol.on_notification(handler)
+    option.None -> query
+  }
+
+  query
   |> protocol.process(message, conn.sock)
 }
 

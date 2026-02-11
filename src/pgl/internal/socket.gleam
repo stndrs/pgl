@@ -16,12 +16,17 @@ pub opaque type InternalSocket {
   Ssl(SslSocket)
 }
 
+pub type Timeout {
+  Timeout(Int)
+  Infinite
+}
+
 pub opaque type Builder {
   Builder(
     host: String,
     port: Int,
     ipv6: Bool,
-    timeout: Int,
+    timeout: Timeout,
     send: Sender,
     receive: Receiver,
     shutdown: Disconnector,
@@ -32,7 +37,7 @@ pub opaque type Socket {
   Socket(
     subject: Subject(Msg),
     host: String,
-    timeout: Int,
+    timeout: Timeout,
     parameters: Dict(String, String),
     send: Sender,
     receive: Receiver,
@@ -55,7 +60,7 @@ pub opaque type Msg {
     client: Subject(Result(BitArray, internal.PosixError)),
     receive: Receiver,
     length: Int,
-    timeout: Int,
+    timeout: Timeout,
   )
   Shutdown(
     client: Subject(Result(Nil, internal.PosixError)),
@@ -68,7 +73,7 @@ pub fn new() -> Builder {
     host: internal.default_host,
     port: internal.default_port,
     ipv6: False,
-    timeout: 1000,
+    timeout: Timeout(1000),
     send: socket_send,
     receive: socket_receive,
     shutdown: socket_shutdown,
@@ -83,8 +88,8 @@ pub fn port(builder: Builder, port: Int) -> Builder {
   Builder(..builder, port:)
 }
 
-pub fn timeout(builder: Builder, timeout: Int) -> Builder {
-  Builder(..builder, timeout:)
+pub fn timeout(builder: Builder, timeout: Timeout) -> Builder {
+  Builder(..builder, timeout: timeout)
 }
 
 pub fn ipv6(builder: Builder, ipv6: Bool) -> Builder {
@@ -95,7 +100,7 @@ pub type Sender =
   fn(InternalSocket, BitArray) -> Result(Nil, internal.PosixError)
 
 pub type Receiver =
-  fn(InternalSocket, Int, Int) -> Result(BitArray, internal.PosixError)
+  fn(InternalSocket, Int, Timeout) -> Result(BitArray, internal.PosixError)
 
 pub type Disconnector =
   fn(InternalSocket) -> Result(Nil, internal.PosixError)
@@ -137,6 +142,14 @@ pub fn connect(factory: Factory) -> Result(Socket, actor.StartError) {
   factory.get_by_name(factory.name)
   |> factory.start_child(factory.builder)
   |> result.map(fn(started) { started.data })
+}
+
+pub fn connect_timeout(
+  factory: Factory,
+  new_timeout: Timeout,
+) -> Result(Socket, actor.StartError) {
+  Factory(..factory, builder: factory.builder |> timeout(new_timeout))
+  |> connect
 }
 
 pub fn supervised(
@@ -201,12 +214,11 @@ pub fn receive(
   conn: Socket,
   length: Int,
 ) -> Result(BitArray, internal.InternalError) {
-  actor.call(conn.subject, conn.timeout, Receive(
-    _,
-    conn.receive,
-    length,
-    conn.timeout,
-  ))
+  let call = case conn.timeout {
+    Timeout(t) -> fn(subj, msg) { actor.call(subj, t, msg) }
+    Infinite -> process.call_forever
+  }
+  call(conn.subject, Receive(_, conn.receive, length, conn.timeout))
   |> result.map_error(fn(code) {
     internal.SocketError(code:, message: "Failed to receive")
   })
@@ -247,8 +259,10 @@ fn handle_message(
       actor.continue(sock)
     }
     Receive(client:, receive:, length:, timeout:) -> {
-      receive(sock, length, timeout)
-      |> actor.send(client, _)
+      process.spawn(fn() {
+        receive(sock, length, timeout)
+        |> actor.send(client, _)
+      })
 
       actor.continue(sock)
     }
@@ -306,10 +320,14 @@ fn socket_send(
 fn socket_receive(
   socket: InternalSocket,
   length: Int,
-  timeout: Int,
+  timeout: Timeout,
 ) -> Result(BitArray, internal.PosixError) {
   case socket {
-    Tcp(sock) -> tcp_receive(sock, length, timeout)
+    Tcp(sock) ->
+      case timeout {
+        Timeout(t) -> tcp_receive(sock, length, t)
+        Infinite -> tcp_receive_infinity(sock, length)
+      }
     Ssl(sock) -> ssl_receive(sock, length)
   }
 }
@@ -335,6 +353,12 @@ fn tcp_receive(
   socket: TcpSocket,
   read_bytes_num: Int,
   timeout_milliseconds timeout: Int,
+) -> Result(BitArray, internal.PosixError)
+
+@external(erlang, "pgl_ffi", "gen_tcp_recv_infinity")
+fn tcp_receive_infinity(
+  socket: TcpSocket,
+  read_bytes_num: Int,
 ) -> Result(BitArray, internal.PosixError)
 
 @external(erlang, "pgl_ffi", "gen_tcp_send")
