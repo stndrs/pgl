@@ -88,13 +88,7 @@ pub fn port(builder: Builder, port: Int) -> Builder {
   Builder(..builder, port:)
 }
 
-pub fn timeout(builder: Builder, timeout: Int) -> Builder {
-  Builder(..builder, timeout: Timeout(timeout))
-}
-
-// TODO: fix this
-// I just want to test by code
-pub fn timeout_2(builder: Builder, timeout: Timeout) -> Builder {
+pub fn timeout(builder: Builder, timeout: Timeout) -> Builder {
   Builder(..builder, timeout: timeout)
 }
 
@@ -154,7 +148,7 @@ pub fn connect_timeout(
   factory: Factory,
   new_timeout: Timeout,
 ) -> Result(Socket, actor.StartError) {
-  Factory(..factory, builder: factory.builder |> timeout_2(new_timeout))
+  Factory(..factory, builder: factory.builder |> timeout(new_timeout))
   |> connect
 }
 
