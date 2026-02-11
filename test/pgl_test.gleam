@@ -302,7 +302,7 @@ fn with_db(next: fn(pgl.Db) -> t) {
 
 fn with_db_and_notifications(next: fn(pgl.Db, notifications.Notifications) -> t) {
   let #(db, notifications) = {
-    use <- global_value.create_with_unique_name("pgl_pools")
+    use <- global_value.create_with_unique_name("pgl_pools_notifications")
 
     let db =
       pgl.default
@@ -318,6 +318,8 @@ fn with_db_and_notifications(next: fn(pgl.Db, notifications.Notifications) -> t)
 
     #(db, notifs)
   }
+
+  next(db, notifications)
 }
 
 fn with_conn(db: pgl.Db, next: fn(pgl.Connection) -> t) {
