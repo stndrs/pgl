@@ -12,12 +12,15 @@ import gleam/time/calendar
 import gleam/time/timestamp
 import gleeunit
 import global_value
+import neon/ssl
 import pg_value
 import pg_value/interval
 import pgl
 import pgl/internal
 
 pub fn main() {
+  let assert Ok(_) = ssl.start()
+
   gleeunit.main()
 }
 

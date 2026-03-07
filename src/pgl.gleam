@@ -320,9 +320,9 @@ fn from_internal_error(err: internal.InternalError) -> PglError {
 
       AuthenticationError(message)
     }
-    internal.SocketError(code, message) -> {
+    internal.SocketError(kind, message) -> {
       let message =
-        "[" <> internal.posix_error_to_string(code) <> "] " <> message
+        "[" <> internal.socket_error_to_string(kind) <> "] " <> message
 
       SocketError(message)
     }

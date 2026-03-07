@@ -1,4 +1,5 @@
 import gleam/int
+import neon/net
 import pgl/internal
 import rasa
 
@@ -32,7 +33,7 @@ pub fn method_not_implemented_error_to_string_test() {
 
 pub fn socket_error_to_string_test() {
   assert "(SocketError[econnreset]) message"
-    == internal.SocketError(internal.Econnreset, "message")
+    == internal.SocketError(internal.Posix(net.Econnreset), "message")
     |> internal.error_to_string
 }
 
