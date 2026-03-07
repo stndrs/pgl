@@ -12,7 +12,7 @@ import pg_value/type_info.{type TypeInfo}
 import pgl/internal/encode
 import pgl/internal/protocol
 import pgl/internal/socket.{type Socket}
-import pgl/internal/store.{type Store}
+import rasa
 
 pub opaque type TypeCache {
   TypeCache(
@@ -50,7 +50,9 @@ pub fn start(type_cache: TypeCache) -> actor.StartResult(Nil) {
   actor.new_with_initialiser(1000, fn(subj) {
     let selector = process.new_selector() |> process.select(subj)
 
-    store.new(table_name)
+    rasa.build(table_name)
+    |> rasa.with_access(rasa.Private)
+    |> rasa.table
     |> actor.initialised
     |> actor.selecting(selector)
     |> Ok
@@ -102,21 +104,21 @@ pub fn shutdown(type_cache: TypeCache) -> Nil {
 }
 
 fn handle_message(
-  store: Store(Int, TypeInfo),
+  table: rasa.Table(Int, TypeInfo),
   message: Message,
-) -> actor.Next(Store(Int, TypeInfo), a) {
+) -> actor.Next(rasa.Table(Int, TypeInfo), a) {
   case message {
-    Load(client, sock) -> handle_load(store, sock, client)
-    Lookup(client, oids) -> handle_lookup(store, oids, client)
+    Load(client, sock) -> handle_load(table, sock, client)
+    Lookup(client, oids) -> handle_lookup(table, oids, client)
     Shutdown -> actor.stop()
   }
 }
 
 fn handle_load(
-  store: Store(Int, TypeInfo),
+  table: rasa.Table(Int, TypeInfo),
   sock: Socket,
   client: process.Subject(Result(Nil, Nil)),
-) -> actor.Next(Store(Int, TypeInfo), a) {
+) -> actor.Next(rasa.Table(Int, TypeInfo), a) {
   bootstrap_sql
   |> encode.query
   |> protocol.simple(sock)
@@ -125,42 +127,42 @@ fn handle_load(
       Ok(infos) -> {
         actor.send(client, Ok(Nil))
 
-        parse_type_infos(store, infos)
+        parse_type_infos(table, infos)
       }
       Error(_) -> {
         actor.send(client, Error(Nil))
 
-        store
+        table
       }
     }
   })
-  |> result.unwrap(store)
+  |> result.unwrap(table)
   |> actor.continue
 }
 
 fn handle_lookup(
-  store: Store(Int, TypeInfo),
+  table: rasa.Table(Int, TypeInfo),
   oids: List(Int),
   client: process.Subject(Result(List(TypeInfo), Nil)),
-) -> actor.Next(Store(Int, TypeInfo), a) {
+) -> actor.Next(rasa.Table(Int, TypeInfo), a) {
   oids
-  |> list.try_map(store.lookup(store, _))
+  |> list.try_map(rasa.lookup(table, _))
   |> actor.send(client, _)
 
-  actor.continue(store)
+  actor.continue(table)
 }
 
 fn parse_type_infos(
-  store: Store(Int, TypeInfo),
+  table: rasa.Table(Int, TypeInfo),
   infos: List(TypeInfo),
-) -> Store(Int, TypeInfo) {
+) -> rasa.Table(Int, TypeInfo) {
   let oid_to_info =
     infos
     |> list.map(fn(ti) { #(ti.oid, ti) })
     |> dict.from_list
 
   oid_to_info
-  |> dict.fold(from: store, with: fn(store, oid, info) {
+  |> dict.fold(from: table, with: fn(table, oid, info) {
     let _ =
       info.comp_oids
       |> list.try_map(dict.get(oid_to_info, _))
@@ -172,9 +174,9 @@ fn parse_type_infos(
         |> type_info.comp_types(Some(comp_types))
       })
       |> result.unwrap(info)
-      |> store.insert(store, oid, _)
+      |> rasa.insert(table, oid, _)
 
-    store
+    table
   })
 }
 

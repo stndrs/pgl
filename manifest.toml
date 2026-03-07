@@ -11,6 +11,7 @@ packages = [
   { name = "gleeunit", version = "1.9.0", build_tools = ["gleam"], requirements = ["gleam_stdlib"], otp_app = "gleeunit", source = "hex", outer_checksum = "DA9553CE58B67924B3C631F96FE3370C49EB6D6DC6B384EC4862CC4AAA718F3C" },
   { name = "global_value", version = "1.0.0", build_tools = ["gleam"], requirements = ["gleam_stdlib"], otp_app = "global_value", source = "hex", outer_checksum = "23F74C91A7B819C43ABCCBF49DAD5BB8799D81F2A3736BA9A534BD47F309FF4F" },
   { name = "pg_value", version = "2.0.0", build_tools = ["gleam"], requirements = ["gleam_stdlib", "gleam_time"], otp_app = "pg_value", source = "hex", outer_checksum = "DBC9DBCD3FD4ED2853739CE19D18420DFC9B60088C09EF0063816F97D142D538" },
+  { name = "rasa", version = "1.0.0", build_tools = ["gleam"], requirements = ["gleam_erlang", "gleam_stdlib"], otp_app = "rasa", source = "hex", outer_checksum = "DB3ADEE865DC8CCB3B9A36DD4DB0F7CFBC4C3C5A4F56AFEE6E611E39C2F1D8D6" },
 ]
 
 [requirements]
@@ -23,3 +24,4 @@ gleam_time = { version = ">= 1.2.0 and < 2.0.0" }
 gleeunit = { version = "~> 1.0" }
 global_value = { version = ">= 1.0.0 and < 2.0.0" }
 pg_value = { version = ">= 2.0.0 and < 3.0.0" }
+rasa = { version = ">= 1.0.0 and < 2.0.0" }
