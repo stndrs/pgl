@@ -11,11 +11,6 @@
   ssl_send/2,
   ssl_recv/3,
   ssl_shutdown/1,
-  ets_new/1,
-  ets_insert/3,
-  ets_lookup/2,
-  ets_delete/1,
-  ets_delete/2,
   rescue/1,
   handle_crash/2,
   binary_match/2,
@@ -101,47 +96,7 @@ normalise({ok, T}) -> {ok, T};
 normalise({error, {timeout, _}}) -> {error, timeout};
 normalise({error, _} = E) -> E.
 
-%%% ETS %%%
-
-ets_new(Name) ->
-  ets:new(Name, [named_table, private]).
-
-ets_insert(Name, Key, Value) ->
-  with_rescue(fun() ->
-    ets:insert(Name, {Key, Value}),
-
-    {ok, nil}
-  end).
-
-ets_lookup(Name, Key) ->
-  with_rescue(fun() ->
-    case ets:lookup(Name, Key) of
-      '$end_of_table' -> {error, nil};
-      [{_Key, Value}] -> {ok, Value};
-      [] -> {error, nil}
-    end
-  end).
-
-ets_delete(Name) ->
-  with_rescue(fun() ->
-    ets:delete(Name),
-
-    {ok, nil}
-  end).
-
-ets_delete(Name, Key) ->
-  with_rescue(fun() ->
-    ets:delete(Name, Key),
-
-    {ok, nil}
-  end).
-
 %%% Exception handling %%%
-
-with_rescue(Fun) ->
-  try Fun()
-  catch error:badarg -> {error, nil}
-  end.
 
 rescue(Fun) ->
   try {ok, Fun()}

@@ -2,7 +2,7 @@ import gleam/erlang/process
 import gleam/otp/actor
 import gleam/otp/supervision
 import gleam/result
-import pgl/internal/store.{type Store}
+import rasa
 
 pub opaque type QueryCache {
   QueryCache(name: process.Name(Message))
@@ -43,7 +43,9 @@ pub fn start(
   actor.new_with_initialiser(1000, fn(subj) {
     let selector = process.new_selector() |> process.select(subj)
 
-    store.new(table_name)
+    rasa.build(table_name)
+    |> rasa.with_access(rasa.Private)
+    |> rasa.table
     |> actor.initialised
     |> actor.selecting(selector)
     |> Ok
@@ -83,35 +85,38 @@ pub fn shutdown(query_cache: QueryCache) -> Nil {
 }
 
 fn handle_message(
-  store: Store(String, List(Int)),
+  table: rasa.Table(String, List(Int)),
   msg: Message,
-) -> actor.Next(Store(String, List(Int)), Message) {
+) -> actor.Next(rasa.Table(String, List(Int)), Message) {
   case msg {
     Lookup(client, query) -> {
-      store.lookup(store, query)
+      rasa.lookup(table, query)
       |> actor.send(client, _)
 
-      actor.continue(store)
+      actor.continue(table)
     }
     Insert(client, query, description) -> {
-      store.insert(store, query, description)
+      rasa.insert(table, query, description)
       |> result.replace(Nil)
       |> actor.send(client, _)
 
-      actor.continue(store)
+      actor.continue(table)
     }
     Reset -> {
-      let _ = store.drop(store)
+      let _ = rasa.drop(table)
 
-      actor.continue(store.new(table_name))
+      rasa.build(table_name)
+      |> rasa.with_access(rasa.Private)
+      |> rasa.table
+      |> actor.continue
     }
     Delete(query) -> {
-      let _ = store.delete(store, query)
+      let _ = rasa.delete(table, query)
 
-      actor.continue(store)
+      actor.continue(table)
     }
     Shutdown -> {
-      let _ = store.drop(store)
+      let _ = rasa.drop(table)
 
       actor.stop()
     }

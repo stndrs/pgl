@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Replaced internal `store` module with `rasa`
+
 ## v2.0.0
 
 - Update [`pg_value`](https://hexdocs.pm/pg_value/pg_value.html) to v2.0.0
