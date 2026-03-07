@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Replaced internal `store` module with `rasa`
+- Refactored internal `socket` module to use `neon` for managing tcp and ssl sockets
 
 ## v2.0.0
 

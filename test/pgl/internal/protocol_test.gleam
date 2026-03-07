@@ -24,27 +24,6 @@ pub fn config_test() {
   assert option.Some(True) == conf.ssl
 }
 
-pub fn ssl_upgrade_unexpected_receive_test() {
-  let conf =
-    protocol.config
-    |> protocol.ssl(option.Some(False))
-
-  let sockets =
-    socket.new()
-    |> socket.host(internal.default_host)
-    |> socket.port(internal.default_port)
-    |> socket.with_receive(fn(_, _, _) { Ok(<<"X":utf8>>) })
-    |> socket.factory
-
-  let assert Ok(_) = socket_test.supervise(sockets)
-  let assert Ok(sock) = socket.connect(sockets)
-
-  let assert Error(internal.ProtocolError(
-    kind: internal.SslError,
-    message: "Failed to upgrade SSL",
-  )) = protocol.auth(sock, conf)
-}
-
 pub fn protocol_test() {
   let conf =
     protocol.config

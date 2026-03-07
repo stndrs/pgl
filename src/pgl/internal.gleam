@@ -2,6 +2,7 @@ import gleam/dict.{type Dict}
 import gleam/function
 import gleam/list
 import gleam/string
+import neon/net
 
 pub const protocol_version_major = <<3:int-size(16)>>
 
@@ -93,7 +94,7 @@ pub type Command {
 
 pub type InternalError {
   AuthenticationError(kind: AuthenticationError, message: String)
-  SocketError(code: PosixError, message: String)
+  SocketError(kind: SocketError, message: String)
   ProtocolError(kind: ProtocolError, message: String)
   PostgresError(
     code: String,
@@ -103,6 +104,30 @@ pub type InternalError {
   )
 }
 
+pub type SocketError {
+  Closed
+  Timeout
+  SystemLimit
+  Posix(net.Posix)
+  TcpError(String)
+  TlsAlert(String)
+  SslSockError(String)
+  ConnectError(String)
+}
+
+pub fn socket_error_to_string(err: SocketError) -> String {
+  case err {
+    Closed -> "Closed"
+    Timeout -> "Timeout"
+    SystemLimit -> "SystemLimit"
+    Posix(code) -> net.posix_to_string(code)
+    TcpError(message) -> "TcpError(" <> message <> ")"
+    TlsAlert(message) -> "TlsAlert(" <> message <> ")"
+    SslSockError(message) -> "SslError(" <> message <> ")"
+    ConnectError(message) -> "ConnectError(" <> message <> ")"
+  }
+}
+
 pub fn error_to_string(err: InternalError) -> String {
   case err {
     AuthenticationError(kind, msg) -> {
@@ -110,8 +135,8 @@ pub fn error_to_string(err: InternalError) -> String {
 
       format_error(name, msg)
     }
-    SocketError(code, msg) -> {
-      let name = "SocketError[" <> posix_error_to_string(code) <> "]"
+    SocketError(kind, msg) -> {
+      let name = "SocketError[" <> socket_error_to_string(kind) <> "]"
 
       format_error(name, msg)
     }
@@ -195,8 +220,6 @@ pub fn protocol_error_to_string(err: ProtocolError) {
 
 // https://www.erlang.org/doc/apps/kernel/inet.html#module-posix-error-codes
 pub type PosixError {
-  Closed
-  Timeout
   Eaddrinuse
   Eaddrnotavail
   Eafnosupport
@@ -277,8 +300,6 @@ pub type PosixError {
 
 pub fn posix_error_to_string(code: PosixError) -> String {
   case code {
-    Closed -> "closed"
-    Timeout -> "timeout"
     Eaddrinuse -> "eaddrinuse"
     Eaddrnotavail -> "eaddrnotavail"
     Eafnosupport -> "eafnosupport"

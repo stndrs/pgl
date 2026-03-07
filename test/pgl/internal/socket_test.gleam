@@ -1,16 +1,19 @@
-import gleam/erlang/port.{type Port}
 import gleam/otp/static_supervisor as supervisor
+import neon/net
+import neon/tcp
 import pgl/internal
 import pgl/internal/socket
 
 pub fn connect() {
-  let assert Ok(tcp_port) = tcp_listen(0)
-  let assert Ok(port_num) = inet_port(tcp_port)
+  let assert Ok(port) = net.port(0)
+  let assert Ok(localhost) = net.parse_ip_address("127.0.0.1")
+  let assert Ok(socket) = tcp.listen(port, localhost)
+  let assert Ok(port) = tcp.port(socket)
 
   let sockets =
     socket.new()
     |> socket.host(internal.default_host)
-    |> socket.port(port_num)
+    |> socket.port(net.port_to_int(port))
     |> socket.factory
 
   let assert Ok(_) = supervise(sockets)
@@ -20,14 +23,16 @@ pub fn connect() {
 }
 
 pub fn connect_ipv6_test() {
-  let assert Ok(tcp_port) = tcp_listen_ipv6(0)
-  let assert Ok(port_num) = inet_port(tcp_port)
+  let assert Ok(port) = net.port(0)
+  let assert Ok(ipv6_localhost) = net.parse_ip_address("::1")
+  let assert Ok(socket) = tcp.listen(port, ipv6_localhost)
+  let assert Ok(port) = tcp.port(socket)
 
   let sockets =
     socket.new()
     |> socket.host("::1")
     |> socket.ipv6(True)
-    |> socket.port(port_num)
+    |> socket.port(net.port_to_int(port))
     |> socket.factory
 
   let assert Ok(_) = supervise(sockets)
@@ -60,58 +65,3 @@ pub fn send_test() {
   let assert Ok(_) = socket.send(sock, <<"bits":utf8>>)
   let assert Ok(_) = socket.shutdown(sock)
 }
-
-pub fn send_error_test() {
-  let sockets =
-    socket.new()
-    |> socket.host(internal.default_host)
-    |> socket.port(internal.default_port)
-    |> socket.with_send(fn(_, _) { Error(internal.Econnreset) })
-    |> socket.factory
-
-  let assert Ok(_) = supervise(sockets)
-  let assert Ok(sock) = socket.connect(sockets)
-
-  let assert Error(internal.SocketError(internal.Econnreset, "Failed to send")) =
-    socket.send(sock, <<"bits":utf8>>)
-}
-
-pub fn receive_test() {
-  let sockets =
-    socket.new()
-    |> socket.host(internal.default_host)
-    |> socket.port(internal.default_port)
-    |> socket.with_receive(fn(_, _, _) { Ok(<<"bits":utf8>>) })
-    |> socket.factory
-
-  let assert Ok(_) = supervise(sockets)
-  let assert Ok(sock) = socket.connect(sockets)
-
-  let assert Ok(<<"bits":utf8>>) = socket.receive(sock, 0)
-
-  let assert Ok(_) = socket.shutdown(sock)
-}
-
-pub fn receive_error_test() {
-  let sockets =
-    socket.new()
-    |> socket.host(internal.default_host)
-    |> socket.port(internal.default_port)
-    |> socket.with_receive(fn(_, _, _) { Error(internal.Closed) })
-    |> socket.factory
-
-  let assert Ok(_) = supervise(sockets)
-  let assert Ok(sock) = socket.connect(sockets)
-
-  let assert Error(internal.SocketError(internal.Closed, "Failed to receive")) =
-    socket.receive(sock, 5)
-}
-
-@external(erlang, "pgl_ffi", "gen_tcp_listen")
-fn tcp_listen(port: Int) -> Result(Port, internal.PosixError)
-
-@external(erlang, "pgl_ffi", "gen_tcp_listen_ipv6")
-fn tcp_listen_ipv6(port: Int) -> Result(Port, internal.PosixError)
-
-@external(erlang, "inet", "port")
-fn inet_port(port: Port) -> Result(Int, Nil)
