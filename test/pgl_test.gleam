@@ -216,7 +216,7 @@ fn pg_17_pool_rows_as_maps() -> pgl.Db {
   use <- global_value.create_with_unique_name("pgl_pool_rows_as_maps_test")
 
   let assert Ok(conf) =
-    "postgres://postgres:postgres@127.0.0.1/gleam_pgl_test"
+    "postgres://postgres:postgres@127.0.0.1/postgres"
     |> pgl.from_url
 
   let conf = pgl.rows_as_dict(conf, True)
