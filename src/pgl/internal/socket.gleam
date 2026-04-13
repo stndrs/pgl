@@ -1,5 +1,6 @@
 import gleam/dict.{type Dict}
 import gleam/erlang/process.{type Subject}
+import gleam/option.{type Option, None, Some}
 import gleam/otp/actor
 import gleam/otp/factory_supervisor as factory
 import gleam/otp/supervision
@@ -8,6 +9,8 @@ import neon/net
 import neon/ssl
 import neon/tcp
 import pgl/internal
+import pgl/internal/decode
+import pgl/internal/encode
 
 pub opaque type InternalSocket {
   Tcp(tcp.Tcp)
@@ -27,7 +30,19 @@ pub opaque type Socket {
   )
 }
 
+type State {
+  State(
+    socket: InternalSocket,
+    subject: Subject(Msg),
+    timeout: Int,
+    ping_timer: Option(process.Timer),
+  )
+}
+
 pub opaque type Msg {
+  StartPing(interval: Int)
+  StopPing
+  Ping(interval: Int)
   SslUpgrade(
     client: Subject(Result(Nil, internal.InternalError)),
     host: String,
@@ -112,7 +127,7 @@ fn start_socket(builder: Builder) -> actor.StartResult(Socket) {
 
       let socket = Socket(subject:, host:, timeout:, parameters: dict.new())
 
-      sock
+      State(socket: sock, subject:, timeout:, ping_timer: None)
       |> actor.initialised
       |> actor.selecting(selector)
       |> actor.returning(socket)
@@ -120,6 +135,14 @@ fn start_socket(builder: Builder) -> actor.StartResult(Socket) {
   })
   |> actor.on_message(handle_message)
   |> actor.start
+}
+
+pub fn start_ping(socket: Socket, interval: Int) -> Nil {
+  process.send(socket.subject, StartPing(interval:))
+}
+
+pub fn stop_ping(socket: Socket) -> Nil {
+  process.send(socket.subject, StopPing)
 }
 
 pub fn to_ssl(
@@ -158,17 +181,96 @@ pub fn shutdown(conn: Socket) -> Result(Nil, internal.InternalError) {
   })
 }
 
-fn handle_message(
+fn ping(
   sock: InternalSocket,
-  msg: Msg,
-) -> actor.Next(InternalSocket, Msg) {
+  timeout: Int,
+) -> Result(Nil, internal.InternalError) {
+  encode.sync()
+  |> socket_send(sock, _)
+  |> result.map_error(internal.SocketError(_, ""))
+  |> flush(sock, timeout)
+}
+
+fn flush(
+  res: Result(b, internal.InternalError),
+  sock: InternalSocket,
+  timeout: Int,
+) -> Result(b, internal.InternalError) {
+  receive_message(sock, timeout)
+  |> result.try(fn(msg) {
+    case msg {
+      internal.ParameterStatus(_, _) -> flush(res, sock, timeout)
+      internal.ReadyForQuery(status: _) -> res
+      _ -> flush(res, sock, timeout)
+    }
+  })
+}
+
+fn receive_message(
+  sock: InternalSocket,
+  timeout: Int,
+) -> Result(internal.Message, internal.InternalError) {
+  net.timeout(timeout)
+  |> result.replace_error(internal.SocketError(internal.Timeout, ""))
+  |> result.try(fn(timeout) {
+    socket_receive(sock, internal.header_size, timeout)
+    |> result.map_error(internal.SocketError(_, ""))
+    |> result.try(fn(data) {
+      case data {
+        <<code:bits-size(8), size:int-size(32)>> -> {
+          case size - 4 {
+            0 -> decode.message(code, <<>>)
+            size1 -> {
+              socket_receive(sock, size1, timeout)
+              |> result.map_error(internal.SocketError(_, ""))
+              |> result.try(decode.message(code, _))
+            }
+          }
+        }
+        _ -> {
+          internal.DecodingError
+          |> internal.ProtocolError(message: "Unexpected data received")
+          |> Error
+        }
+      }
+    })
+  })
+}
+
+fn handle_message(state: State, msg: Msg) -> actor.Next(State, Msg) {
   case msg {
+    StartPing(interval:) -> {
+      let ping_timer =
+        process.send_after(state.subject, interval, Ping(interval:))
+
+      State(..state, ping_timer: Some(ping_timer))
+      |> actor.continue
+    }
+    StopPing -> {
+      case state.ping_timer {
+        Some(timer) -> process.cancel_timer(timer)
+        None -> process.TimerNotFound
+      }
+
+      State(..state, ping_timer: None)
+      |> actor.continue
+    }
+
+    Ping(interval:) -> {
+      let _ = ping(state.socket, state.timeout)
+
+      let ping_timer =
+        process.send_after(state.subject, interval, Ping(interval:))
+
+      State(..state, ping_timer: Some(ping_timer))
+      |> actor.continue
+    }
     SslUpgrade(client:, host:, verified:) -> {
-      case tcp_to_ssl(sock, host, verified) {
+      case tcp_to_ssl(state.socket, host, verified) {
         Ok(ssl) -> {
           actor.send(client, Ok(Nil))
 
-          ssl
+          State(..state, socket: ssl)
         }
         Error(err) -> {
           let err =
@@ -176,27 +278,29 @@ fn handle_message(
 
           actor.send(client, Error(err))
 
-          sock
+          state
         }
       }
       |> actor.continue
     }
     Send(client:, payload:) -> {
-      socket_send(sock, payload)
+      socket_send(state.socket, payload)
       |> actor.send(client, _)
 
-      actor.continue(sock)
+      actor.continue(state)
     }
     Receive(client:, length:, timeout:) -> {
       net.timeout(timeout)
       |> result.map_error(fn(_) { internal.ConnectError("Invalid Port") })
-      |> result.try(fn(timeout) { socket_receive(sock, length, timeout) })
+      |> result.try(fn(timeout) {
+        socket_receive(state.socket, length, timeout)
+      })
       |> actor.send(client, _)
 
-      actor.continue(sock)
+      actor.continue(state)
     }
     Shutdown(client:) -> {
-      socket_shutdown(sock)
+      socket_shutdown(state.socket)
       |> actor.send(client, _)
 
       actor.stop()

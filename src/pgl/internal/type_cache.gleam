@@ -12,7 +12,7 @@ import pg_value/type_info.{type TypeInfo}
 import pgl/internal/encode
 import pgl/internal/protocol
 import pgl/internal/socket.{type Socket}
-import rasa
+import rasa/table
 
 pub opaque type TypeCache {
   TypeCache(
@@ -44,15 +44,13 @@ pub fn on_connect(
   TypeCache(..type_cache, handle_connect:)
 }
 
-const table_name = "pgl_type_cache_table"
-
 pub fn start(type_cache: TypeCache) -> actor.StartResult(Nil) {
   actor.new_with_initialiser(1000, fn(subj) {
     let selector = process.new_selector() |> process.select(subj)
 
-    rasa.build(table_name)
-    |> rasa.with_access(rasa.Private)
-    |> rasa.table
+    table.new()
+    |> table.with_access(table.Private)
+    |> table.build
     |> actor.initialised
     |> actor.selecting(selector)
     |> Ok
@@ -104,9 +102,9 @@ pub fn shutdown(type_cache: TypeCache) -> Nil {
 }
 
 fn handle_message(
-  table: rasa.Table(Int, TypeInfo),
+  table: table.Table(Int, TypeInfo),
   message: Message,
-) -> actor.Next(rasa.Table(Int, TypeInfo), a) {
+) -> actor.Next(table.Table(Int, TypeInfo), a) {
   case message {
     Load(client, sock) -> handle_load(table, sock, client)
     Lookup(client, oids) -> handle_lookup(table, oids, client)
@@ -115,10 +113,10 @@ fn handle_message(
 }
 
 fn handle_load(
-  table: rasa.Table(Int, TypeInfo),
+  table: table.Table(Int, TypeInfo),
   sock: Socket,
   client: process.Subject(Result(Nil, Nil)),
-) -> actor.Next(rasa.Table(Int, TypeInfo), a) {
+) -> actor.Next(table.Table(Int, TypeInfo), a) {
   bootstrap_sql
   |> encode.query
   |> protocol.simple(sock)
@@ -141,21 +139,21 @@ fn handle_load(
 }
 
 fn handle_lookup(
-  table: rasa.Table(Int, TypeInfo),
+  table: table.Table(Int, TypeInfo),
   oids: List(Int),
   client: process.Subject(Result(List(TypeInfo), Nil)),
-) -> actor.Next(rasa.Table(Int, TypeInfo), a) {
+) -> actor.Next(table.Table(Int, TypeInfo), a) {
   oids
-  |> list.try_map(rasa.lookup(table, _))
+  |> list.try_map(table.lookup(table, _))
   |> actor.send(client, _)
 
   actor.continue(table)
 }
 
 fn parse_type_infos(
-  table: rasa.Table(Int, TypeInfo),
+  table: table.Table(Int, TypeInfo),
   infos: List(TypeInfo),
-) -> rasa.Table(Int, TypeInfo) {
+) -> table.Table(Int, TypeInfo) {
   let oid_to_info =
     infos
     |> list.map(fn(ti) { #(ti.oid, ti) })
@@ -174,7 +172,7 @@ fn parse_type_infos(
         |> type_info.comp_types(Some(comp_types))
       })
       |> result.unwrap(info)
-      |> rasa.insert(table, oid, _)
+      |> table.insert(table, oid, _)
 
     table
   })

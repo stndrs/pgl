@@ -1,4 +1,5 @@
 import gleam/list
+import gleam/option
 import gleam/result
 import pgl/internal
 import pgl/internal/protocol
@@ -11,6 +12,7 @@ fn conf() {
   |> protocol.database("gleam_pgl_test")
   |> protocol.username("postgres")
   |> protocol.password("postgres")
+  |> protocol.ssl(option.Some(False))
 }
 
 pub fn load_test() {

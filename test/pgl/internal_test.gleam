@@ -1,7 +1,7 @@
 import gleam/int
 import neon/net
 import pgl/internal
-import rasa
+import rasa/table
 
 pub fn format_error_test() {
   assert "(Name)" == internal.format_error("Name", "")
@@ -82,38 +82,34 @@ pub fn with_rescue_test() {
 }
 
 pub fn on_crash_test() {
-  let data =
-    rasa.build("on_crash_test")
-    |> rasa.table
+  let data = table.new() |> table.build
 
   let assert Error(Nil) = {
     use <- internal.with_rescue()
 
-    use <- internal.on_crash(fn() { rasa.insert(data, "key", 10) })
+    use <- internal.on_crash(fn() { table.insert(data, "key", 10) })
 
     panic as "Failure"
   }
 
-  let assert Ok(10) = rasa.lookup(data, "key")
+  let assert Ok(10) = table.lookup(data, "key")
 }
 
 pub fn assert_on_crash_ok_test() {
-  let data =
-    rasa.build("on_crash_test")
-    |> rasa.table
+  let data = table.new() |> table.build
 
   let assert Error(Nil) = {
     use <- internal.with_rescue()
 
     use <- internal.assert_on_crash(
-      fn() { rasa.insert(data, "key", 10) },
+      fn() { table.insert(data, "key", 10) },
       "message",
     )
 
     panic as "Failure"
   }
 
-  let assert Ok(10) = rasa.lookup(data, "key")
+  let assert Ok(10) = table.lookup(data, "key")
 }
 
 pub fn assert_on_crash_error_test() {

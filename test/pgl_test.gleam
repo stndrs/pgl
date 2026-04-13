@@ -53,6 +53,7 @@ pub fn parse_url_alternative_schema_test() {
       database: "gleam_pgl_test",
       username: "postgres",
       password: "supersecretpassword",
+      ssl: pgl.SslDisabled,
     )
     == conf
 }
@@ -188,7 +189,7 @@ pub fn default_values_test() {
   assert "" == conf.username
   assert "" == conf.password
   assert "" == conf.database
-  assert pgl.SslDisabled == conf.ssl
+  assert pgl.SslVerified == conf.ssl
   assert pgl.Ipv4 == conf.ip_version
 }
 
@@ -219,7 +220,10 @@ fn pg_17_pool_rows_as_maps() -> pgl.Db {
     "postgres://postgres:postgres@127.0.0.1/postgres"
     |> pgl.from_url
 
-  let conf = pgl.rows_as_dict(conf, True)
+  let conf =
+    conf
+    |> pgl.ssl(pgl.SslUnverified)
+    |> pgl.rows_as_dict(True)
 
   let db = pgl.new(conf)
 
@@ -291,6 +295,7 @@ fn with_db(next: fn(pgl.Db) -> t) {
       pgl.default
       |> pgl.username("postgres")
       |> pgl.password("postgres")
+      |> pgl.ssl(pgl.SslUnverified)
       |> pgl.new
 
     let assert Ok(_) = pgl.start(db)
@@ -383,6 +388,7 @@ pub fn ipv6_test() {
     |> pgl.password("postgres")
     |> pgl.host("::1")
     |> pgl.ip_version(pgl.Ipv6)
+    |> pgl.ssl(pgl.SslUnverified)
     |> pgl.new
 
   let assert Ok(_) = pgl.start(db)

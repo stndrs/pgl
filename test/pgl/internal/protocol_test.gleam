@@ -30,6 +30,7 @@ pub fn protocol_test() {
     |> protocol.database("gleam_pgl_test")
     |> protocol.username("postgres")
     |> protocol.password("postgres")
+    |> protocol.ssl(option.Some(False))
 
   let sock = connect()
   let assert Ok(sock) = protocol.auth(sock, conf)
@@ -40,7 +41,9 @@ pub fn protocol_test() {
 }
 
 pub fn auth_failure_test() {
-  let conf = protocol.config
+  let conf =
+    protocol.config
+    |> protocol.ssl(option.Some(False))
 
   let sock = connect()
 
@@ -58,6 +61,7 @@ pub fn protocol_bootstrap_test() {
     |> protocol.database("gleam_pgl_test")
     |> protocol.username("postgres")
     |> protocol.password("postgres")
+    |> protocol.ssl(option.Some(False))
 
   let sock = connect()
   let assert Ok(sock) = protocol.auth(sock, conf)
@@ -65,19 +69,6 @@ pub fn protocol_bootstrap_test() {
   let assert Ok(_) =
     encode.query(type_cache.bootstrap_sql)
     |> protocol.simple(sock)
-}
-
-pub fn ping_test() {
-  let conf =
-    protocol.config
-    |> protocol.database("gleam_pgl_test")
-    |> protocol.username("postgres")
-    |> protocol.password("postgres")
-
-  let sock = connect()
-  let assert Ok(sock) = protocol.auth(sock, conf)
-
-  let assert Ok(_) = protocol.ping(sock)
 }
 
 fn connect() -> Socket {

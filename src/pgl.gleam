@@ -67,7 +67,7 @@ pub const default = Config(
   password: "",
   database: "",
   connection_parameters: [],
-  ssl: SslDisabled,
+  ssl: SslVerified,
   rows_as_dict: False,
   ip_version: Ipv4,
   pool_size: 5,
@@ -245,6 +245,7 @@ pub type PglError {
   QueryError(message: String)
   ConnectionError(message: String)
   ConnectionTimeout
+  ConnectionUnavailable
   AuthenticationError(message: String)
   ProtocolError(message: String)
   SocketError(message: String)
@@ -263,6 +264,7 @@ pub fn error_to_string(err: PglError) -> String {
     ConnectionError(message) ->
       internal.format_error("ConnectionError", message)
     ConnectionTimeout -> internal.format_error("ConnectionTimeout", "")
+    ConnectionUnavailable -> internal.format_error("ConnectionUnavailable", "")
     AuthenticationError(message) ->
       internal.format_error("AuthenticationError", message)
     ProtocolError(message) -> internal.format_error("ProtocolError", message)
@@ -405,14 +407,10 @@ pub fn start(db: Db) -> actor.StartResult(Supervisor) {
   let pool =
     db_pool.new()
     |> db_pool.size(db.config.pool_size)
-    |> db_pool.interval(db.config.idle_interval)
     |> db_pool.on_open(fn() { connect(db) })
     |> db_pool.on_close(disconnect)
-    |> db_pool.on_interval(fn(conn) {
-      let _ = ping(conn)
-
-      Nil
-    })
+    |> db_pool.on_idle(socket.start_ping(_, db.config.idle_interval))
+    |> db_pool.on_active(socket.stop_ping)
 
   supervisor.new(supervisor.OneForOne)
   |> supervisor.add(type_cache.supervised(db.type_cache))
@@ -446,6 +444,12 @@ fn authenticated_connection(
   config: Config,
   sockets: socket.Factory,
 ) -> Result(Socket, Nil) {
+  let ssl = case config.ssl {
+    SslDisabled -> None
+    SslVerified -> Some(True)
+    SslUnverified -> Some(False)
+  }
+
   let conf =
     protocol.config
     |> protocol.application(config.application)
@@ -453,6 +457,7 @@ fn authenticated_connection(
     |> protocol.username(config.username)
     |> protocol.password(config.password)
     |> protocol.database(config.database)
+    |> protocol.ssl(ssl)
 
   sockets
   |> socket.connect
@@ -472,6 +477,7 @@ fn pool_error_to_pgl_error(err: db_pool.PoolError(PglError)) -> PglError {
   case err {
     db_pool.ConnectionError(err) -> err
     db_pool.ConnectionTimeout -> ConnectionTimeout
+    db_pool.ConnectionUnavailable -> ConnectionUnavailable
   }
 }
 
@@ -481,11 +487,6 @@ pub fn shutdown(db: Db) -> Result(Nil, PglError) {
   |> process.named_subject
   |> db_pool.shutdown(1000)
   |> result.map_error(pool_error_to_pgl_error)
-}
-
-fn ping(sock: Socket) -> Result(Socket, PglError) {
-  protocol.ping(sock)
-  |> result.map_error(from_internal_error)
 }
 
 // ---------- Connection ---------- //
@@ -503,15 +504,19 @@ fn with_single_connection(
 ) -> Result(t, PglError) {
   case connection {
     Pool(db:) -> {
-      let self = process.self()
+      let res =
+        db.pool
+        |> process.named_subject
+        |> db_pool.with_connection(db.config.queue_target, 30_000, fn(socket) {
+          conn.new(socket, process.self())
+          |> next(db)
+        })
+        |> result.map_error(pool_error_to_pgl_error)
 
-      use conn <- result.try(checkout(db, self))
-
-      let res = next(conn, db)
-
-      checkin(db, conn.sock, self)
-
-      res
+      case res {
+        Ok(ok) -> ok
+        Error(err) -> Error(err)
+      }
     }
     Connection(conn:, db:) -> next(conn, db)
   }
@@ -520,7 +525,7 @@ fn with_single_connection(
 fn checkout(db: Db, self: process.Pid) -> Result(conn.Conn, PglError) {
   db.pool
   |> process.named_subject
-  |> db_pool.checkout(self, db.config.queue_target)
+  |> db_pool.checkout(self, db.config.queue_target, 30_000)
   |> result.map(conn.new(_, self))
   |> result.map_error(pool_error_to_pgl_error)
 }

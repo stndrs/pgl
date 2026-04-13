@@ -29,7 +29,7 @@ pub const config = Config(
   password: "",
   application: "",
   connection_parameters: [],
-  ssl: None,
+  ssl: Some(True),
 )
 
 pub fn application(conf: Config, application: String) -> Config {
@@ -277,14 +277,6 @@ fn simple_flow(
       |> Error
     }
   }
-}
-
-// ---------- Ping ---------- //
-
-pub fn ping(sock: Socket) -> Result(Socket, internal.InternalError) {
-  encode.sync()
-  |> socket.send(sock, _)
-  |> flush(sock)
 }
 
 fn flush(
