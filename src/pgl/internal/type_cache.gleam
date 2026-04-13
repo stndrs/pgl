@@ -134,8 +134,14 @@ fn handle_load(
       }
     }
   })
-  |> result.unwrap(table)
+  |> result.lazy_unwrap(fn() {
+    actor.send(client, Error(Nil))
+
+    table
+  })
   |> actor.continue
+
+  actor.continue(table)
 }
 
 fn handle_lookup(
@@ -242,6 +248,7 @@ fn do_parse_comp_oids(oids: String) -> Result(List(Int), Nil) {
       int.parse(oid)
       |> result.map(list.prepend(acc, _))
     })
+    |> result.map(list.reverse)
   })
 }
 

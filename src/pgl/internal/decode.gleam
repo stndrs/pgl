@@ -125,7 +125,7 @@ fn data_row_values(
     False -> Ok(list.reverse(acc))
     True -> {
       case payload {
-        <<>> -> Ok(acc)
+        <<>> -> Ok(list.reverse(acc))
         <<-1:signed-int-size(32), rest:bits>> -> {
           data_row_values(rest, columns - 1, [<<>>, ..acc])
         }

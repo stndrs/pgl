@@ -18,10 +18,10 @@ pub fn client_first(user: BitArray, nonce: BitArray) -> BitArray {
 
 pub fn get_nonce(num_random_bytes: Int) -> BitArray {
   let random = crypto.strong_random_bytes(num_random_bytes)
-  let unique = <<unique_int()>>
+  let unique = <<unique_int():int-size(64)>>
   let nonce_bin = <<
-    num_random_bytes,
-    random:bits-size(num_random_bytes),
+    num_random_bytes:int-size(8),
+    random:bits,
     unique:bits,
   >>
 
@@ -154,7 +154,12 @@ pub fn parse_server_final(
       )
       |> Error
     }
-    _bits -> panic as "Unexpected SASL server final payload"
+    _bits ->
+      internal.ProtocolError(
+        kind: internal.SaslServerFinal,
+        message: "Unexpected SASL server final payload",
+      )
+      |> Error
   }
 }
 

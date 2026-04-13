@@ -41,7 +41,7 @@ pub type Config {
     database: String,
     /// Other Postgres connection parameters.
     connection_parameters: List(#(String, String)),
-    /// (default: SslDisabled) SSL enabled or disabled.
+    /// (default: SslVerified) SSL enabled or disabled.
     ssl: Ssl,
     /// (default: False) Return rows as `Dict` or n-tuple.
     rows_as_dict: Bool,
@@ -224,20 +224,25 @@ fn apply_database(conf: Config, uri: Uri) -> Result(Config, Nil) {
 }
 
 fn apply_ssl_mode(conf: Config, uri: Uri) -> Result(Config, Nil) {
-  case uri.query {
+  let ssl_mode = case uri.query {
     None -> Ok(SslDisabled)
     Some(query) -> {
-      use query <- result.try(uri.parse_query(query))
-      use sslmode <- result.try(list.key_find(query, "sslmode"))
-
-      case sslmode {
-        "require" -> Ok(SslUnverified)
-        "verify-ca" | "verify-full" -> Ok(SslVerified)
-        "disable" -> Ok(SslDisabled)
-        _ -> Error(Nil)
+      case uri.parse_query(query) {
+        Ok(params) ->
+          case list.key_find(params, "sslmode") {
+            Ok("require") -> Ok(SslUnverified)
+            Ok("verify-ca") | Ok("verify-full") -> Ok(SslVerified)
+            Ok("prefer") | Ok("allow") -> Ok(SslUnverified)
+            Ok("disable") -> Ok(SslDisabled)
+            Ok(_) -> Error(Nil)
+            Error(_) -> Ok(SslDisabled)
+          }
+        Error(_) -> Error(Nil)
       }
     }
   }
+
+  ssl_mode
   |> result.map(ssl(conf, _))
 }
 

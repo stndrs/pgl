@@ -19,7 +19,7 @@ pub fn validate(data: BitArray) -> Result(BitArray, Nil) {
       is_private_use_char,
       is_non_char_code_points,
       is_surrogate_code_point,
-      is_inappropriate_for_plan_text_char,
+      is_inappropriate_for_plain_text_char,
       is_inappropriate_for_canonical_representation_char,
       is_change_display_properties_or_deprecated_char,
       is_tagging_char,
@@ -123,7 +123,7 @@ fn is_surrogate_code_point(char: Int) -> Bool {
 }
 
 // https://tools.ietf.org/html/rfc3454#appendix-C.6
-fn is_inappropriate_for_plan_text_char(char: Int) -> Bool {
+fn is_inappropriate_for_plain_text_char(char: Int) -> Bool {
   0xFFF9 <= char && char <= 0xFFFD
 }
 

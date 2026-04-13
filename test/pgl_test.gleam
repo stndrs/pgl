@@ -1356,7 +1356,7 @@ pub fn transaction_rollback_test() {
 
   setup_users_table(conn)
 
-  use tx <- result.map(pgl.begin(conn))
+  let assert Ok(tx) = pgl.begin(conn)
 
   let _id1 = insert_into_users_table(tx, "two")
   let _id2 = insert_into_users_table(tx, "three")
