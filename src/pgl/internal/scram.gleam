@@ -102,11 +102,15 @@ pub fn parse_server_first(
       use salt <- result.try(bit_array.base64_decode(salt))
       use iterations <- result.try(int.parse(iters))
 
-      let size = bit_array.byte_size(client_nonce)
+      let size = bit_array.bit_size(client_nonce)
 
       case nonce {
-        <<_:bits-size(size), _:bits>> -> {
-          Ok(ServerFirst(nonce:, salt:, iterations:, raw: server_first))
+        <<prefix:bits-size(size), _:bits>> -> {
+          case prefix == client_nonce {
+            True ->
+              Ok(ServerFirst(nonce:, salt:, iterations:, raw: server_first))
+            False -> Error(Nil)
+          }
         }
         _ -> Error(Nil)
       }
