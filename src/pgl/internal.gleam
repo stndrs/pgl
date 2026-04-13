@@ -195,6 +195,7 @@ pub type AuthenticationError {
 }
 
 pub type ProtocolError {
+  SaslClientFinal
   SaslServerError
   SaslServerFinal
   SaslServerFirst
@@ -207,6 +208,7 @@ pub type ProtocolError {
 
 pub fn protocol_error_to_string(err: ProtocolError) {
   case err {
+    SaslClientFinal -> "SaslClientFinal"
     SaslServerError -> "SaslServerError"
     SaslServerFinal -> "SaslServerFinal"
     SaslServerFirst -> "SaslServerFirst"

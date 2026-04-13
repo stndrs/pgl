@@ -140,8 +140,6 @@ fn handle_load(
     table
   })
   |> actor.continue
-
-  actor.continue(table)
 }
 
 fn handle_lookup(

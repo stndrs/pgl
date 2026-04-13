@@ -36,55 +36,62 @@ pub fn client_final(
   client_nonce: BitArray,
   username: BitArray,
   password: BitArray,
-) -> #(BitArray, BitArray) {
+) -> Result(#(BitArray, BitArray), internal.InternalError) {
   let channel_binding = <<"c=biws":utf8>>
   let nonce = [<<"r=":utf8>>, server_first.nonce]
 
-  let salted_password =
-    password
-    |> sasl.validate
-    |> result.unwrap(<<>>)
-    |> hi(server_first.salt, server_first.iterations)
+  password
+  |> sasl.validate
+  |> result.map(fn(valid_password) {
+    let salted_password =
+      valid_password
+      |> hi(server_first.salt, server_first.iterations)
 
-  let client_key = crypto.hmac(<<"Client Key":utf8>>, sha_256, salted_password)
+    let client_key =
+      crypto.hmac(<<"Client Key":utf8>>, sha_256, salted_password)
 
-  let auth_message =
-    <<"n=":utf8, username:bits, ",r=":utf8, client_nonce:bits>>
-    |> bytes_tree.from_bit_array
-    |> bytes_tree.append(<<",":utf8>>)
-    |> bytes_tree.append(server_first.raw)
-    |> bytes_tree.append(<<",":utf8>>)
-    |> bytes_tree.append(channel_binding)
-    |> bytes_tree.append(<<",":utf8>>)
-    |> list.fold(nonce, _, bytes_tree.append)
-    |> bytes_tree.to_bit_array
+    let auth_message =
+      <<"n=":utf8, username:bits, ",r=":utf8, client_nonce:bits>>
+      |> bytes_tree.from_bit_array
+      |> bytes_tree.append(<<",":utf8>>)
+      |> bytes_tree.append(server_first.raw)
+      |> bytes_tree.append(<<",":utf8>>)
+      |> bytes_tree.append(channel_binding)
+      |> bytes_tree.append(<<",":utf8>>)
+      |> list.fold(nonce, _, bytes_tree.append)
+      |> bytes_tree.to_bit_array
 
-  let client_signature =
-    sha_256
-    |> crypto.hash(client_key)
-    |> crypto.hmac(auth_message, sha_256, _)
+    let client_signature =
+      sha_256
+      |> crypto.hash(client_key)
+      |> crypto.hmac(auth_message, sha_256, _)
 
-  let encoded_client_proof =
-    client_key
-    |> bin_xor(client_signature)
-    |> bit_array.base64_encode(True)
-    |> bit_array.from_string
+    let encoded_client_proof =
+      client_key
+      |> bin_xor(client_signature)
+      |> bit_array.base64_encode(True)
+      |> bit_array.from_string
 
-  let server_signature =
-    salted_password
-    |> crypto.hmac(<<"Server Key":utf8>>, sha_256, _)
-    |> crypto.hmac(auth_message, sha_256, _)
+    let server_signature =
+      salted_password
+      |> crypto.hmac(<<"Server Key":utf8>>, sha_256, _)
+      |> crypto.hmac(auth_message, sha_256, _)
 
-  let encoded_client_final =
-    bytes_tree.new()
-    |> bytes_tree.append(channel_binding)
-    |> bytes_tree.append(<<",":utf8>>)
-    |> list.fold(nonce, _, bytes_tree.append)
-    |> bytes_tree.append(<<",p=":utf8>>)
-    |> bytes_tree.append(encoded_client_proof)
-    |> bytes_tree.to_bit_array
+    let encoded_client_final =
+      bytes_tree.new()
+      |> bytes_tree.append(channel_binding)
+      |> bytes_tree.append(<<",":utf8>>)
+      |> list.fold(nonce, _, bytes_tree.append)
+      |> bytes_tree.append(<<",p=":utf8>>)
+      |> bytes_tree.append(encoded_client_proof)
+      |> bytes_tree.to_bit_array
 
-  #(encoded_client_final, server_signature)
+    #(encoded_client_final, server_signature)
+  })
+  |> result.map_error(fn(_) {
+    internal.SaslClientFinal
+    |> internal.ProtocolError("password contains invalid characters")
+  })
 }
 
 pub fn parse_server_first(

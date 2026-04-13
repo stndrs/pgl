@@ -114,11 +114,11 @@ fn setup(sock: Socket, conf: Config) -> Result(Socket, internal.InternalError) {
     ]
     |> encode.startup
 
-  use sock <- result.try(socket.send(sock, message))
+  use sock1 <- result.try(socket.send(sock, message))
 
-  sock
+  sock1
   |> auth_flow(conf, <<>>)
-  |> result.replace(sock)
+  |> result.replace(sock1)
 }
 
 // https://www.postgresql.org/docs/current/sasl-authentication.html#SASL-SCRAM-SHA-256
@@ -211,8 +211,12 @@ fn auth_sasl_continue(
     let user = <<conf.username:utf8>>
     let pass = <<conf.password:utf8>>
 
-    let #(client_final, server_signature) =
-      scram.client_final(sf, client_nonce, user, pass)
+    use #(client_final, server_signature) <- result.try(scram.client_final(
+      sf,
+      client_nonce,
+      user,
+      pass,
+    ))
 
     let encoded_client_final = encode.scram_response(client_final)
 
@@ -549,9 +553,10 @@ fn error_response_cleanup(
   let err = case needs_sync {
     False -> flush(err, sock)
     True ->
-      encode.sync()
-      |> socket.send(sock, _)
-      |> result.try(fn(_) { flush(err, sock) })
+      case socket.send(sock, encode.sync()) {
+        Ok(_) -> flush(err, sock)
+        Error(_) -> err
+      }
   }
 
   case syncs > ready {
