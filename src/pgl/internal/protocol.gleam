@@ -29,7 +29,7 @@ pub const config = Config(
   password: "",
   application: "",
   connection_parameters: [],
-  ssl: None,
+  ssl: option.Some(True),
 )
 
 pub fn application(conf: Config, application: String) -> Config {

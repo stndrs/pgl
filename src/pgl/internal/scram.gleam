@@ -18,12 +18,8 @@ pub fn client_first(user: BitArray, nonce: BitArray) -> BitArray {
 
 pub fn get_nonce(num_random_bytes: Int) -> BitArray {
   let random = crypto.strong_random_bytes(num_random_bytes)
-  let unique = <<unique_int()>>
-  let nonce_bin = <<
-    num_random_bytes,
-    random:bits-size(num_random_bytes),
-    unique:bits,
-  >>
+  let unique = <<unique_int():int-size(64)>>
+  let nonce_bin = <<random:bits, unique:bits>>
 
   bit_array.base64_encode(nonce_bin, True)
   |> bit_array.from_string
@@ -102,11 +98,15 @@ pub fn parse_server_first(
       use salt <- result.try(bit_array.base64_decode(salt))
       use iterations <- result.try(int.parse(iters))
 
-      let size = bit_array.byte_size(client_nonce)
+      let size = bit_array.bit_size(client_nonce)
 
       case nonce {
-        <<_:bits-size(size), _:bits>> -> {
-          Ok(ServerFirst(nonce:, salt:, iterations:, raw: server_first))
+        <<prefix:bits-size(size), _:bits>> -> {
+          case prefix == client_nonce {
+            True ->
+              Ok(ServerFirst(nonce:, salt:, iterations:, raw: server_first))
+            False -> Error(Nil)
+          }
         }
         _ -> Error(Nil)
       }
@@ -150,7 +150,13 @@ pub fn parse_server_final(
       )
       |> Error
     }
-    _bits -> panic as "Unexpected SASL server final payload"
+    _bits -> {
+      internal.ProtocolError(
+        kind: internal.SaslServerFinal,
+        message: "Unexpected SASL server final payload",
+      )
+      |> Error
+    }
   }
 }
 

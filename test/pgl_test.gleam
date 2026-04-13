@@ -32,7 +32,7 @@ pub fn parse_url_test() {
       database: "gleam_pgl_test",
       username: "postgres",
       password: "supersecretpassword",
-      ssl: pgl.SslDisabled,
+      ssl: pgl.SslVerified,
     )
     == conf
 }
@@ -184,7 +184,7 @@ pub fn default_values_test() {
   assert "" == conf.username
   assert "" == conf.password
   assert "" == conf.database
-  assert pgl.SslDisabled == conf.ssl
+  assert pgl.SslVerified == conf.ssl
   assert pgl.Ipv4 == conf.ip_version
 }
 
@@ -226,6 +226,7 @@ fn dbs() -> Dict(PgVersion, pgl.Db) {
     pgl.default
     |> pgl.username("postgres")
     |> pgl.password("postgres")
+    |> pgl.ssl(pgl.SslDisabled)
 
   let pg_15_conf = base_config |> pgl.port(5415)
   // let pg_15_ssl_conf = pg_15_conf |> pgl.ssl(pgl.SslUnverified)
@@ -271,7 +272,10 @@ fn pg_17_pool_rows_as_maps() -> pgl.Db {
     "postgres://postgres:postgres@127.0.0.1/gleam_pgl_test"
     |> pgl.from_url
 
-  let conf = pgl.rows_as_dict(conf, True)
+  let conf =
+    conf
+    |> pgl.ssl(pgl.SslDisabled)
+    |> pgl.rows_as_dict(True)
 
   let db = pgl.new(conf)
 
@@ -423,6 +427,7 @@ pub fn ipv6_test() {
     |> pgl.password("postgres")
     |> pgl.host("::1")
     |> pgl.ip_version(pgl.Ipv6)
+    |> pgl.ssl(pgl.SslDisabled)
     |> pgl.new
 
   let assert Ok(_) = pgl.start(db)

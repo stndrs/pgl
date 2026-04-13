@@ -67,7 +67,7 @@ pub const default = Config(
   password: "",
   database: "",
   connection_parameters: [],
-  ssl: SslDisabled,
+  ssl: SslVerified,
   rows_as_dict: False,
   ip_version: Ipv4,
   pool_size: 5,
@@ -225,20 +225,21 @@ fn apply_database(conf: Config, uri: Uri) -> Result(Config, Nil) {
 
 fn apply_ssl_mode(conf: Config, uri: Uri) -> Result(Config, Nil) {
   case uri.query {
-    None -> Ok(SslDisabled)
+    None -> Ok(conf)
     Some(query) -> {
       use query <- result.try(uri.parse_query(query))
-      use sslmode <- result.try(list.key_find(query, "sslmode"))
-
-      case sslmode {
-        "require" -> Ok(SslUnverified)
-        "verify-ca" | "verify-full" -> Ok(SslVerified)
-        "disable" -> Ok(SslDisabled)
-        _ -> Error(Nil)
+      case list.key_find(query, "sslmode") {
+        Error(Nil) -> Ok(conf)
+        Ok(sslmode) ->
+          case sslmode {
+            "require" | "prefer" | "allow" -> Ok(ssl(conf, SslUnverified))
+            "verify-ca" | "verify-full" -> Ok(ssl(conf, SslVerified))
+            "disable" -> Ok(ssl(conf, SslDisabled))
+            _ -> Error(Nil)
+          }
       }
     }
   }
-  |> result.map(ssl(conf, _))
 }
 
 pub type PglError {
@@ -453,6 +454,11 @@ fn authenticated_connection(
     |> protocol.username(config.username)
     |> protocol.password(config.password)
     |> protocol.database(config.database)
+    |> protocol.ssl(case config.ssl {
+      SslDisabled -> None
+      SslVerified -> Some(True)
+      SslUnverified -> Some(False)
+    })
 
   sockets
   |> socket.connect
