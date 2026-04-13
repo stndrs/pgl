@@ -91,7 +91,7 @@ fn is_non_ascii_control_char(char: Int) -> Bool {
 // https://tools.ietf.org/html/rfc3454#appendix-C.3
 fn is_private_use_char(char: Int) -> Bool {
   { 0xE000 <= char && char <= 0xF8FF }
-  || { 0xF000 <= char && char <= 0xFFFFD }
+  || { 0xF0000 <= char && char <= 0xFFFFD }
   || { 0x100000 <= char && char <= 0x10FFFD }
 }
 

@@ -9,7 +9,7 @@ pub fn format_error_test() {
   assert "(Name) message" == internal.format_error("Name", "message")
 }
 
-pub fn format_error_with_values() {
+pub fn format_error_with_values_test() {
   assert "(Name) message, first: 10, second: 20"
     == internal.format_error_with_values(
       "Name",

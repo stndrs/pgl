@@ -3,6 +3,7 @@ import gleam/dict
 import gleam/dynamic
 import gleam/dynamic/decode.{type Decoder}
 import gleam/int
+import gleam/json
 import gleam/list
 import gleam/option.{None, Some}
 import gleam/order
@@ -285,6 +286,36 @@ fn with_users_table(conn: pgl.Connection, next: fn(pgl.Connection) -> t) -> t {
 fn with_hstore(conn: pgl.Connection, next: fn(pgl.Connection) -> t) -> t {
   use conn <- with_extension("hstore", conn)
   with_table("hstore_test", "(id SERIAL PRIMARY KEY, data hstore)", conn, next)
+}
+
+fn with_enum_type(
+  name: String,
+  definition: String,
+  conn: pgl.Connection,
+  next: fn(pgl.Connection) -> t,
+) -> t {
+  let _ = pgl.execute("DROP TYPE IF EXISTS " <> name <> " CASCADE;", conn)
+  let assert Ok(_) =
+    pgl.execute(
+      "CREATE TYPE " <> name <> " AS ENUM " <> definition <> ";",
+      conn,
+    )
+
+  let res = next(conn)
+
+  let _ = pgl.execute("DROP TYPE IF EXISTS " <> name <> " CASCADE;", conn)
+
+  res
+}
+
+fn with_enum(conn: pgl.Connection, next: fn(pgl.Connection) -> t) -> t {
+  use conn <- with_enum_type("mood", "('happy', 'sad', 'neutral')", conn)
+  with_table(
+    "enum_test",
+    "(id SERIAL PRIMARY KEY, current_mood mood)",
+    conn,
+    next,
+  )
 }
 
 fn with_db(next: fn(pgl.Db) -> t) {
@@ -1641,4 +1672,465 @@ pub fn error_to_string_empty_message_test() {
   let result = pgl.error_to_string(err)
 
   assert "(QueryError)" == result
+}
+
+// ---------- Enum Tests ---------- //
+
+pub fn enum_test() {
+  use db <- with_db()
+  use conn <- with_conn(db)
+  use conn <- with_enum(conn)
+
+  let assert Ok(queried) =
+    "INSERT INTO enum_test (current_mood) VALUES ($1) RETURNING id"
+    |> pgl.sql
+    |> pgl.params([pg_value.enum("happy")])
+    |> pgl.query(conn)
+
+  assert 1 == queried.count
+
+  let assert Ok(row) = list.first(queried.rows)
+
+  let assert Ok(id) =
+    decode.run(row, {
+      use id <- decode.field(0, decode.int)
+      decode.success(id)
+    })
+
+  let assert Ok(queried) =
+    { "SELECT * FROM enum_test WHERE id=" <> int.to_string(id) }
+    |> pgl.sql
+    |> pgl.query(conn)
+
+  let assert Ok(row) = list.first(queried.rows)
+
+  let assert Ok(decoded) =
+    decode.run(row, {
+      use _id <- decode.field(0, decode.int)
+      use mood <- decode.field(1, decode.string)
+      decode.success(mood)
+    })
+
+  assert "happy" == decoded
+}
+
+pub fn enum_string_constant_test() {
+  use db <- with_db()
+  use conn <- with_conn(db)
+  use conn <- with_enum(conn)
+
+  let val = pg_value.to_string(pg_value.enum("sad"))
+
+  assert "'sad'" == val
+
+  let assert Ok(queried) =
+    {
+      "INSERT INTO enum_test (current_mood) VALUES (" <> val <> ") RETURNING id"
+    }
+    |> pgl.sql
+    |> pgl.query(conn)
+
+  assert 1 == queried.count
+
+  let assert Ok(row) = list.first(queried.rows)
+
+  let assert Ok(id) =
+    decode.run(row, {
+      use id <- decode.field(0, decode.int)
+      decode.success(id)
+    })
+
+  let assert Ok(queried) =
+    { "SELECT * FROM enum_test WHERE id=" <> int.to_string(id) }
+    |> pgl.sql
+    |> pgl.query(conn)
+
+  let assert Ok(row) = list.first(queried.rows)
+
+  let assert Ok(decoded) =
+    decode.run(row, {
+      use _id <- decode.field(0, decode.int)
+      use mood <- decode.field(1, decode.string)
+      decode.success(mood)
+    })
+
+  assert "sad" == decoded
+}
+
+pub fn enum_array_test() {
+  use db <- with_db()
+  use conn <- with_conn(db)
+  use conn <- with_enum_type("color", "('red', 'green', 'blue')", conn)
+  use conn <- with_table(
+    "enum_array_test",
+    "(id SERIAL PRIMARY KEY, colors color[])",
+    conn,
+  )
+
+  let assert Ok(queried) =
+    "INSERT INTO enum_array_test (colors) VALUES ($1) RETURNING id"
+    |> pgl.sql
+    |> pgl.params([pg_value.array(["red", "blue", "green"], of: pg_value.enum)])
+    |> pgl.query(conn)
+
+  assert 1 == queried.count
+
+  let assert Ok(row) = list.first(queried.rows)
+
+  let assert Ok(id) =
+    decode.run(row, {
+      use id <- decode.field(0, decode.int)
+      decode.success(id)
+    })
+
+  let assert Ok(queried) =
+    { "SELECT * FROM enum_array_test WHERE id=" <> int.to_string(id) }
+    |> pgl.sql
+    |> pgl.query(conn)
+
+  let assert Ok(row) = list.first(queried.rows)
+
+  let assert Ok(decoded) =
+    decode.run(row, {
+      use _id <- decode.field(0, decode.int)
+      use colors <- decode.field(1, decode.list(of: decode.string))
+      decode.success(colors)
+    })
+
+  assert ["red", "blue", "green"] == decoded
+}
+
+// ---------- Json Tests ---------- //
+
+pub fn json_test() {
+  use db <- with_db()
+  use conn <- with_conn(db)
+  use conn <- with_table(
+    "json_test",
+    "(id SERIAL PRIMARY KEY, data json)",
+    conn,
+  )
+
+  let data =
+    json.object([
+      #("name", json.string("Alice")),
+      #("age", json.int(30)),
+      #("active", json.bool(True)),
+    ])
+
+  let assert Ok(queried) =
+    "INSERT INTO json_test (data) VALUES ($1) RETURNING id"
+    |> pgl.sql
+    |> pgl.params([pg_value.json(data)])
+    |> pgl.query(conn)
+
+  assert 1 == queried.count
+
+  let assert Ok(row) = list.first(queried.rows)
+
+  let assert Ok(id) =
+    decode.run(row, {
+      use id <- decode.field(0, decode.int)
+      decode.success(id)
+    })
+
+  let assert Ok(queried) =
+    { "SELECT * FROM json_test WHERE id=" <> int.to_string(id) }
+    |> pgl.sql
+    |> pgl.query(conn)
+
+  let assert Ok(row) = list.first(queried.rows)
+
+  let assert Ok(decoded) =
+    decode.run(row, {
+      use _id <- decode.field(0, decode.int)
+      use data <- decode.field(1, decode.string)
+      decode.success(data)
+    })
+
+  let assert Ok(parsed) =
+    json.parse(decoded, {
+      use name <- decode.field("name", decode.string)
+      use age <- decode.field("age", decode.int)
+      use active <- decode.field("active", decode.bool)
+      decode.success(#(name, age, active))
+    })
+
+  assert #("Alice", 30, True) == parsed
+}
+
+pub fn jsonb_test() {
+  use db <- with_db()
+  use conn <- with_conn(db)
+  use conn <- with_table(
+    "jsonb_test",
+    "(id SERIAL PRIMARY KEY, data jsonb)",
+    conn,
+  )
+
+  let data =
+    json.object([
+      #("name", json.string("Bob")),
+      #("score", json.float(99.5)),
+      #("tags", json.array(["gleam", "erlang"], of: json.string)),
+    ])
+
+  let assert Ok(queried) =
+    "INSERT INTO jsonb_test (data) VALUES ($1) RETURNING id"
+    |> pgl.sql
+    |> pgl.params([pg_value.json(data)])
+    |> pgl.query(conn)
+
+  assert 1 == queried.count
+
+  let assert Ok(row) = list.first(queried.rows)
+
+  let assert Ok(id) =
+    decode.run(row, {
+      use id <- decode.field(0, decode.int)
+      decode.success(id)
+    })
+
+  let assert Ok(queried) =
+    { "SELECT * FROM jsonb_test WHERE id=" <> int.to_string(id) }
+    |> pgl.sql
+    |> pgl.query(conn)
+
+  let assert Ok(row) = list.first(queried.rows)
+
+  let assert Ok(decoded) =
+    decode.run(row, {
+      use _id <- decode.field(0, decode.int)
+      use data <- decode.field(1, decode.string)
+      decode.success(data)
+    })
+
+  let assert Ok(parsed) =
+    json.parse(decoded, {
+      use name <- decode.field("name", decode.string)
+      use score <- decode.field("score", decode.float)
+      use tags <- decode.field("tags", decode.list(of: decode.string))
+      decode.success(#(name, score, tags))
+    })
+
+  assert #("Bob", 99.5, ["gleam", "erlang"]) == parsed
+}
+
+pub fn json_array_test() {
+  use db <- with_db()
+  use conn <- with_conn(db)
+  use conn <- with_table(
+    "json_array_test",
+    "(id SERIAL PRIMARY KEY, items jsonb[])",
+    conn,
+  )
+
+  let items = [
+    json.object([#("id", json.int(1)), #("name", json.string("first"))]),
+    json.object([#("id", json.int(2)), #("name", json.string("second"))]),
+  ]
+
+  let assert Ok(queried) =
+    "INSERT INTO json_array_test (items) VALUES ($1) RETURNING id"
+    |> pgl.sql
+    |> pgl.params([pg_value.array(items, of: pg_value.json)])
+    |> pgl.query(conn)
+
+  assert 1 == queried.count
+
+  let assert Ok(row) = list.first(queried.rows)
+
+  let assert Ok(id) =
+    decode.run(row, {
+      use id <- decode.field(0, decode.int)
+      decode.success(id)
+    })
+
+  let assert Ok(queried) =
+    { "SELECT * FROM json_array_test WHERE id=" <> int.to_string(id) }
+    |> pgl.sql
+    |> pgl.query(conn)
+
+  let assert Ok(row) = list.first(queried.rows)
+
+  let assert Ok(decoded) =
+    decode.run(row, {
+      use _id <- decode.field(0, decode.int)
+      use items <- decode.field(1, decode.list(of: decode.string))
+      decode.success(items)
+    })
+
+  let item_decoder = {
+    use id <- decode.field("id", decode.int)
+    use name <- decode.field("name", decode.string)
+    decode.success(#(id, name))
+  }
+
+  let assert Ok(parsed) = list.try_map(decoded, json.parse(_, item_decoder))
+
+  assert [#(1, "first"), #(2, "second")] == parsed
+}
+
+pub fn json_nested_test() {
+  use db <- with_db()
+  use conn <- with_conn(db)
+  use conn <- with_table(
+    "json_nested_test",
+    "(id SERIAL PRIMARY KEY, data jsonb)",
+    conn,
+  )
+
+  let data =
+    json.object([
+      #(
+        "user",
+        json.object([
+          #("name", json.string("Charlie")),
+          #(
+            "addresses",
+            json.preprocessed_array([
+              json.object([
+                #("city", json.string("New York")),
+                #("zip", json.string("10001")),
+              ]),
+              json.object([
+                #("city", json.string("Boston")),
+                #("zip", json.string("02101")),
+              ]),
+            ]),
+          ),
+        ]),
+      ),
+      #(
+        "metadata",
+        json.object([
+          #("version", json.int(2)),
+          #("nullable_field", json.null()),
+        ]),
+      ),
+    ])
+
+  let assert Ok(queried) =
+    "INSERT INTO json_nested_test (data) VALUES ($1) RETURNING id"
+    |> pgl.sql
+    |> pgl.params([pg_value.json(data)])
+    |> pgl.query(conn)
+
+  assert 1 == queried.count
+
+  let assert Ok(row) = list.first(queried.rows)
+
+  let assert Ok(id) =
+    decode.run(row, {
+      use id <- decode.field(0, decode.int)
+      decode.success(id)
+    })
+
+  let assert Ok(queried) =
+    { "SELECT * FROM json_nested_test WHERE id=" <> int.to_string(id) }
+    |> pgl.sql
+    |> pgl.query(conn)
+
+  let assert Ok(row) = list.first(queried.rows)
+
+  let assert Ok(decoded) =
+    decode.run(row, {
+      use _id <- decode.field(0, decode.int)
+      use data <- decode.field(1, decode.string)
+      decode.success(data)
+    })
+
+  let address_decoder = {
+    use city <- decode.field("city", decode.string)
+    use zip <- decode.field("zip", decode.string)
+    decode.success(#(city, zip))
+  }
+
+  let user_decoder = {
+    use name <- decode.field("name", decode.string)
+    use addresses <- decode.field("addresses", decode.list(of: address_decoder))
+    decode.success(#(name, addresses))
+  }
+
+  let metadata_decoder = {
+    use version <- decode.field("version", decode.int)
+    use nullable_field <- decode.field(
+      "nullable_field",
+      decode.optional(decode.string),
+    )
+    decode.success(#(version, nullable_field))
+  }
+
+  let decoder = {
+    use user <- decode.field("user", user_decoder)
+    use metadata <- decode.field("metadata", metadata_decoder)
+    decode.success(#(user, metadata))
+  }
+
+  let assert Ok(parsed) = json.parse(decoded, decoder)
+
+  let #(#(name, addresses), #(version, nullable_field)) = parsed
+
+  assert "Charlie" == name
+  assert [#("New York", "10001"), #("Boston", "02101")] == addresses
+  assert 2 == version
+  assert None == nullable_field
+}
+
+pub fn json_string_constant_test() {
+  use db <- with_db()
+  use conn <- with_conn(db)
+  use conn <- with_table(
+    "json_const_test",
+    "(id SERIAL PRIMARY KEY, data jsonb)",
+    conn,
+  )
+
+  let data =
+    json.object([
+      #("key", json.string("value")),
+      #("num", json.int(42)),
+    ])
+
+  let val = pg_value.to_string(pg_value.json(data))
+
+  assert "'{\"key\":\"value\",\"num\":42}'" == val
+
+  let assert Ok(queried) =
+    { "INSERT INTO json_const_test (data) VALUES (" <> val <> ") RETURNING id" }
+    |> pgl.sql
+    |> pgl.query(conn)
+
+  assert 1 == queried.count
+
+  let assert Ok(row) = list.first(queried.rows)
+
+  let assert Ok(id) =
+    decode.run(row, {
+      use id <- decode.field(0, decode.int)
+      decode.success(id)
+    })
+
+  let assert Ok(queried) =
+    { "SELECT * FROM json_const_test WHERE id=" <> int.to_string(id) }
+    |> pgl.sql
+    |> pgl.query(conn)
+
+  let assert Ok(row) = list.first(queried.rows)
+
+  let assert Ok(decoded) =
+    decode.run(row, {
+      use _id <- decode.field(0, decode.int)
+      use data <- decode.field(1, decode.string)
+      decode.success(data)
+    })
+
+  let assert Ok(parsed) =
+    json.parse(decoded, {
+      use key <- decode.field("key", decode.string)
+      use num <- decode.field("num", decode.int)
+      decode.success(#(key, num))
+    })
+
+  assert #("value", 42) == parsed
 }
