@@ -182,19 +182,19 @@ fn parse_type_infos(
   })
 }
 
-fn parse_type_info(row: List(BitArray)) -> Result(TypeInfo, Nil) {
+fn parse_type_info(row: List(option.Option(BitArray))) -> Result(TypeInfo, Nil) {
   case row {
     [
-      <<oid:bits>>,
-      <<name:bits>>,
-      <<typesend:bits>>,
-      <<typereceive:bits>>,
-      <<typelen:bits>>,
-      <<output:bits>>,
-      <<input:bits>>,
-      <<elem_oid:bits>>,
-      <<base_oid:bits>>,
-      <<comp_oids:bits>>,
+      Some(<<oid:bits>>),
+      Some(<<name:bits>>),
+      Some(<<typesend:bits>>),
+      Some(<<typereceive:bits>>),
+      Some(<<typelen:bits>>),
+      Some(<<output:bits>>),
+      Some(<<input:bits>>),
+      Some(<<elem_oid:bits>>),
+      Some(<<base_oid:bits>>),
+      Some(<<comp_oids:bits>>),
     ] -> {
       {
         use oid <- result.try(bits_to_oid(oid))

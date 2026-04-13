@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v3.0.0
 
 ### Changed
 
@@ -27,6 +27,10 @@
 - Fixed `transaction_rollback_test` silently passing if `begin` fails
 - Fixed `format_error_with_values` test not running due to missing `_test` suffix
 - Fixed typo in internal SASLprep function name (`plan_text` → `plain_text`)
+- Fixed `begin` leaking pool connection when `BEGIN` query fails
+- Fixed `setup` discarding server parameter status updates received during authentication
+- Removed dead code path in `row_description_fields` that could discard fields if payload bytes coincidentally matched a literal string
+- Fixed `data_row_values` silently accepting truncated rows when payload runs out before all declared columns are decoded
 
 ### Removed
 

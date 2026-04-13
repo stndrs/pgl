@@ -35,7 +35,7 @@ pub fn protocol_test() {
   let sock = connect()
   let assert Ok(sock) = protocol.auth(sock, conf)
 
-  let assert Ok([[<<"1":utf8>>]]) =
+  let assert Ok([[option.Some(<<"1":utf8>>)]]) =
     encode.query("SELECT 1")
     |> protocol.simple(sock)
 }

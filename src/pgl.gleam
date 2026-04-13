@@ -403,7 +403,10 @@ pub fn new(config: Config) -> Db {
 
   let type_cache =
     type_cache.new()
-    |> type_cache.on_connect(fn() { authenticated_connection(config, sockets) })
+    |> type_cache.on_connect(fn() {
+      authenticated_connection(config, sockets)
+      |> result.map_error(fn(_) { Nil })
+    })
 
   Db(pool:, sockets:, type_cache:, query_cache:, config:)
 }
@@ -437,7 +440,7 @@ pub fn supervised(db: Db) -> supervision.ChildSpecification(Supervisor) {
 
 fn connect(db: Db) -> Result(Socket, PglError) {
   authenticated_connection(db.config, db.sockets)
-  |> result.map_error(fn(_) { ConnectionError("Failed to open connection") })
+  |> result.map_error(from_internal_error)
 }
 
 fn disconnect(sock: Socket) -> Result(Nil, PglError) {
@@ -448,7 +451,7 @@ fn disconnect(sock: Socket) -> Result(Nil, PglError) {
 fn authenticated_connection(
   config: Config,
   sockets: socket.Factory,
-) -> Result(Socket, Nil) {
+) -> Result(Socket, internal.InternalError) {
   let ssl = case config.ssl {
     SslDisabled -> None
     SslVerified -> Some(True)
@@ -466,11 +469,13 @@ fn authenticated_connection(
 
   sockets
   |> socket.connect
-  |> result.map_error(fn(_) { Nil })
-  |> result.try(fn(sock) {
-    protocol.auth(sock, conf)
-    |> result.map_error(fn(_) { Nil })
+  |> result.map_error(fn(_) {
+    internal.SocketError(
+      kind: internal.ConnectError("Failed to start socket connection"),
+      message: "Failed to start socket connection",
+    )
   })
+  |> result.try(fn(sock) { protocol.auth(sock, conf) })
 }
 
 /// Creates a `Connection`.
@@ -707,7 +712,7 @@ fn on_param_description(
 }
 
 fn decode_row(
-  values: List(BitArray),
+  values: List(option.Option(BitArray)),
   oids: List(Int),
   db: Db,
 ) -> Result(List(Dynamic), internal.InternalError) {
@@ -722,7 +727,7 @@ fn decode_row(
 }
 
 fn decode_row_values(
-  values: List(BitArray),
+  values: List(option.Option(BitArray)),
   infos: List(TypeInfo),
 ) -> Result(List(Dynamic), internal.InternalError) {
   list.strict_zip(values, infos)
@@ -732,10 +737,12 @@ fn decode_row_values(
   })
   |> result.try(fn(vals_infos) {
     list.try_map(vals_infos, fn(val_info) {
-      let #(val, info) = val_info
-
-      pg_value.decode(val, info)
-      |> result.map_error(internal.ProtocolError(internal.DecodingError, _))
+      case val_info {
+        #(None, _) -> Ok(dynamic.nil())
+        #(Some(val), info) ->
+          pg_value.decode(val, info)
+          |> result.map_error(internal.ProtocolError(internal.DecodingError, _))
+      }
     })
   })
 }
@@ -796,6 +803,7 @@ pub fn begin(
 
 // Checks out a connection but does not check it back in automatically.
 // Must call `commit` or `rollback` to check the connection back in.
+// If `next` returns an error, the connection is checked back in to prevent leaks.
 fn with_transaction(
   connection: Connection,
   next: fn(conn.Conn, Db) -> Result(t, TransactionError(error)),
@@ -810,7 +818,15 @@ fn with_transaction(
         |> error_to_string
         |> TransactionError
       })
-      |> result.try(next(_, db))
+      |> result.try(fn(conn) {
+        case next(conn, db) {
+          Ok(val) -> Ok(val)
+          Error(err) -> {
+            checkin(db, conn.sock, conn.caller)
+            Error(err)
+          }
+        }
+      })
     }
     Connection(conn:, db:) -> next(conn, db)
   }

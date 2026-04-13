@@ -114,11 +114,9 @@ fn setup(sock: Socket, conf: Config) -> Result(Socket, internal.InternalError) {
     ]
     |> encode.startup
 
-  use sock1 <- result.try(socket.send(sock, message))
+  use sock <- result.try(socket.send(sock, message))
 
-  sock1
-  |> auth_flow(conf, <<>>)
-  |> result.replace(sock1)
+  auth_flow(sock, conf, <<>>)
 }
 
 // https://www.postgresql.org/docs/current/sasl-authentication.html#SASL-SCRAM-SHA-256
@@ -126,7 +124,7 @@ fn auth_flow(
   sock: Socket,
   conf: Config,
   prev: BitArray,
-) -> Result(BitArray, internal.InternalError) {
+) -> Result(Socket, internal.InternalError) {
   use msg <- result.try(receive_message(sock))
 
   case msg {
@@ -148,7 +146,6 @@ fn auth_flow(
     }
     internal.ErrorResponse(fields:) -> handle_error_response(fields)
     internal.BackendKeyData(_, _) -> auth_flow(sock, conf, <<>>)
-    internal.BindComplete -> Ok(<<>>)
     internal.NotificationResponse(_, _, _) -> auth_flow(sock, conf, <<>>)
     internal.NoticeResponse(_) -> auth_flow(sock, conf, <<>>)
     internal.ParameterStatus(name:, value:) -> {
@@ -156,7 +153,7 @@ fn auth_flow(
       |> socket.parameter(name, value)
       |> auth_flow(conf, <<>>)
     }
-    internal.ReadyForQuery(status: _) -> Ok(<<>>)
+    internal.ReadyForQuery(status: _) -> Ok(sock)
     _ -> {
       internal.MessageError
       |> internal.ProtocolError(message: "Unexpected message")
@@ -248,7 +245,7 @@ fn auth_sasl_final(
 // https://www.postgresql.org/docs/current/protocol-flow.html#PROTOCOL-FLOW-SIMPLE-QUERY
 
 type Row =
-  List(BitArray)
+  List(Option(BitArray))
 
 pub fn simple(
   packet: BitArray,
@@ -297,10 +294,18 @@ fn flush(
 }
 
 fn sync(sock: Socket) -> Result(Socket, internal.InternalError) {
-  encode.sync()
-  |> socket.send(sock, _)
-  |> result.try(receive_message)
-  |> result.replace(sock)
+  use sock <- result.try(
+    encode.sync()
+    |> socket.send(sock, _),
+  )
+  use msg <- result.try(receive_message(sock))
+  case msg {
+    internal.ReadyForQuery(_) -> Ok(sock)
+    _ ->
+      internal.MessageError
+      |> internal.ProtocolError(message: "Expected ReadyForQuery after Sync")
+      |> Error
+  }
 }
 
 // ---------- Extended(v) Query ---------- //

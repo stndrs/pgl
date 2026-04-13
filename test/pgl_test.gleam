@@ -796,7 +796,7 @@ pub fn null_encoding_test() {
 
   assert result.rows
     == [
-      dynamic.array([dynamic.string(""), dynamic.bool(True), dynamic.int(42)]),
+      dynamic.array([dynamic.nil(), dynamic.bool(True), dynamic.int(42)]),
     ]
 }
 
@@ -959,7 +959,7 @@ pub fn hstore_string_constant_test() {
 
   let val = pg_value.to_string(hstore)
 
-  assert "'first=>foo, second=>bar, third=>NULL'" == val
+  assert "'\"first\"=>\"foo\", \"second\"=>\"bar\", \"third\"=>NULL'" == val
 
   let assert Ok(queried) =
     { "INSERT INTO hstore_test (data) VALUES (" <> val <> ") RETURNING id" }
@@ -1012,7 +1012,8 @@ pub fn hstore_string_constant_escape_test() {
 
   let val = pg_value.to_string(hstore)
 
-  assert "'firs''t=>foo, sec\\\\ond=>b\\\"ar, third=>NULL'" == val
+  assert "'\"firs''t\"=>\"foo\", \"sec\\\\ond\"=>\"b\\\"ar\", \"third\"=>NULL'"
+    == val
 
   let assert Ok(queried) =
     { "INSERT INTO hstore_test (data) VALUES (" <> val <> ") RETURNING id" }

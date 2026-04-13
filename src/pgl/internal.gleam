@@ -1,6 +1,7 @@
 import gleam/dict.{type Dict}
 import gleam/function
 import gleam/list
+import gleam/option.{type Option}
 import gleam/string
 import neon/net
 
@@ -37,7 +38,7 @@ pub type Message {
   CopyDone
   CopyInResponse
   CopyOutResponse
-  DataRow(values: List(BitArray))
+  DataRow(values: List(Option(BitArray)))
   EmptyQueryResponse
   ErrorResponse(fields: Dict(BitArray, String))
   FunctionCallResponse
