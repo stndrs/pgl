@@ -276,3 +276,7 @@ pub fn execute(name: String, num: Int) -> BitArray {
 
   <<"E":utf8, msg_len:int-size(32), name:utf8, 0, num:int-size(32)>>
 }
+
+pub fn terminate() -> BitArray {
+  <<"X":utf8, 4:int-size(32)>>
+}

@@ -300,6 +300,8 @@ fn handle_message(state: State, msg: Msg) -> actor.Next(State, Msg) {
       actor.continue(state)
     }
     Shutdown(client:) -> {
+      let _ = socket_send(state.socket, encode.terminate())
+
       socket_shutdown(state.socket)
       |> actor.send(client, _)
 
