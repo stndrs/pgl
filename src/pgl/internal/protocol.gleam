@@ -4,8 +4,8 @@ import gleam/dict.{type Dict}
 import gleam/dynamic.{type Dynamic}
 import gleam/list
 import gleam/option.{type Option, None, Some}
-import gleam/string
 import gleam/result
+import gleam/string
 import pgl/internal
 import pgl/internal/decode
 import pgl/internal/encode

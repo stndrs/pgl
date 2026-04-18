@@ -19,7 +19,9 @@ CREATE USER cleartext_user WITH PASSWORD 'cleartext_pass';
 GRANT ALL PRIVILEGES ON DATABASE gleam_pgl_test TO cleartext_user;
 CREATE USER trust_user;
 GRANT ALL PRIVILEGES ON DATABASE gleam_pgl_test TO trust_user;
+SET password_encryption = 'md5';
 CREATE USER md5_user WITH PASSWORD 'md5_pass';
+SET password_encryption = 'scram-sha-256';
 GRANT ALL PRIVILEGES ON DATABASE gleam_pgl_test TO md5_user;
 SQL
 
