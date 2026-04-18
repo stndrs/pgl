@@ -16,7 +16,7 @@ pub type Config {
   Config(
     database: String,
     username: String,
-    password: String,
+    password: Option(String),
     application: String,
     connection_parameters: List(#(String, String)),
     ssl: Option(Bool),
@@ -26,7 +26,7 @@ pub type Config {
 pub const config = Config(
   database: "",
   username: "",
-  password: "",
+  password: None,
   application: "",
   connection_parameters: [],
   ssl: Some(True),
@@ -48,7 +48,7 @@ pub fn username(conf: Config, username: String) -> Config {
 }
 
 pub fn password(conf: Config, password: String) -> Config {
-  Config(..conf, password:)
+  Config(..conf, password: Some(password))
 }
 
 pub fn database(conf: Config, database: String) -> Config {
@@ -130,13 +130,23 @@ fn auth_flow(
   case msg {
     internal.AuthenticationOk -> auth_flow(sock, conf, prev)
     internal.AuthenticationCleartextPassword -> {
-      use sock <- result.try(
-        conf.password
-        |> encode.password
-        |> socket.send(sock, _),
-      )
+      case conf.password {
+        option.Some(pass) -> {
+          use sock <- result.try(
+            pass
+            |> encode.password
+            |> socket.send(sock, _),
+          )
 
-      auth_flow(sock, conf, <<>>)
+          auth_flow(sock, conf, <<>>)
+        }
+        option.None ->
+          internal.AuthenticationFailed
+          |> internal.AuthenticationError(
+            "Server requested password authentication but no password was provided",
+          )
+          |> Error
+      }
     }
     internal.AuthenticationSASL(methods:) -> {
       use nonce <- result.try(auth_sasl(sock, methods, conf))
@@ -215,19 +225,28 @@ fn auth_sasl_continue(
   scram.parse_server_first(server_first, client_nonce)
   |> result.try(fn(sf) {
     let user = <<conf.username:utf8>>
-    let pass = <<conf.password:utf8>>
+    case conf.password {
+      option.None ->
+        Error(internal.AuthenticationError(
+          kind: internal.AuthenticationFailed,
+          message: "Server requested SCRAM authentication but no password was provided",
+        ))
+      option.Some(password) -> {
+        let pass = <<password:utf8>>
 
-    use #(client_final, server_signature) <- result.try(scram.client_final(
-      sf,
-      client_nonce,
-      user,
-      pass,
-    ))
+        use #(client_final, server_signature) <- result.try(scram.client_final(
+          sf,
+          client_nonce,
+          user,
+          pass,
+        ))
 
-    let encoded_client_final = encode.scram_response(client_final)
+        let encoded_client_final = encode.scram_response(client_final)
 
-    socket.send(sock, encoded_client_final)
-    |> result.replace(server_signature)
+        socket.send(sock, encoded_client_final)
+        |> result.replace(server_signature)
+      }
+    }
   })
 }
 

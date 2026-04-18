@@ -1,4 +1,4 @@
-import gleam/option.{Some}
+import gleam/option.{None, Some}
 import pgl/internal
 import pgl/internal/encode
 import pgl/internal/protocol
@@ -19,7 +19,7 @@ pub fn config_test() {
   assert "pgl" == conf.application
   assert "gleam_pgl_test" == conf.database
   assert "postgres" == conf.username
-  assert "postgres" == conf.password
+  assert option.Some("postgres") == conf.password
   assert [#("timezone", "MDT")] == conf.connection_parameters
   assert option.Some(True) == conf.ssl
 }
@@ -85,6 +85,23 @@ pub fn auth_cleartext_password_test() {
   let assert Ok([[option.Some(<<"1":utf8>>)]]) =
     encode.query("SELECT 1")
     |> protocol.simple(sock)
+}
+
+pub fn auth_trust_test() {
+  let conf =
+    protocol.config
+    |> protocol.database("gleam_pgl_test")
+    |> protocol.username("trust_user")
+    |> protocol.ssl(Some(False))
+
+  let sock = connect()
+  let assert Ok(sock) = protocol.auth(sock, conf)
+
+  let assert Ok([[option.Some(<<"1":utf8>>)]]) =
+    encode.query("SELECT 1")
+    |> protocol.simple(sock)
+
+  assert None == conf.password
 }
 
 fn connect() -> Socket {
