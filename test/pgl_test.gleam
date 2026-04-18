@@ -2047,7 +2047,7 @@ pub fn md5_auth_query_test() {
     |> pgl.database("gleam_pgl_test")
     |> pgl.username("md5_user")
     |> pgl.password("md5_pass")
-    |> pgl.ssl(pgl.SslDisabled)
+    |> pgl.ssl(pgl.SslUnverified)
     |> pgl.new
 
   let assert Ok(_) = pgl.start(db)

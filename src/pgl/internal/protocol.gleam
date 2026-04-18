@@ -2,6 +2,7 @@ import gleam/bit_array
 import gleam/crypto
 import gleam/dict.{type Dict}
 import gleam/dynamic.{type Dynamic}
+import gleam/function
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/result
@@ -131,44 +132,10 @@ fn auth_flow(
 
   case msg {
     internal.AuthenticationOk -> auth_flow(sock, conf, prev)
-    internal.AuthenticationMD5Password(salt:) -> {
-      case conf.password {
-        option.Some(pass) -> {
-          use sock <- result.try(
-            md5_password(conf.username, pass, salt)
-            |> encode.password
-            |> socket.send(sock, _),
-          )
-
-          auth_flow(sock, conf, <<>>)
-        }
-        option.None ->
-          internal.AuthenticationFailed
-          |> internal.AuthenticationError(
-            "Server requested MD5 authentication but no password was provided",
-          )
-          |> Error
-      }
-    }
-    internal.AuthenticationCleartextPassword -> {
-      case conf.password {
-        option.Some(pass) -> {
-          use sock <- result.try(
-            pass
-            |> encode.password
-            |> socket.send(sock, _),
-          )
-
-          auth_flow(sock, conf, <<>>)
-        }
-        option.None ->
-          internal.AuthenticationFailed
-          |> internal.AuthenticationError(
-            "Server requested password authentication but no password was provided",
-          )
-          |> Error
-      }
-    }
+    internal.AuthenticationMD5Password(salt:) ->
+      do_password_auth(conf, md5_password(conf.username, _, salt), "MD5", sock)
+    internal.AuthenticationCleartextPassword ->
+      do_password_auth(conf, function.identity, "password", sock)
     internal.AuthenticationSASL(methods:) -> {
       use nonce <- result.try(auth_sasl(sock, methods, conf))
 
@@ -216,6 +183,31 @@ fn md5_password(username: String, password: String, salt: BitArray) -> String {
   "md5" <> outer
 }
 
+fn do_password_auth(
+  conf: Config,
+  process_password: fn(String) -> String,
+  kind: String,
+  sock: Socket,
+) -> Result(Socket, internal.InternalError) {
+  case conf.password {
+    option.Some(pass) -> {
+      pass
+      |> process_password
+      |> encode.password
+      |> socket.send(sock, _)
+      |> result.try(auth_flow(_, conf, <<>>))
+    }
+    option.None ->
+      internal.AuthenticationFailed
+      |> internal.AuthenticationError(
+        "Server requested "
+        <> kind
+        <> "authentication but no password was provided",
+      )
+      |> Error
+  }
+}
+
 fn auth_sasl(
   sock: Socket,
   methods: List(String),
@@ -261,11 +253,13 @@ fn auth_sasl_continue(
   |> result.try(fn(sf) {
     let user = <<conf.username:utf8>>
     case conf.password {
-      option.None ->
-        Error(internal.AuthenticationError(
-          kind: internal.AuthenticationFailed,
-          message: "Server requested SCRAM authentication but no password was provided",
-        ))
+      option.None -> {
+        internal.AuthenticationFailed
+        |> internal.AuthenticationError(
+          "Server requested SCRAM authentication but no password was provided",
+        )
+        |> Error
+      }
       option.Some(password) -> {
         let pass = <<password:utf8>>
 
