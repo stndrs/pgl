@@ -1,4 +1,5 @@
 import gleam/option.{Some}
+import gleam/string
 import pgl/internal
 import pgl/internal/encode
 import pgl/internal/protocol
@@ -98,6 +99,23 @@ pub fn auth_trust_test() {
   let assert Ok([[Some(<<"1":utf8>>)]]) =
     encode.query("SELECT 1")
     |> protocol.simple(sock)
+}
+
+pub fn ssl_verified_rejects_self_signed_test() {
+  let conf =
+    protocol.config
+    |> protocol.database("gleam_pgl_test")
+    |> protocol.username("postgres")
+    |> protocol.password("postgres")
+    |> protocol.ssl(internal.SslVerified)
+
+  let sock = connect()
+  let assert Error(err) = protocol.auth(sock, conf)
+
+  let assert internal.SocketError(internal.TlsAlert(alert), message) = err
+
+  assert string.contains(alert, "bad_certificate")
+  assert "Failed to connect SSL" == message
 }
 
 fn connect() -> Socket {
