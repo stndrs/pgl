@@ -4,6 +4,8 @@
 
 ### Changed
 
+- `Config` is now opaque
+- Renamed `pgl.default` to `pgl.config`
 - Default SSL mode changed from `SslDisabled` to `SslVerified`
 - Replaced internal `store` module with `rasa`
 - Refactored internal `socket` module to use `neon` for managing tcp and ssl sockets

@@ -25,7 +25,7 @@ import pgl/internal/type_cache.{type TypeCache}
 
 // ---------- Config ---------- //
 
-pub type Config {
+pub opaque type Config {
   Config(
     /// Application's name.
     application: String,
@@ -59,7 +59,7 @@ pub type Config {
 /// A default configuration with a connection pool size of 5.
 /// At minimum you need to set the username, password, and
 /// database values.
-pub const default = Config(
+pub const config = Config(
   application: "",
   host: internal.default_host,
   port: internal.default_port,
@@ -178,7 +178,7 @@ fn options_from_uri(uri: Uri) -> Result(Config, Nil) {
   uri.scheme
   |> option.map(fn(scheme) {
     case scheme {
-      "postgres" | "postgresql" -> Ok(default)
+      "postgres" | "postgresql" -> Ok(config)
       _ -> Error(Nil)
     }
   })

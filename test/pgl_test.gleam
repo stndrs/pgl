@@ -30,16 +30,16 @@ pub fn parse_url_test() {
     "postgres://postgres:supersecretpassword@localhost:5433/gleam_pgl_test"
     |> pgl.from_url
 
-  assert pgl.Config(
-      ..pgl.default,
-      host: "localhost",
-      port: 5433,
-      database: "gleam_pgl_test",
-      username: "postgres",
-      password: "supersecretpassword",
-      ssl: pgl.SslDisabled,
-    )
-    == conf
+  let expected =
+    pgl.config
+    |> pgl.host("localhost")
+    |> pgl.port(5433)
+    |> pgl.database("gleam_pgl_test")
+    |> pgl.username("postgres")
+    |> pgl.password("supersecretpassword")
+    |> pgl.ssl(pgl.SslDisabled)
+
+  assert expected == conf
 }
 
 pub fn parse_url_alternative_schema_test() {
@@ -47,16 +47,16 @@ pub fn parse_url_alternative_schema_test() {
     "postgresql://postgres:supersecretpassword@localhost:5433/gleam_pgl_test"
     |> pgl.from_url
 
-  assert pgl.Config(
-      ..pgl.default,
-      host: "localhost",
-      port: 5433,
-      database: "gleam_pgl_test",
-      username: "postgres",
-      password: "supersecretpassword",
-      ssl: pgl.SslDisabled,
-    )
-    == conf
+  let expected =
+    pgl.config
+    |> pgl.host("localhost")
+    |> pgl.port(5433)
+    |> pgl.database("gleam_pgl_test")
+    |> pgl.username("postgres")
+    |> pgl.password("supersecretpassword")
+    |> pgl.ssl(pgl.SslDisabled)
+
+  assert expected == conf
 }
 
 pub fn parse_url_invalid_protocol_test() {
@@ -74,16 +74,16 @@ pub fn parse_url_ssl_mode_require_test() {
     "postgres://username:pass@localhost:5432/gleam_pgl_test?sslmode=require"
     |> pgl.from_url
 
-  assert pgl.Config(
-      ..pgl.default,
-      host: "localhost",
-      port: 5432,
-      database: "gleam_pgl_test",
-      username: "username",
-      password: "pass",
-      ssl: pgl.SslUnverified,
-    )
-    == conf
+  let expected =
+    pgl.config
+    |> pgl.host("localhost")
+    |> pgl.port(5432)
+    |> pgl.database("gleam_pgl_test")
+    |> pgl.username("username")
+    |> pgl.password("pass")
+    |> pgl.ssl(pgl.SslUnverified)
+
+  assert expected == conf
 }
 
 pub fn parse_url_ssl_mode_verify_test() {
@@ -91,119 +91,22 @@ pub fn parse_url_ssl_mode_verify_test() {
     "postgres://username:pass@localhost:5432/gleam_pgl_test?sslmode=verify-ca"
     |> pgl.from_url
 
-  assert pgl.Config(
-      ..pgl.default,
-      host: "localhost",
-      port: 5432,
-      database: "gleam_pgl_test",
-      username: "username",
-      password: "pass",
-      ssl: pgl.SslVerified,
-    )
-    == conf
+  let expected =
+    pgl.config
+    |> pgl.host("localhost")
+    |> pgl.port(5432)
+    |> pgl.database("gleam_pgl_test")
+    |> pgl.username("username")
+    |> pgl.password("pass")
+    |> pgl.ssl(pgl.SslVerified)
+
+  assert expected == conf
 
   let assert Ok(conf) =
     "postgres://username:pass@localhost:5432/gleam_pgl_test?sslmode=verify-full"
     |> pgl.from_url
 
-  assert pgl.Config(
-      ..pgl.default,
-      host: "localhost",
-      port: 5432,
-      database: "gleam_pgl_test",
-      username: "username",
-      password: "pass",
-      ssl: pgl.SslVerified,
-    )
-    == conf
-}
-
-// Config tests
-
-pub fn database_test() {
-  let conf = pgl.default
-  let result = pgl.database(conf, "test_db")
-
-  assert "test_db" == result.database
-  assert result.host == conf.host
-  assert result.port == conf.port
-}
-
-pub fn host_test() {
-  let conf = pgl.default
-  let result = pgl.host(conf, "192.168.1.1")
-
-  assert "192.168.1.1" == result.host
-  assert result.database == conf.database
-  assert result.port == conf.port
-}
-
-pub fn port_test() {
-  let conf = pgl.default
-  let result = pgl.port(conf, 3306)
-
-  assert 3306 == result.port
-  assert result.host == conf.host
-  assert result.database == conf.database
-}
-
-pub fn username_test() {
-  let conf = pgl.default
-  let result = pgl.username(conf, "admin")
-
-  assert "admin" == result.username
-  assert result.host == conf.host
-  assert result.password == conf.password
-}
-
-pub fn password_test() {
-  let conf = pgl.default
-  let result = pgl.password(conf, "secret123")
-
-  assert "secret123" == result.password
-  assert result.username == conf.username
-  assert result.host == conf.host
-}
-
-pub fn ssl_test() {
-  let conf = pgl.default
-  let result = pgl.ssl(conf, pgl.SslVerified)
-
-  assert pgl.SslVerified == result.ssl
-  assert result.host == conf.host
-  assert result.port == conf.port
-}
-
-pub fn ip_version_test() {
-  let conf =
-    pgl.default
-    |> pgl.ip_version(pgl.Ipv6)
-
-  assert pgl.Ipv6 == conf.ip_version
-}
-
-pub fn default_values_test() {
-  let conf = pgl.default
-
-  assert "127.0.0.1" == conf.host
-  assert 5432 == conf.port
-  assert "" == conf.username
-  assert "" == conf.password
-  assert "" == conf.database
-  assert pgl.SslVerified == conf.ssl
-  assert pgl.Ipv4 == conf.ip_version
-}
-
-pub fn connection_parameters_test() {
-  let conf = pgl.default
-
-  assert conf.connection_parameters == []
-
-  let conf =
-    conf
-    |> pgl.connection_parameter(name: "timezone", value: "MDT")
-
-  assert conf.connection_parameters == [#("timezone", "MDT")]
+  assert expected == conf
 }
 
 pub fn query_params_test() {
@@ -323,7 +226,7 @@ fn with_db(next: fn(pgl.Db) -> t) {
     use <- global_value.create_with_unique_name("pgl_pools")
 
     let db =
-      pgl.default
+      pgl.config
       |> pgl.username("postgres")
       |> pgl.password("postgres")
       |> pgl.ssl(pgl.SslUnverified)
@@ -413,7 +316,7 @@ pub fn inserting_new_rows_test() {
 
 pub fn ipv6_test() {
   let db =
-    pgl.default
+    pgl.config
     |> pgl.database("gleam_pgl_test")
     |> pgl.username("postgres")
     |> pgl.password("postgres")
