@@ -15,14 +15,14 @@ import pgl/internal/socket.{type Socket}
 
 // ---------- Config ---------- //
 
-pub type Config {
+pub opaque type Config {
   Config(
     database: String,
     username: String,
     password: Option(String),
     application: String,
     connection_parameters: List(#(String, String)),
-    ssl: Option(Bool),
+    ssl: internal.Ssl,
   )
 }
 
@@ -32,7 +32,7 @@ pub const config = Config(
   password: None,
   application: "",
   connection_parameters: [],
-  ssl: Some(True),
+  ssl: internal.SslVerified,
 )
 
 pub fn application(conf: Config, application: String) -> Config {
@@ -58,7 +58,7 @@ pub fn database(conf: Config, database: String) -> Config {
   Config(..conf, database:)
 }
 
-pub fn ssl(conf: Config, ssl: Option(Bool)) -> Config {
+pub fn ssl(conf: Config, ssl: internal.Ssl) -> Config {
   Config(..conf, ssl:)
 }
 
@@ -77,11 +77,12 @@ pub fn auth(
 
 fn ssl_upgrade(
   sock: Socket,
-  ssl: Option(Bool),
+  ssl: internal.Ssl,
 ) -> Result(Socket, internal.InternalError) {
   case ssl {
-    Some(verified) -> do_ssl_upgrade(sock, verified:)
-    None -> Ok(sock)
+    internal.SslVerified -> do_ssl_upgrade(sock, verified: True)
+    internal.SslUnverified -> do_ssl_upgrade(sock, verified: False)
+    internal.SslDisabled -> Ok(sock)
   }
 }
 

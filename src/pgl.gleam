@@ -452,9 +452,9 @@ fn authenticated_connection(
   sockets: socket.Factory,
 ) -> Result(Socket, internal.InternalError) {
   let ssl = case config.ssl {
-    SslDisabled -> None
-    SslVerified -> Some(True)
-    SslUnverified -> Some(False)
+    SslDisabled -> internal.SslDisabled
+    SslVerified -> internal.SslVerified
+    SslUnverified -> internal.SslUnverified
   }
 
   let conf =

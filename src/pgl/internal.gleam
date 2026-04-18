@@ -5,6 +5,12 @@ import gleam/option.{type Option}
 import gleam/string
 import neon/net
 
+pub type Ssl {
+  SslDisabled
+  SslVerified
+  SslUnverified
+}
+
 pub const protocol_version_major = <<3:int-size(16)>>
 
 pub const protocol_version_minor = <<0:int-size(16)>>
