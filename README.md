@@ -53,7 +53,7 @@ pub fn main() {
 gleam add pgl
 ```
 
-Further documentation can be found at <https://hexdocs.pm/valet>.
+Further documentation can be found at <https://hexdocs.pm/pgl>.
 
 ## Development
 

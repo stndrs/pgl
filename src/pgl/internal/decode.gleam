@@ -224,12 +224,13 @@ fn sasl_methods_inner(
   binary: BitArray,
 ) -> Result(List(String), internal.InternalError) {
   case binary {
-    <<"SCRAM-SHA-256":utf8, _rest:bits>> -> Ok(["SCRAM-SHA-256"])
+    <<"SCRAM-SHA-256-PLUS":utf8, 0, "SCRAM-SHA-256":utf8, 0, _rest:bits>> ->
+      Ok(["SCRAM-SHA-256"])
+    <<"SCRAM-SHA-256":utf8, 0, _rest:bits>> -> Ok(["SCRAM-SHA-256"])
     _ ->
-      Error(internal.AuthenticationError(
-        kind: internal.MethodNotImplemented,
-        message: "Supported methods: [SCRAM-SHA-256]",
-      ))
+      internal.MethodNotImplemented
+      |> internal.AuthenticationError("Supported methods: [SCRAM-SHA-256]")
+      |> Error
   }
 }
 
@@ -519,7 +520,8 @@ fn parameter_description(
 ) -> Result(internal.Message, internal.InternalError) {
   case payload {
     <<count:int-size(16), rest:bits>> -> {
-      let data_types = parameter_data_types(rest, [])
+      use data_types <- result.try(parameter_data_types(rest, []))
+
       case count == list.length(data_types) {
         True -> Ok(internal.ParameterDescription(count:, data_types:))
         _bits -> {
@@ -537,12 +539,19 @@ fn parameter_description(
   }
 }
 
-fn parameter_data_types(payload: BitArray, acc: List(Int)) -> List(Int) {
+fn parameter_data_types(
+  payload: BitArray,
+  acc: List(Int),
+) -> Result(List(Int), internal.InternalError) {
   case payload {
-    <<>> -> list.reverse(acc)
+    <<>> -> Ok(list.reverse(acc))
     <<oid:int-size(32), rest:bits>> -> {
       parameter_data_types(rest, [oid, ..acc])
     }
-    _ -> list.reverse(acc)
+    _ -> {
+      internal.DecodingError
+      |> internal.ProtocolError(message: "ParameterDataTypes")
+      |> Error
+    }
   }
 }
