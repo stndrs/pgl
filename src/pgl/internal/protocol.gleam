@@ -1,8 +1,10 @@
 import gleam/bit_array
+import gleam/crypto
 import gleam/dict.{type Dict}
 import gleam/dynamic.{type Dynamic}
 import gleam/list
 import gleam/option.{type Option, None, Some}
+import gleam/string
 import gleam/result
 import pgl/internal
 import pgl/internal/decode
@@ -129,6 +131,25 @@ fn auth_flow(
 
   case msg {
     internal.AuthenticationOk -> auth_flow(sock, conf, prev)
+    internal.AuthenticationMD5Password(salt:) -> {
+      case conf.password {
+        option.Some(pass) -> {
+          use sock <- result.try(
+            md5_password(conf.username, pass, salt)
+            |> encode.password
+            |> socket.send(sock, _),
+          )
+
+          auth_flow(sock, conf, <<>>)
+        }
+        option.None ->
+          internal.AuthenticationFailed
+          |> internal.AuthenticationError(
+            "Server requested MD5 authentication but no password was provided",
+          )
+          |> Error
+      }
+    }
     internal.AuthenticationCleartextPassword -> {
       case conf.password {
         option.Some(pass) -> {
@@ -179,6 +200,20 @@ fn auth_flow(
       |> Error
     }
   }
+}
+
+fn md5_password(username: String, password: String, salt: BitArray) -> String {
+  let inner =
+    crypto.hash(crypto.Md5, <<password:utf8, username:utf8>>)
+    |> bit_array.base16_encode
+    |> string.lowercase
+
+  let outer =
+    crypto.hash(crypto.Md5, <<inner:utf8, salt:bits>>)
+    |> bit_array.base16_encode
+    |> string.lowercase
+
+  "md5" <> outer
 }
 
 fn auth_sasl(
