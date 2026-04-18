@@ -25,7 +25,7 @@ jobs:
           - 5432:5432
     steps:
       - uses: actions/checkout@v3
-      - name: Enable SSL on PostgreSQL
+      - name: Enable SSL and create test users
         run: |
           openssl req -new -x509 -days 365 -nodes -text \
             -out server.crt -keyout server.key \
@@ -38,6 +38,16 @@ jobs:
           docker exec $CONTAINER psql -U postgres -c "ALTER SYSTEM SET ssl = 'on';"
           docker exec $CONTAINER psql -U postgres -c "ALTER SYSTEM SET ssl_cert_file = '/var/lib/postgresql/server.crt';"
           docker exec $CONTAINER psql -U postgres -c "ALTER SYSTEM SET ssl_key_file = '/var/lib/postgresql/server.key';"
+          docker exec $CONTAINER psql -U postgres -c "SELECT pg_reload_conf();"
+          docker exec $CONTAINER psql -U postgres -c "CREATE USER cleartext_user WITH PASSWORD 'cleartext_pass';"
+          docker exec $CONTAINER psql -U postgres -c "GRANT ALL PRIVILEGES ON DATABASE gleam_pgl_test TO cleartext_user;"
+          docker exec $CONTAINER psql -U postgres -c "CREATE USER trust_user;"
+          docker exec $CONTAINER psql -U postgres -c "GRANT ALL PRIVILEGES ON DATABASE gleam_pgl_test TO trust_user;"
+          docker exec $CONTAINER psql -U postgres -c "SET password_encryption = 'md5'; CREATE USER md5_user WITH PASSWORD 'md5_pass';"
+          docker exec $CONTAINER psql -U postgres -c "GRANT ALL PRIVILEGES ON DATABASE gleam_pgl_test TO md5_user;"
+          docker exec $CONTAINER bash -c "sed -i '/^host.*all.*all.*scram-sha-256/i host all cleartext_user all password' /var/lib/postgresql/data/pg_hba.conf"
+          docker exec $CONTAINER bash -c "sed -i '/^host.*all.*all.*scram-sha-256/i host all trust_user all trust' /var/lib/postgresql/data/pg_hba.conf"
+          docker exec $CONTAINER bash -c "sed -i '/^host.*all.*all.*scram-sha-256/i host all md5_user all md5' /var/lib/postgresql/data/pg_hba.conf"
           docker exec $CONTAINER psql -U postgres -c "SELECT pg_reload_conf();"
       - uses: erlef/setup-beam@v1
         with:
@@ -66,7 +76,7 @@ jobs:
           - 5432:5432
     steps:
       - uses: actions/checkout@v3
-      - name: Enable SSL on PostgreSQL
+      - name: Enable SSL and create test users
         run: |
           openssl req -new -x509 -days 365 -nodes -text \
             -out server.crt -keyout server.key \
@@ -79,6 +89,16 @@ jobs:
           docker exec $CONTAINER psql -U postgres -c "ALTER SYSTEM SET ssl = 'on';"
           docker exec $CONTAINER psql -U postgres -c "ALTER SYSTEM SET ssl_cert_file = '/var/lib/postgresql/server.crt';"
           docker exec $CONTAINER psql -U postgres -c "ALTER SYSTEM SET ssl_key_file = '/var/lib/postgresql/server.key';"
+          docker exec $CONTAINER psql -U postgres -c "SELECT pg_reload_conf();"
+          docker exec $CONTAINER psql -U postgres -c "CREATE USER cleartext_user WITH PASSWORD 'cleartext_pass';"
+          docker exec $CONTAINER psql -U postgres -c "GRANT ALL PRIVILEGES ON DATABASE gleam_pgl_test TO cleartext_user;"
+          docker exec $CONTAINER psql -U postgres -c "CREATE USER trust_user;"
+          docker exec $CONTAINER psql -U postgres -c "GRANT ALL PRIVILEGES ON DATABASE gleam_pgl_test TO trust_user;"
+          docker exec $CONTAINER psql -U postgres -c "SET password_encryption = 'md5'; CREATE USER md5_user WITH PASSWORD 'md5_pass';"
+          docker exec $CONTAINER psql -U postgres -c "GRANT ALL PRIVILEGES ON DATABASE gleam_pgl_test TO md5_user;"
+          docker exec $CONTAINER bash -c "sed -i '/^host.*all.*all.*scram-sha-256/i host all cleartext_user all password' /var/lib/postgresql/data/pg_hba.conf"
+          docker exec $CONTAINER bash -c "sed -i '/^host.*all.*all.*scram-sha-256/i host all trust_user all trust' /var/lib/postgresql/data/pg_hba.conf"
+          docker exec $CONTAINER bash -c "sed -i '/^host.*all.*all.*scram-sha-256/i host all md5_user all md5' /var/lib/postgresql/data/pg_hba.conf"
           docker exec $CONTAINER psql -U postgres -c "SELECT pg_reload_conf();"
       - uses: erlef/setup-beam@v1
         with:
@@ -107,7 +127,7 @@ jobs:
           - 5432:5432
     steps:
       - uses: actions/checkout@v3
-      - name: Enable SSL on PostgreSQL
+      - name: Enable SSL and create test users
         run: |
           openssl req -new -x509 -days 365 -nodes -text \
             -out server.crt -keyout server.key \
@@ -120,6 +140,16 @@ jobs:
           docker exec $CONTAINER psql -U postgres -c "ALTER SYSTEM SET ssl = 'on';"
           docker exec $CONTAINER psql -U postgres -c "ALTER SYSTEM SET ssl_cert_file = '/var/lib/postgresql/server.crt';"
           docker exec $CONTAINER psql -U postgres -c "ALTER SYSTEM SET ssl_key_file = '/var/lib/postgresql/server.key';"
+          docker exec $CONTAINER psql -U postgres -c "SELECT pg_reload_conf();"
+          docker exec $CONTAINER psql -U postgres -c "CREATE USER cleartext_user WITH PASSWORD 'cleartext_pass';"
+          docker exec $CONTAINER psql -U postgres -c "GRANT ALL PRIVILEGES ON DATABASE gleam_pgl_test TO cleartext_user;"
+          docker exec $CONTAINER psql -U postgres -c "CREATE USER trust_user;"
+          docker exec $CONTAINER psql -U postgres -c "GRANT ALL PRIVILEGES ON DATABASE gleam_pgl_test TO trust_user;"
+          docker exec $CONTAINER psql -U postgres -c "SET password_encryption = 'md5'; CREATE USER md5_user WITH PASSWORD 'md5_pass';"
+          docker exec $CONTAINER psql -U postgres -c "GRANT ALL PRIVILEGES ON DATABASE gleam_pgl_test TO md5_user;"
+          docker exec $CONTAINER bash -c "sed -i '/^host.*all.*all.*scram-sha-256/i host all cleartext_user all password' /var/lib/postgresql/data/pg_hba.conf"
+          docker exec $CONTAINER bash -c "sed -i '/^host.*all.*all.*scram-sha-256/i host all trust_user all trust' /var/lib/postgresql/data/pg_hba.conf"
+          docker exec $CONTAINER bash -c "sed -i '/^host.*all.*all.*scram-sha-256/i host all md5_user all md5' /var/lib/postgresql/data/pg_hba.conf"
           docker exec $CONTAINER psql -U postgres -c "SELECT pg_reload_conf();"
       - uses: erlef/setup-beam@v1
         with:
@@ -149,7 +179,7 @@ jobs:
           - 5432:5432
     steps:
       - uses: actions/checkout@v3
-      - name: Enable SSL on PostgreSQL
+      - name: Enable SSL and create test users
         run: |
           openssl req -new -x509 -days 365 -nodes -text \
             -out server.crt -keyout server.key \
@@ -162,6 +192,16 @@ jobs:
           docker exec $CONTAINER psql -U postgres -c "ALTER SYSTEM SET ssl = 'on';"
           docker exec $CONTAINER psql -U postgres -c "ALTER SYSTEM SET ssl_cert_file = '/var/lib/postgresql/server.crt';"
           docker exec $CONTAINER psql -U postgres -c "ALTER SYSTEM SET ssl_key_file = '/var/lib/postgresql/server.key';"
+          docker exec $CONTAINER psql -U postgres -c "SELECT pg_reload_conf();"
+          docker exec $CONTAINER psql -U postgres -c "CREATE USER cleartext_user WITH PASSWORD 'cleartext_pass';"
+          docker exec $CONTAINER psql -U postgres -c "GRANT ALL PRIVILEGES ON DATABASE gleam_pgl_test TO cleartext_user;"
+          docker exec $CONTAINER psql -U postgres -c "CREATE USER trust_user;"
+          docker exec $CONTAINER psql -U postgres -c "GRANT ALL PRIVILEGES ON DATABASE gleam_pgl_test TO trust_user;"
+          docker exec $CONTAINER psql -U postgres -c "SET password_encryption = 'md5'; CREATE USER md5_user WITH PASSWORD 'md5_pass';"
+          docker exec $CONTAINER psql -U postgres -c "GRANT ALL PRIVILEGES ON DATABASE gleam_pgl_test TO md5_user;"
+          docker exec $CONTAINER bash -c "sed -i '/^host.*all.*all.*scram-sha-256/i host all cleartext_user all password' /var/lib/postgresql/data/pg_hba.conf"
+          docker exec $CONTAINER bash -c "sed -i '/^host.*all.*all.*scram-sha-256/i host all trust_user all trust' /var/lib/postgresql/data/pg_hba.conf"
+          docker exec $CONTAINER bash -c "sed -i '/^host.*all.*all.*scram-sha-256/i host all md5_user all md5' /var/lib/postgresql/data/pg_hba.conf"
           docker exec $CONTAINER psql -U postgres -c "SELECT pg_reload_conf();"
       - uses: erlef/setup-beam@v1
         with:
