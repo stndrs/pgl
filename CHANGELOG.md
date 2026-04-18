@@ -5,6 +5,7 @@
 ### Changed
 
 - `Config` is now opaque
+- Password is now optional
 - Renamed `pgl.default` to `pgl.config`
 - Default SSL mode changed from `SslDisabled` to `SslVerified`
 - Replaced internal `store` module with `rasa`
@@ -17,6 +18,7 @@
 - `ConnectionUnavailable` error variant in `PglError`
 - Socket sends PostgreSQL `Terminate` message before closing connections
 - Added `Enum` and `Json` type tests
+- Added cleartext and MD5 password authentication support
 
 ### Fixed
 

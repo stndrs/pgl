@@ -1,9 +1,12 @@
 import gleam/bit_array
+import gleam/crypto
 import gleam/dict.{type Dict}
 import gleam/dynamic.{type Dynamic}
+import gleam/function
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/result
+import gleam/string
 import pgl/internal
 import pgl/internal/decode
 import pgl/internal/encode
@@ -16,7 +19,7 @@ pub type Config {
   Config(
     database: String,
     username: String,
-    password: String,
+    password: Option(String),
     application: String,
     connection_parameters: List(#(String, String)),
     ssl: Option(Bool),
@@ -26,7 +29,7 @@ pub type Config {
 pub const config = Config(
   database: "",
   username: "",
-  password: "",
+  password: None,
   application: "",
   connection_parameters: [],
   ssl: Some(True),
@@ -48,7 +51,7 @@ pub fn username(conf: Config, username: String) -> Config {
 }
 
 pub fn password(conf: Config, password: String) -> Config {
-  Config(..conf, password:)
+  Config(..conf, password: Some(password))
 }
 
 pub fn database(conf: Config, database: String) -> Config {
@@ -129,6 +132,10 @@ fn auth_flow(
 
   case msg {
     internal.AuthenticationOk -> auth_flow(sock, conf, prev)
+    internal.AuthenticationMD5Password(salt:) ->
+      do_password_auth(conf, md5_password(conf.username, _, salt), "MD5", sock)
+    internal.AuthenticationCleartextPassword ->
+      do_password_auth(conf, function.identity, "password", sock)
     internal.AuthenticationSASL(methods:) -> {
       use nonce <- result.try(auth_sasl(sock, methods, conf))
 
@@ -159,6 +166,45 @@ fn auth_flow(
       |> internal.ProtocolError(message: "Unexpected message")
       |> Error
     }
+  }
+}
+
+fn md5_password(username: String, password: String, salt: BitArray) -> String {
+  let inner =
+    crypto.hash(crypto.Md5, <<password:utf8, username:utf8>>)
+    |> bit_array.base16_encode
+    |> string.lowercase
+
+  let outer =
+    crypto.hash(crypto.Md5, <<inner:utf8, salt:bits>>)
+    |> bit_array.base16_encode
+    |> string.lowercase
+
+  "md5" <> outer
+}
+
+fn do_password_auth(
+  conf: Config,
+  process_password: fn(String) -> String,
+  kind: String,
+  sock: Socket,
+) -> Result(Socket, internal.InternalError) {
+  case conf.password {
+    option.Some(pass) -> {
+      pass
+      |> process_password
+      |> encode.password
+      |> socket.send(sock, _)
+      |> result.try(auth_flow(_, conf, <<>>))
+    }
+    option.None ->
+      internal.AuthenticationFailed
+      |> internal.AuthenticationError(
+        "Server requested "
+        <> kind
+        <> "authentication but no password was provided",
+      )
+      |> Error
   }
 }
 
@@ -206,19 +252,30 @@ fn auth_sasl_continue(
   scram.parse_server_first(server_first, client_nonce)
   |> result.try(fn(sf) {
     let user = <<conf.username:utf8>>
-    let pass = <<conf.password:utf8>>
+    case conf.password {
+      option.None -> {
+        internal.AuthenticationFailed
+        |> internal.AuthenticationError(
+          "Server requested SCRAM authentication but no password was provided",
+        )
+        |> Error
+      }
+      option.Some(password) -> {
+        let pass = <<password:utf8>>
 
-    use #(client_final, server_signature) <- result.try(scram.client_final(
-      sf,
-      client_nonce,
-      user,
-      pass,
-    ))
+        use #(client_final, server_signature) <- result.try(scram.client_final(
+          sf,
+          client_nonce,
+          user,
+          pass,
+        ))
 
-    let encoded_client_final = encode.scram_response(client_final)
+        let encoded_client_final = encode.scram_response(client_final)
 
-    socket.send(sock, encoded_client_final)
-    |> result.replace(server_signature)
+        socket.send(sock, encoded_client_final)
+        |> result.replace(server_signature)
+      }
+    }
   })
 }
 

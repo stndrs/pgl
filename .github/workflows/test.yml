@@ -25,20 +25,8 @@ jobs:
           - 5432:5432
     steps:
       - uses: actions/checkout@v3
-      - name: Enable SSL on PostgreSQL
-        run: |
-          openssl req -new -x509 -days 365 -nodes -text \
-            -out server.crt -keyout server.key \
-            -subj "/CN=localhost"
-          CONTAINER=$(docker ps -q --filter "ancestor=postgres:15")
-          docker cp server.crt $CONTAINER:/var/lib/postgresql/server.crt
-          docker cp server.key $CONTAINER:/var/lib/postgresql/server.key
-          docker exec $CONTAINER chown postgres:postgres /var/lib/postgresql/server.crt /var/lib/postgresql/server.key
-          docker exec $CONTAINER chmod 600 /var/lib/postgresql/server.key
-          docker exec $CONTAINER psql -U postgres -c "ALTER SYSTEM SET ssl = 'on';"
-          docker exec $CONTAINER psql -U postgres -c "ALTER SYSTEM SET ssl_cert_file = '/var/lib/postgresql/server.crt';"
-          docker exec $CONTAINER psql -U postgres -c "ALTER SYSTEM SET ssl_key_file = '/var/lib/postgresql/server.key';"
-          docker exec $CONTAINER psql -U postgres -c "SELECT pg_reload_conf();"
+      - name: Enable SSL and create test users
+        run: ./scripts/setup-postgres-ci.sh postgres:15
       - uses: erlef/setup-beam@v1
         with:
           otp-version: "28"
@@ -66,20 +54,8 @@ jobs:
           - 5432:5432
     steps:
       - uses: actions/checkout@v3
-      - name: Enable SSL on PostgreSQL
-        run: |
-          openssl req -new -x509 -days 365 -nodes -text \
-            -out server.crt -keyout server.key \
-            -subj "/CN=localhost"
-          CONTAINER=$(docker ps -q --filter "ancestor=postgres:16")
-          docker cp server.crt $CONTAINER:/var/lib/postgresql/server.crt
-          docker cp server.key $CONTAINER:/var/lib/postgresql/server.key
-          docker exec $CONTAINER chown postgres:postgres /var/lib/postgresql/server.crt /var/lib/postgresql/server.key
-          docker exec $CONTAINER chmod 600 /var/lib/postgresql/server.key
-          docker exec $CONTAINER psql -U postgres -c "ALTER SYSTEM SET ssl = 'on';"
-          docker exec $CONTAINER psql -U postgres -c "ALTER SYSTEM SET ssl_cert_file = '/var/lib/postgresql/server.crt';"
-          docker exec $CONTAINER psql -U postgres -c "ALTER SYSTEM SET ssl_key_file = '/var/lib/postgresql/server.key';"
-          docker exec $CONTAINER psql -U postgres -c "SELECT pg_reload_conf();"
+      - name: Enable SSL and create test users
+        run: ./scripts/setup-postgres-ci.sh postgres:16
       - uses: erlef/setup-beam@v1
         with:
           otp-version: "28"
@@ -107,20 +83,8 @@ jobs:
           - 5432:5432
     steps:
       - uses: actions/checkout@v3
-      - name: Enable SSL on PostgreSQL
-        run: |
-          openssl req -new -x509 -days 365 -nodes -text \
-            -out server.crt -keyout server.key \
-            -subj "/CN=localhost"
-          CONTAINER=$(docker ps -q --filter "ancestor=postgres:17")
-          docker cp server.crt $CONTAINER:/var/lib/postgresql/server.crt
-          docker cp server.key $CONTAINER:/var/lib/postgresql/server.key
-          docker exec $CONTAINER chown postgres:postgres /var/lib/postgresql/server.crt /var/lib/postgresql/server.key
-          docker exec $CONTAINER chmod 600 /var/lib/postgresql/server.key
-          docker exec $CONTAINER psql -U postgres -c "ALTER SYSTEM SET ssl = 'on';"
-          docker exec $CONTAINER psql -U postgres -c "ALTER SYSTEM SET ssl_cert_file = '/var/lib/postgresql/server.crt';"
-          docker exec $CONTAINER psql -U postgres -c "ALTER SYSTEM SET ssl_key_file = '/var/lib/postgresql/server.key';"
-          docker exec $CONTAINER psql -U postgres -c "SELECT pg_reload_conf();"
+      - name: Enable SSL and create test users
+        run: ./scripts/setup-postgres-ci.sh postgres:17
       - uses: erlef/setup-beam@v1
         with:
           otp-version: "28"
@@ -149,20 +113,8 @@ jobs:
           - 5432:5432
     steps:
       - uses: actions/checkout@v3
-      - name: Enable SSL on PostgreSQL
-        run: |
-          openssl req -new -x509 -days 365 -nodes -text \
-            -out server.crt -keyout server.key \
-            -subj "/CN=localhost"
-          CONTAINER=$(docker ps -q --filter "ancestor=postgres:18")
-          docker cp server.crt $CONTAINER:/var/lib/postgresql/server.crt
-          docker cp server.key $CONTAINER:/var/lib/postgresql/server.key
-          docker exec $CONTAINER chown postgres:postgres /var/lib/postgresql/server.crt /var/lib/postgresql/server.key
-          docker exec $CONTAINER chmod 600 /var/lib/postgresql/server.key
-          docker exec $CONTAINER psql -U postgres -c "ALTER SYSTEM SET ssl = 'on';"
-          docker exec $CONTAINER psql -U postgres -c "ALTER SYSTEM SET ssl_cert_file = '/var/lib/postgresql/server.crt';"
-          docker exec $CONTAINER psql -U postgres -c "ALTER SYSTEM SET ssl_key_file = '/var/lib/postgresql/server.key';"
-          docker exec $CONTAINER psql -U postgres -c "SELECT pg_reload_conf();"
+      - name: Enable SSL and create test users
+        run: ./scripts/setup-postgres-ci.sh postgres:18
       - uses: erlef/setup-beam@v1
         with:
           otp-version: "28"

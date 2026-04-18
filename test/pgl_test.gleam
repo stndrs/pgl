@@ -2038,3 +2038,67 @@ pub fn json_string_constant_test() {
 
   assert #("value", 42) == parsed
 }
+
+pub fn md5_auth_query_test() {
+  let db =
+    pgl.config
+    |> pgl.host("127.0.0.1")
+    |> pgl.port(5432)
+    |> pgl.database("gleam_pgl_test")
+    |> pgl.username("md5_user")
+    |> pgl.password("md5_pass")
+    |> pgl.ssl(pgl.SslUnverified)
+    |> pgl.new
+
+  let assert Ok(_) = pgl.start(db)
+
+  use conn <- with_conn(db)
+
+  let assert Ok(result) =
+    pgl.sql("SELECT 1 AS val, 'md5_auth' AS auth_type")
+    |> pgl.query(conn)
+
+  assert 1 == result.count
+
+  let row_decoder = {
+    use val <- decode.field(0, decode.int)
+    use auth_type <- decode.field(1, decode.string)
+    decode.success(#(val, auth_type))
+  }
+
+  let assert Ok([#(1, "md5_auth")]) =
+    result.rows
+    |> list.try_map(decode.run(_, row_decoder))
+}
+
+pub fn cleartext_auth_query_test() {
+  let db =
+    pgl.config
+    |> pgl.host("127.0.0.1")
+    |> pgl.port(5432)
+    |> pgl.database("gleam_pgl_test")
+    |> pgl.username("cleartext_user")
+    |> pgl.password("cleartext_pass")
+    |> pgl.ssl(pgl.SslDisabled)
+    |> pgl.new
+
+  let assert Ok(_) = pgl.start(db)
+
+  use conn <- with_conn(db)
+
+  let assert Ok(result) =
+    pgl.sql("SELECT 1 AS val, 'cleartext_auth' AS auth_type")
+    |> pgl.query(conn)
+
+  assert 1 == result.count
+
+  let row_decoder = {
+    use val <- decode.field(0, decode.int)
+    use auth_type <- decode.field(1, decode.string)
+    decode.success(#(val, auth_type))
+  }
+
+  let assert Ok([#(1, "cleartext_auth")]) =
+    result.rows
+    |> list.try_map(decode.run(_, row_decoder))
+}
