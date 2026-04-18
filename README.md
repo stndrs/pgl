@@ -10,7 +10,7 @@
 
 - Implementation of PostgreSQL wire protocol
 - SSL support
-- [`SCRAM-SHA-256` Authentication](https://www.postgresql.org/docs/current/sasl-authentication.html#SASL-SCRAM-SHA-256)
+- [`SCRAM-SHA-256`](https://www.postgresql.org/docs/current/sasl-authentication.html#SASL-SCRAM-SHA-256), [Cleartext](https://www.postgresql.org/docs/current/auth-password.html), and [MD5](https://www.postgresql.org/docs/current/auth-password.html) password authentication
 - Connection pooling provided by [`db_pool`](https://github.com/stndrs/db_pool)
 - PostgreSQL data types provided by [`pg_value`](https://github.com/stndrs/pg_value)
 - Transaction support
