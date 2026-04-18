@@ -11,7 +11,6 @@
 - Replaced internal `store` module with `rasa`
 - Refactored internal `socket` module to use `neon` for managing tcp and ssl sockets
 - Idle connection pings now run inside the Socket actor, eliminating a race condition where pings could interleave with query I/O on the same connection
-- `from_url` now accepts `sslmode=prefer` and `sslmode=allow` (mapped to `SslUnverified`), and no longer fails when query parameters are present without an `sslmode` key
 
 ### Added
 
