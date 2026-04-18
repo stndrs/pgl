@@ -71,6 +71,22 @@ pub fn protocol_bootstrap_test() {
     |> protocol.simple(sock)
 }
 
+pub fn auth_cleartext_password_test() {
+  let conf =
+    protocol.config
+    |> protocol.database("gleam_pgl_test")
+    |> protocol.username("cleartext_user")
+    |> protocol.password("cleartext_pass")
+    |> protocol.ssl(Some(False))
+
+  let sock = connect()
+  let assert Ok(sock) = protocol.auth(sock, conf)
+
+  let assert Ok([[option.Some(<<"1":utf8>>)]]) =
+    encode.query("SELECT 1")
+    |> protocol.simple(sock)
+}
+
 fn connect() -> Socket {
   let sockets =
     socket.new()

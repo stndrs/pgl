@@ -129,6 +129,15 @@ fn auth_flow(
 
   case msg {
     internal.AuthenticationOk -> auth_flow(sock, conf, prev)
+    internal.AuthenticationCleartextPassword -> {
+      use sock <- result.try(
+        conf.password
+        |> encode.password
+        |> socket.send(sock, _),
+      )
+
+      auth_flow(sock, conf, <<>>)
+    }
     internal.AuthenticationSASL(methods:) -> {
       use nonce <- result.try(auth_sasl(sock, methods, conf))
 
