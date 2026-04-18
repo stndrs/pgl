@@ -30,11 +30,9 @@ pub opaque type Message {
 const type_cache_name = "pgl_type_cache"
 
 pub fn new() -> TypeCache {
-  let handle_connect = fn() { panic as "TypeCache connect not configured" }
-
   type_cache_name
   |> process.new_name
-  |> TypeCache(handle_connect:)
+  |> TypeCache(handle_connect: fn() { Error(Nil) })
 }
 
 pub fn on_connect(

@@ -391,10 +391,8 @@ pub type Extended(v) {
 pub fn extended() -> Extended(v) {
   Extended(
     needs_sync: False,
-    handle_decode_row: fn(_, _) { panic as "Extended flow not configured" },
-    handle_param_description: fn(_, _, _) {
-      panic as "Extended flow not configured"
-    },
+    handle_decode_row: fn(_, _) { Ok([]) },
+    handle_param_description: fn(_, _, _) { Ok(<<>>) },
     descriptions: [],
     fields: [],
     values: [],
