@@ -118,6 +118,57 @@ pub fn ssl_verified_rejects_self_signed_test() {
   assert "Failed to connect SSL" == message
 }
 
+pub fn auth_scram_wrong_password_test() {
+  let conf =
+    protocol.config
+    |> protocol.database("gleam_pgl_test")
+    |> protocol.username("postgres")
+    |> protocol.password("wrong_password")
+    |> protocol.ssl(internal.SslUnverified)
+
+  let sock = connect()
+
+  let assert Error(internal.PostgresError(code:, name:, message: _, fields: _)) =
+    protocol.auth(sock, conf)
+
+  assert "28P01" == code
+  assert "invalid_password" == name
+}
+
+pub fn auth_md5_wrong_password_test() {
+  let conf =
+    protocol.config
+    |> protocol.database("gleam_pgl_test")
+    |> protocol.username("md5_user")
+    |> protocol.password("wrong_password")
+    |> protocol.ssl(internal.SslUnverified)
+
+  let sock = connect()
+
+  let assert Error(internal.PostgresError(code:, name:, message: _, fields: _)) =
+    protocol.auth(sock, conf)
+
+  assert "28P01" == code
+  assert "invalid_password" == name
+}
+
+pub fn auth_cleartext_wrong_password_test() {
+  let conf =
+    protocol.config
+    |> protocol.database("gleam_pgl_test")
+    |> protocol.username("cleartext_user")
+    |> protocol.password("wrong_password")
+    |> protocol.ssl(internal.SslUnverified)
+
+  let sock = connect()
+
+  let assert Error(internal.PostgresError(code:, name:, message: _, fields: _)) =
+    protocol.auth(sock, conf)
+
+  assert "28P01" == code
+  assert "invalid_password" == name
+}
+
 fn connect() -> Socket {
   let sockets =
     socket.new()
