@@ -219,9 +219,12 @@ fn auth_sasl(
       let client_nonce = scram.get_nonce(16)
 
       scram.client_first(<<conf.username:utf8>>, client_nonce)
-      |> encode.auth_scram_client_first
-      |> socket.send(sock, _)
-      |> result.replace(client_nonce)
+      |> result.try(fn(client_first) {
+        client_first
+        |> encode.auth_scram_client_first
+        |> socket.send(sock, _)
+        |> result.replace(client_nonce)
+      })
     }
     _ -> {
       internal.AuthenticationError(

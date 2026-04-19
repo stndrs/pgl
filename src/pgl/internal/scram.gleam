@@ -13,8 +13,29 @@ pub type ServerFirst {
   ServerFirst(nonce: BitArray, salt: BitArray, iterations: Int, raw: BitArray)
 }
 
-pub fn client_first(user: BitArray, nonce: BitArray) -> BitArray {
-  <<"n,,n=":utf8, user:bits, ",r=":utf8, nonce:bits>>
+pub fn client_first(
+  user: BitArray,
+  nonce: BitArray,
+) -> Result(BitArray, internal.InternalError) {
+  use escaped <- result.map(escape_username(user))
+
+  <<"n,,n=":utf8, escaped:bits, ",r=":utf8, nonce:bits>>
+}
+
+// https://datatracker.ietf.org/doc/html/rfc5802#section-5.1
+fn escape_username(user: BitArray) -> Result(BitArray, internal.InternalError) {
+  user
+  |> bit_array.to_string
+  |> result.replace_error({
+    internal.SaslClientFirst
+    |> internal.ProtocolError("Invalid username")
+  })
+  |> result.map(fn(user) {
+    user
+    |> string.replace("=", "=3D")
+    |> string.replace(",", "=2C")
+    |> bit_array.from_string
+  })
 }
 
 pub fn get_nonce(num_random_bytes: Int) -> BitArray {
@@ -36,7 +57,11 @@ pub fn client_final(
 
   password
   |> sasl.validate
-  |> result.map(fn(valid_password) {
+  |> result.replace_error({
+    internal.SaslClientFinal
+    |> internal.ProtocolError("Invalid password")
+  })
+  |> result.try(fn(valid_password) {
     let salted_password =
       valid_password
       |> hi(server_first.salt, server_first.iterations)
@@ -44,8 +69,10 @@ pub fn client_final(
     let client_key =
       crypto.hmac(<<"Client Key":utf8>>, sha_256, salted_password)
 
+    use escaped_username <- result.map(escape_username(username))
+
     let auth_message =
-      <<"n=":utf8, username:bits, ",r=":utf8, client_nonce:bits>>
+      <<"n=":utf8, escaped_username:bits, ",r=":utf8, client_nonce:bits>>
       |> bytes_tree.from_bit_array
       |> bytes_tree.append(<<",":utf8>>)
       |> bytes_tree.append(server_first.raw)
