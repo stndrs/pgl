@@ -617,10 +617,9 @@ fn error_response_cleanup(
   let err = case needs_sync {
     False -> flush(err, sock)
     True ->
-      case socket.send(sock, encode.sync()) {
-        Ok(_) -> flush(err, sock)
-        Error(_) -> err
-      }
+      encode.sync()
+      |> socket.send(sock, _)
+      |> result.try(fn(_) { flush(err, sock) })
   }
 
   case syncs > ready {
