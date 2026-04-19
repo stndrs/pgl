@@ -1,7 +1,7 @@
 name = "pgl"
 version = "3.0.0"
 
-description = "A Postgres driver written in gleam"
+description = "A Postgres driver written in Gleam"
 licences = ["MIT"]
 repository = { type = "github", user = "stndrs", repo = "pgl" }
 target = "erlang"

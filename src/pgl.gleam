@@ -59,6 +59,9 @@ pub opaque type Config {
 /// A default configuration with a connection pool size of 5.
 /// At minimum you need to set the username, password, and
 /// database values.
+///
+/// The default SSL mode is `SslVerified`. Use `pgl.from_url` to
+/// configure from a connection URL instead.
 pub const config = Config(
   application: "",
   host: internal.default_host,
@@ -81,6 +84,7 @@ pub type IpVersion {
   Ipv6
 }
 
+/// SSL mode for the database connection.
 pub type Ssl {
   /// Disables SSL leaving connections unsecured. Avoid using this in production.
   SslDisabled
@@ -137,7 +141,8 @@ pub fn ssl(conf: Config, ssl: Ssl) -> Config {
   Config(..conf, ssl:)
 }
 
-/// Configures rows to be returns as `Dict` rather than n-tuples.
+/// Configures rows to be returned as `Dict` rather than n-tuples.
+/// The keys of the `Dict` are the queried column names.
 pub fn rows_as_dict(conf: Config, rows_as_dict: Bool) -> Config {
   Config(..conf, rows_as_dict:)
 }
@@ -245,14 +250,23 @@ fn apply_ssl_mode(conf: Config, uri: Uri) -> Result(Config, Nil) {
   |> result.map(ssl(conf, _))
 }
 
+/// Errors that can occur when interacting with the database.
 pub type PglError {
+  /// An error processing query results.
   QueryError(message: String)
+  /// Failed to connect to the database.
   ConnectionError(message: String)
+  /// Timed out waiting for a connection from the pool.
   ConnectionTimeout
+  /// No connections available in the pool.
   ConnectionUnavailable
+  /// Authentication with the database failed.
   AuthenticationError(message: String)
+  /// An error in the PostgreSQL wire protocol.
   ProtocolError(message: String)
+  /// A low-level socket error.
   SocketError(message: String)
+  /// An error returned by the PostgreSQL server.
   PostgresError(
     code: String,
     name: String,
@@ -364,14 +378,18 @@ fn field_from_bit_array(field_type: BitArray) -> Field {
   }
 }
 
+/// Errors that can occur during a transaction.
 pub type TransactionError(error) {
+  /// The transaction callback returned an error, and the transaction was rolled back.
   RollbackError(cause: error)
+  /// Attempted to commit or rollback outside of a transaction.
   NotInTransaction
+  /// A transaction-level query (BEGIN, COMMIT, ROLLBACK) failed.
   TransactionError(message: String)
 }
 
 /// A configured `Db`. Must be started via `pgl.start` or `pgl.supervised`
-/// before use. Once started, `Db` can be passed to `with_connection`.
+/// before use. Once started, use `pgl.connection` to get a `Connection`.
 pub opaque type Db {
   Db(
     pool: process.Name(db_pool.Message(Socket, PglError)),
@@ -410,6 +428,8 @@ pub fn new(config: Config) -> Db {
   Db(pool:, sockets:, type_cache:, query_cache:, config:)
 }
 
+/// Starts the connection pool, type cache, query cache, and socket
+/// factory under a supervision tree.
 pub fn start(db: Db) -> actor.StartResult(Supervisor) {
   let pool =
     db_pool.new()
@@ -427,6 +447,7 @@ pub fn start(db: Db) -> actor.StartResult(Supervisor) {
   |> supervisor.start
 }
 
+/// Returns a child specification for use in an existing supervision tree.
 pub fn supervised(db: Db) -> supervision.ChildSpecification(Supervisor) {
   let pool_supervisor =
     supervision.supervisor(fn() { start(db) })
@@ -500,8 +521,8 @@ pub fn shutdown(db: Db) -> Result(Nil, PglError) {
 
 // ---------- Connection ---------- //
 
-/// A `Connection` that can be reference to the connection pool, or a
-/// single connection.
+/// A `Connection` that can be a reference to the connection pool or a
+/// single checked-out connection
 pub opaque type Connection {
   Pool(db: Db)
   Connection(conn: conn.Conn, db: Db)
@@ -583,7 +604,6 @@ pub fn query(q: Query, connection: Connection) -> Result(Queried, PglError) {
 /// roundtrips needed for multiple queries.
 ///
 /// [1]: https://www.postgresql.org/docs/current/protocol-flow.html#PROTOCOL-FLOW-PIPELINING
-/// 
 pub fn batch(
   queries: List(Query),
   connection: Connection,
