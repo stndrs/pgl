@@ -1,4 +1,5 @@
 import gleam/bit_array
+import gleam/bool
 import gleam/bytes_tree
 import gleam/crypto
 import gleam/int
@@ -17,15 +18,8 @@ pub fn client_first(user: BitArray, nonce: BitArray) -> BitArray {
 }
 
 pub fn get_nonce(num_random_bytes: Int) -> BitArray {
-  let random = crypto.strong_random_bytes(num_random_bytes)
-  let unique = <<unique_int():int-size(64)>>
-  let nonce_bin = <<
-    num_random_bytes:int-size(8),
-    random:bits,
-    unique:bits,
-  >>
-
-  bit_array.base64_encode(nonce_bin, True)
+  crypto.strong_random_bytes(num_random_bytes)
+  |> bit_array.base64_encode(True)
   |> bit_array.from_string
 }
 
@@ -109,6 +103,8 @@ pub fn parse_server_first(
       use salt <- result.try(bit_array.base64_decode(salt))
       use iterations <- result.try(int.parse(iters))
 
+      use <- bool.guard(iterations < 4096 || iterations > 100_000, Error(Nil))
+
       let size = bit_array.bit_size(client_nonce)
 
       case nonce {
@@ -189,6 +185,3 @@ fn do_hi(str: BitArray, u: BitArray, hi: BitArray, i: Int) -> BitArray {
 
 @external(erlang, "crypto", "exor")
 fn bin_xor(b1: BitArray, b2: BitArray) -> BitArray
-
-@external(erlang, "pgl_ffi", "unique_int")
-fn unique_int() -> Int
