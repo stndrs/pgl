@@ -1,9 +1,12 @@
 import gleam/bit_array
+import gleam/crypto
 import gleam/dict.{type Dict}
 import gleam/dynamic.{type Dynamic}
+import gleam/function
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/result
+import gleam/string
 import pgl/internal
 import pgl/internal/decode
 import pgl/internal/encode
@@ -12,24 +15,24 @@ import pgl/internal/socket.{type Socket}
 
 // ---------- Config ---------- //
 
-pub type Config {
+pub opaque type Config {
   Config(
     database: String,
     username: String,
-    password: String,
+    password: Option(String),
     application: String,
     connection_parameters: List(#(String, String)),
-    ssl: Option(Bool),
+    ssl: internal.Ssl,
   )
 }
 
 pub const config = Config(
   database: "",
   username: "",
-  password: "",
+  password: None,
   application: "",
   connection_parameters: [],
-  ssl: None,
+  ssl: internal.SslVerified,
 )
 
 pub fn application(conf: Config, application: String) -> Config {
@@ -48,14 +51,14 @@ pub fn username(conf: Config, username: String) -> Config {
 }
 
 pub fn password(conf: Config, password: String) -> Config {
-  Config(..conf, password:)
+  Config(..conf, password: Some(password))
 }
 
 pub fn database(conf: Config, database: String) -> Config {
   Config(..conf, database:)
 }
 
-pub fn ssl(conf: Config, ssl: Option(Bool)) -> Config {
+pub fn ssl(conf: Config, ssl: internal.Ssl) -> Config {
   Config(..conf, ssl:)
 }
 
@@ -74,11 +77,12 @@ pub fn auth(
 
 fn ssl_upgrade(
   sock: Socket,
-  ssl: Option(Bool),
+  ssl: internal.Ssl,
 ) -> Result(Socket, internal.InternalError) {
   case ssl {
-    Some(verified) -> do_ssl_upgrade(sock, verified:)
-    None -> Ok(sock)
+    internal.SslVerified -> do_ssl_upgrade(sock, verified: True)
+    internal.SslUnverified -> do_ssl_upgrade(sock, verified: False)
+    internal.SslDisabled -> Ok(sock)
   }
 }
 
@@ -116,9 +120,7 @@ fn setup(sock: Socket, conf: Config) -> Result(Socket, internal.InternalError) {
 
   use sock <- result.try(socket.send(sock, message))
 
-  sock
-  |> auth_flow(conf, <<>>)
-  |> result.replace(sock)
+  auth_flow(sock, conf, <<>>)
 }
 
 // https://www.postgresql.org/docs/current/sasl-authentication.html#SASL-SCRAM-SHA-256
@@ -126,11 +128,15 @@ fn auth_flow(
   sock: Socket,
   conf: Config,
   prev: BitArray,
-) -> Result(BitArray, internal.InternalError) {
+) -> Result(Socket, internal.InternalError) {
   use msg <- result.try(receive_message(sock))
 
   case msg {
     internal.AuthenticationOk -> auth_flow(sock, conf, prev)
+    internal.AuthenticationMD5Password(salt:) ->
+      do_password_auth(conf, md5_password(conf.username, _, salt), "MD5", sock)
+    internal.AuthenticationCleartextPassword ->
+      do_password_auth(conf, function.identity, "password", sock)
     internal.AuthenticationSASL(methods:) -> {
       use nonce <- result.try(auth_sasl(sock, methods, conf))
 
@@ -148,7 +154,6 @@ fn auth_flow(
     }
     internal.ErrorResponse(fields:) -> handle_error_response(fields)
     internal.BackendKeyData(_, _) -> auth_flow(sock, conf, <<>>)
-    internal.BindComplete -> Ok(<<>>)
     internal.NotificationResponse(_, _, _) -> auth_flow(sock, conf, <<>>)
     internal.NoticeResponse(_) -> auth_flow(sock, conf, <<>>)
     internal.ParameterStatus(name:, value:) -> {
@@ -156,12 +161,51 @@ fn auth_flow(
       |> socket.parameter(name, value)
       |> auth_flow(conf, <<>>)
     }
-    internal.ReadyForQuery(status: _) -> Ok(<<>>)
+    internal.ReadyForQuery(status: _) -> Ok(sock)
     _ -> {
       internal.MessageError
       |> internal.ProtocolError(message: "Unexpected message")
       |> Error
     }
+  }
+}
+
+fn md5_password(username: String, password: String, salt: BitArray) -> String {
+  let inner =
+    crypto.hash(crypto.Md5, <<password:utf8, username:utf8>>)
+    |> bit_array.base16_encode
+    |> string.lowercase
+
+  let outer =
+    crypto.hash(crypto.Md5, <<inner:utf8, salt:bits>>)
+    |> bit_array.base16_encode
+    |> string.lowercase
+
+  "md5" <> outer
+}
+
+fn do_password_auth(
+  conf: Config,
+  process_password: fn(String) -> String,
+  kind: String,
+  sock: Socket,
+) -> Result(Socket, internal.InternalError) {
+  case conf.password {
+    option.Some(pass) -> {
+      pass
+      |> process_password
+      |> encode.password
+      |> socket.send(sock, _)
+      |> result.try(auth_flow(_, conf, <<>>))
+    }
+    option.None ->
+      internal.AuthenticationFailed
+      |> internal.AuthenticationError(
+        "Server requested "
+        <> kind
+        <> "authentication but no password was provided",
+      )
+      |> Error
   }
 }
 
@@ -175,9 +219,12 @@ fn auth_sasl(
       let client_nonce = scram.get_nonce(16)
 
       scram.client_first(<<conf.username:utf8>>, client_nonce)
-      |> encode.auth_scram_client_first
-      |> socket.send(sock, _)
-      |> result.replace(client_nonce)
+      |> result.try(fn(client_first) {
+        client_first
+        |> encode.auth_scram_client_first
+        |> socket.send(sock, _)
+        |> result.replace(client_nonce)
+      })
     }
     _ -> {
       internal.AuthenticationError(
@@ -209,15 +256,30 @@ fn auth_sasl_continue(
   scram.parse_server_first(server_first, client_nonce)
   |> result.try(fn(sf) {
     let user = <<conf.username:utf8>>
-    let pass = <<conf.password:utf8>>
+    case conf.password {
+      option.None -> {
+        internal.AuthenticationFailed
+        |> internal.AuthenticationError(
+          "Server requested SCRAM authentication but no password was provided",
+        )
+        |> Error
+      }
+      option.Some(password) -> {
+        let pass = <<password:utf8>>
 
-    let #(client_final, server_signature) =
-      scram.client_final(sf, client_nonce, user, pass)
+        use #(client_final, server_signature) <- result.try(scram.client_final(
+          sf,
+          client_nonce,
+          user,
+          pass,
+        ))
 
-    let encoded_client_final = encode.scram_response(client_final)
+        let encoded_client_final = encode.scram_response(client_final)
 
-    socket.send(sock, encoded_client_final)
-    |> result.replace(server_signature)
+        socket.send(sock, encoded_client_final)
+        |> result.replace(server_signature)
+      }
+    }
   })
 }
 
@@ -227,7 +289,7 @@ fn auth_sasl_final(
 ) -> Result(BitArray, internal.InternalError) {
   use srv_final <- result.try(scram.parse_server_final(server_final))
 
-  case srv_final == server_signature {
+  case crypto.secure_compare(srv_final, server_signature) {
     True -> Ok(server_signature)
     False -> {
       internal.AuthenticationError(
@@ -244,7 +306,7 @@ fn auth_sasl_final(
 // https://www.postgresql.org/docs/current/protocol-flow.html#PROTOCOL-FLOW-SIMPLE-QUERY
 
 type Row =
-  List(BitArray)
+  List(Option(BitArray))
 
 pub fn simple(
   packet: BitArray,
@@ -279,14 +341,6 @@ fn simple_flow(
   }
 }
 
-// ---------- Ping ---------- //
-
-pub fn ping(sock: Socket) -> Result(Socket, internal.InternalError) {
-  encode.sync()
-  |> socket.send(sock, _)
-  |> flush(sock)
-}
-
 fn flush(
   res: Result(b, internal.InternalError),
   sock: Socket,
@@ -304,7 +358,15 @@ fn sync(sock: Socket) -> Result(Socket, internal.InternalError) {
   encode.sync()
   |> socket.send(sock, _)
   |> result.try(receive_message)
-  |> result.replace(sock)
+  |> result.try(fn(msg) {
+    case msg {
+      internal.ReadyForQuery(_) -> Ok(sock)
+      _ ->
+        internal.MessageError
+        |> internal.ProtocolError(message: "Expected ReadyForQuery after Sync")
+        |> Error
+    }
+  })
 }
 
 // ---------- Extended(v) Query ---------- //
@@ -332,10 +394,8 @@ pub type Extended(v) {
 pub fn extended() -> Extended(v) {
   Extended(
     needs_sync: False,
-    handle_decode_row: fn(_, _) { panic as "Extended flow not configured" },
-    handle_param_description: fn(_, _, _) {
-      panic as "Extended flow not configured"
-    },
+    handle_decode_row: fn(_, _) { Ok([]) },
+    handle_param_description: fn(_, _, _) { Ok(<<>>) },
     descriptions: [],
     fields: [],
     values: [],

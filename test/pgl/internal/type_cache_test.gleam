@@ -11,6 +11,7 @@ fn conf() {
   |> protocol.database("gleam_pgl_test")
   |> protocol.username("postgres")
   |> protocol.password("postgres")
+  |> protocol.ssl(internal.SslUnverified)
 }
 
 pub fn load_test() {

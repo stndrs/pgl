@@ -2,7 +2,7 @@ import gleam/erlang/process
 import gleam/otp/actor
 import gleam/otp/supervision
 import gleam/result
-import rasa
+import rasa/table.{type Table}
 
 pub opaque type QueryCache {
   QueryCache(name: process.Name(Message))
@@ -21,8 +21,6 @@ type Message {
 }
 
 const query_cache_name = "pgl_query_cache"
-
-const table_name = "pgl_query_cache_table"
 
 pub fn new() -> QueryCache {
   query_cache_name
@@ -43,9 +41,9 @@ pub fn start(
   actor.new_with_initialiser(1000, fn(subj) {
     let selector = process.new_selector() |> process.select(subj)
 
-    rasa.build(table_name)
-    |> rasa.with_access(rasa.Private)
-    |> rasa.table
+    table.new()
+    |> table.with_access(table.Private)
+    |> table.build
     |> actor.initialised
     |> actor.selecting(selector)
     |> Ok
@@ -85,38 +83,38 @@ pub fn shutdown(query_cache: QueryCache) -> Nil {
 }
 
 fn handle_message(
-  table: rasa.Table(String, List(Int)),
+  table: Table(String, List(Int)),
   msg: Message,
-) -> actor.Next(rasa.Table(String, List(Int)), Message) {
+) -> actor.Next(Table(String, List(Int)), Message) {
   case msg {
     Lookup(client, query) -> {
-      rasa.lookup(table, query)
+      table.lookup(table, query)
       |> actor.send(client, _)
 
       actor.continue(table)
     }
     Insert(client, query, description) -> {
-      rasa.insert(table, query, description)
+      table.insert(table, query, description)
       |> result.replace(Nil)
       |> actor.send(client, _)
 
       actor.continue(table)
     }
     Reset -> {
-      let _ = rasa.drop(table)
+      let _ = table.drop(table)
 
-      rasa.build(table_name)
-      |> rasa.with_access(rasa.Private)
-      |> rasa.table
+      table.new()
+      |> table.with_access(table.Private)
+      |> table.build
       |> actor.continue
     }
     Delete(query) -> {
-      let _ = rasa.delete(table, query)
+      let _ = table.delete(table, query)
 
       actor.continue(table)
     }
     Shutdown -> {
-      let _ = rasa.drop(table)
+      let _ = table.drop(table)
 
       actor.stop()
     }

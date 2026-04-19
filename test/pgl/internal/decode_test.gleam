@@ -1,5 +1,6 @@
 import gleam/dict
 import gleam/list
+import gleam/option.{Some}
 import gleam/result
 import pgl/internal
 import pgl/internal/decode
@@ -57,9 +58,9 @@ pub fn decode_copy_data_test() {
 }
 
 pub fn decode_data_row_test() {
-  let assert Ok(internal.DataRow([<<100:int-size(64)>>])) =
+  let assert Ok(internal.DataRow([Some(<<100:int-size(64)>>)])) =
     decode.message(<<"D":utf8>>, <<
-      2:int-size(16),
+      1:int-size(16),
       8:int-size(32),
       100:big-int-size(64),
     >>)
@@ -77,6 +78,19 @@ pub fn decode_data_row_values_error_test() {
     kind: internal.DecodingError,
     message: "Invalid data row",
   )) = decode.message(<<"D":utf8>>, <<2:int-size(16), 8:int-size(32)>>)
+}
+
+pub fn decode_data_row_truncated_error_test() {
+  // 2 columns declared but only 1 value provided — should error, not silently truncate
+  let assert Error(internal.ProtocolError(
+    kind: internal.DecodingError,
+    message: "Invalid data row",
+  )) =
+    decode.message(<<"D":utf8>>, <<
+      2:int-size(16),
+      8:int-size(32),
+      100:big-int-size(64),
+    >>)
 }
 
 pub fn decode_backend_key_data_test() {
@@ -186,7 +200,10 @@ pub fn decode_error_response_test() {
     assert expected_fields == fields
   })
 
-  decode.message(<<"E":utf8>>, <<>>)
+  let assert Error(internal.ProtocolError(
+    kind: internal.MessageError,
+    message: "Unexpected message format",
+  )) = decode.message(<<"E":utf8>>, <<>>)
 }
 
 pub fn decode_ready_for_query_test() {

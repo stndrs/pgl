@@ -25,6 +25,8 @@ jobs:
           - 5432:5432
     steps:
       - uses: actions/checkout@v3
+      - name: Enable SSL and create test users
+        run: ./scripts/setup-postgres-ci.sh postgres:15
       - uses: erlef/setup-beam@v1
         with:
           otp-version: "28"
@@ -52,6 +54,8 @@ jobs:
           - 5432:5432
     steps:
       - uses: actions/checkout@v3
+      - name: Enable SSL and create test users
+        run: ./scripts/setup-postgres-ci.sh postgres:16
       - uses: erlef/setup-beam@v1
         with:
           otp-version: "28"
@@ -79,6 +83,8 @@ jobs:
           - 5432:5432
     steps:
       - uses: actions/checkout@v3
+      - name: Enable SSL and create test users
+        run: ./scripts/setup-postgres-ci.sh postgres:17
       - uses: erlef/setup-beam@v1
         with:
           otp-version: "28"
@@ -107,6 +113,8 @@ jobs:
           - 5432:5432
     steps:
       - uses: actions/checkout@v3
+      - name: Enable SSL and create test users
+        run: ./scripts/setup-postgres-ci.sh postgres:18
       - uses: erlef/setup-beam@v1
         with:
           otp-version: "28"

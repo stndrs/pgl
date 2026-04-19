@@ -3,8 +3,7 @@
 -export([
   rescue/1,
   handle_crash/2,
-  binary_match/2,
-  unique_int/0
+  binary_match/2
 ]).
 
 rescue(Fun) ->
@@ -24,5 +23,3 @@ binary_match(Binary, Pattern) ->
     nomatch -> {error, nil};
     {Start, Length} -> {ok, {Start, Length}}
   end.
-
-unique_int() -> erlang:unique_integer([positive]).

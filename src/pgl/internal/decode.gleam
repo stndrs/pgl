@@ -2,6 +2,7 @@ import gleam/bit_array
 import gleam/dict.{type Dict}
 import gleam/int
 import gleam/list
+import gleam/option.{None, Some}
 import gleam/result
 import gleam/string
 import pgl/internal
@@ -119,18 +120,17 @@ fn data_row(
 fn data_row_values(
   payload: BitArray,
   columns: Int,
-  acc: List(BitArray),
-) -> Result(List(BitArray), internal.InternalError) {
+  acc: List(option.Option(BitArray)),
+) -> Result(List(option.Option(BitArray)), internal.InternalError) {
   case columns > 0 {
     False -> Ok(list.reverse(acc))
     True -> {
       case payload {
-        <<>> -> Ok(acc)
         <<-1:signed-int-size(32), rest:bits>> -> {
-          data_row_values(rest, columns - 1, [<<>>, ..acc])
+          data_row_values(rest, columns - 1, [None, ..acc])
         }
         <<value_len:int-size(32), value:bytes-size(value_len), rest:bits>> -> {
-          data_row_values(rest, columns - 1, [value, ..acc])
+          data_row_values(rest, columns - 1, [Some(value), ..acc])
         }
         _bits -> {
           internal.DecodingError
@@ -224,12 +224,13 @@ fn sasl_methods_inner(
   binary: BitArray,
 ) -> Result(List(String), internal.InternalError) {
   case binary {
-    <<"SCRAM-SHA-256":utf8, _rest:bits>> -> Ok(["SCRAM-SHA-256"])
+    <<"SCRAM-SHA-256-PLUS":utf8, 0, "SCRAM-SHA-256":utf8, 0, _rest:bits>> ->
+      Ok(["SCRAM-SHA-256"])
+    <<"SCRAM-SHA-256":utf8, 0, _rest:bits>> -> Ok(["SCRAM-SHA-256"])
     _ ->
-      Error(internal.AuthenticationError(
-        kind: internal.MethodNotImplemented,
-        message: "Supported methods: [SCRAM-SHA-256]",
-      ))
+      internal.MethodNotImplemented
+      |> internal.AuthenticationError("Supported methods: [SCRAM-SHA-256]")
+      |> Error
   }
 }
 
@@ -450,7 +451,6 @@ fn row_description_fields(
         let name = decoded.0
 
         case decoded.1 {
-          <<"?column?":utf8>> -> row_description_fields(count - 1, <<>>, [])
           <<
             table_oid:int-size(32),
             attr_number:int-size(16),
@@ -520,7 +520,8 @@ fn parameter_description(
 ) -> Result(internal.Message, internal.InternalError) {
   case payload {
     <<count:int-size(16), rest:bits>> -> {
-      let data_types = parameter_data_types(rest, [])
+      use data_types <- result.try(parameter_data_types(rest, []))
+
       case count == list.length(data_types) {
         True -> Ok(internal.ParameterDescription(count:, data_types:))
         _bits -> {
@@ -538,12 +539,19 @@ fn parameter_description(
   }
 }
 
-fn parameter_data_types(payload: BitArray, acc: List(Int)) -> List(Int) {
+fn parameter_data_types(
+  payload: BitArray,
+  acc: List(Int),
+) -> Result(List(Int), internal.InternalError) {
   case payload {
-    <<>> -> list.reverse(acc)
+    <<>> -> Ok(list.reverse(acc))
     <<oid:int-size(32), rest:bits>> -> {
       parameter_data_types(rest, [oid, ..acc])
     }
-    _ -> acc
+    _ -> {
+      internal.DecodingError
+      |> internal.ProtocolError(message: "ParameterDataTypes")
+      |> Error
+    }
   }
 }

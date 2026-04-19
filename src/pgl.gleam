@@ -25,7 +25,7 @@ import pgl/internal/type_cache.{type TypeCache}
 
 // ---------- Config ---------- //
 
-pub type Config {
+pub opaque type Config {
   Config(
     /// Application's name.
     application: String,
@@ -41,7 +41,7 @@ pub type Config {
     database: String,
     /// Other Postgres connection parameters.
     connection_parameters: List(#(String, String)),
-    /// (default: SslDisabled) SSL enabled or disabled.
+    /// (default: SslVerified) SSL enabled or disabled.
     ssl: Ssl,
     /// (default: False) Return rows as `Dict` or n-tuple.
     rows_as_dict: Bool,
@@ -59,7 +59,10 @@ pub type Config {
 /// A default configuration with a connection pool size of 5.
 /// At minimum you need to set the username, password, and
 /// database values.
-pub const default = Config(
+///
+/// The default SSL mode is `SslVerified`. Use `pgl.from_url` to
+/// configure from a connection URL instead.
+pub const config = Config(
   application: "",
   host: internal.default_host,
   port: internal.default_port,
@@ -67,7 +70,7 @@ pub const default = Config(
   password: "",
   database: "",
   connection_parameters: [],
-  ssl: SslDisabled,
+  ssl: SslVerified,
   rows_as_dict: False,
   ip_version: Ipv4,
   pool_size: 5,
@@ -81,6 +84,7 @@ pub type IpVersion {
   Ipv6
 }
 
+/// SSL mode for the database connection.
 pub type Ssl {
   /// Disables SSL leaving connections unsecured. Avoid using this in production.
   SslDisabled
@@ -137,7 +141,8 @@ pub fn ssl(conf: Config, ssl: Ssl) -> Config {
   Config(..conf, ssl:)
 }
 
-/// Configures rows to be returns as `Dict` rather than n-tuples.
+/// Configures rows to be returned as `Dict` rather than n-tuples.
+/// The keys of the `Dict` are the queried column names.
 pub fn rows_as_dict(conf: Config, rows_as_dict: Bool) -> Config {
   Config(..conf, rows_as_dict:)
 }
@@ -178,7 +183,7 @@ fn options_from_uri(uri: Uri) -> Result(Config, Nil) {
   uri.scheme
   |> option.map(fn(scheme) {
     case scheme {
-      "postgres" | "postgresql" -> Ok(default)
+      "postgres" | "postgresql" -> Ok(config)
       _ -> Error(Nil)
     }
   })
@@ -224,30 +229,44 @@ fn apply_database(conf: Config, uri: Uri) -> Result(Config, Nil) {
 }
 
 fn apply_ssl_mode(conf: Config, uri: Uri) -> Result(Config, Nil) {
-  case uri.query {
-    None -> Ok(SslDisabled)
+  let ssl_mode = case uri.query {
+    None -> Ok(SslVerified)
     Some(query) -> {
-      use query <- result.try(uri.parse_query(query))
-      use sslmode <- result.try(list.key_find(query, "sslmode"))
-
-      case sslmode {
-        "require" -> Ok(SslUnverified)
-        "verify-ca" | "verify-full" -> Ok(SslVerified)
-        "disable" -> Ok(SslDisabled)
-        _ -> Error(Nil)
+      case uri.parse_query(query) {
+        Ok(params) ->
+          case list.key_find(params, "sslmode") {
+            Ok("require") -> Ok(SslUnverified)
+            Ok("verify-ca") | Ok("verify-full") -> Ok(SslVerified)
+            Ok("disable") -> Ok(SslDisabled)
+            Ok(_) -> Error(Nil)
+            Error(_) -> Ok(SslDisabled)
+          }
+        Error(_) -> Error(Nil)
       }
     }
   }
+
+  ssl_mode
   |> result.map(ssl(conf, _))
 }
 
+/// Errors that can occur when interacting with the database.
 pub type PglError {
+  /// An error processing query results.
   QueryError(message: String)
+  /// Failed to connect to the database.
   ConnectionError(message: String)
+  /// Timed out waiting for a connection from the pool.
   ConnectionTimeout
+  /// No connections available in the pool.
+  ConnectionUnavailable
+  /// Authentication with the database failed.
   AuthenticationError(message: String)
+  /// An error in the PostgreSQL wire protocol.
   ProtocolError(message: String)
+  /// A low-level socket error.
   SocketError(message: String)
+  /// An error returned by the PostgreSQL server.
   PostgresError(
     code: String,
     name: String,
@@ -263,6 +282,7 @@ pub fn error_to_string(err: PglError) -> String {
     ConnectionError(message) ->
       internal.format_error("ConnectionError", message)
     ConnectionTimeout -> internal.format_error("ConnectionTimeout", "")
+    ConnectionUnavailable -> internal.format_error("ConnectionUnavailable", "")
     AuthenticationError(message) ->
       internal.format_error("AuthenticationError", message)
     ProtocolError(message) -> internal.format_error("ProtocolError", message)
@@ -358,14 +378,18 @@ fn field_from_bit_array(field_type: BitArray) -> Field {
   }
 }
 
+/// Errors that can occur during a transaction.
 pub type TransactionError(error) {
+  /// The transaction callback returned an error, and the transaction was rolled back.
   RollbackError(cause: error)
+  /// Attempted to commit or rollback outside of a transaction.
   NotInTransaction
+  /// A transaction-level query (BEGIN, COMMIT, ROLLBACK) failed.
   TransactionError(message: String)
 }
 
 /// A configured `Db`. Must be started via `pgl.start` or `pgl.supervised`
-/// before use. Once started, `Db` can be passed to `with_connection`.
+/// before use. Once started, use `pgl.connection` to get a `Connection`.
 pub opaque type Db {
   Db(
     pool: process.Name(db_pool.Message(Socket, PglError)),
@@ -396,23 +420,24 @@ pub fn new(config: Config) -> Db {
 
   let type_cache =
     type_cache.new()
-    |> type_cache.on_connect(fn() { authenticated_connection(config, sockets) })
+    |> type_cache.on_connect(fn() {
+      authenticated_connection(config, sockets)
+      |> result.map_error(fn(_) { Nil })
+    })
 
   Db(pool:, sockets:, type_cache:, query_cache:, config:)
 }
 
+/// Starts the connection pool, type cache, query cache, and socket
+/// factory under a supervision tree.
 pub fn start(db: Db) -> actor.StartResult(Supervisor) {
   let pool =
     db_pool.new()
     |> db_pool.size(db.config.pool_size)
-    |> db_pool.interval(db.config.idle_interval)
     |> db_pool.on_open(fn() { connect(db) })
     |> db_pool.on_close(disconnect)
-    |> db_pool.on_interval(fn(conn) {
-      let _ = ping(conn)
-
-      Nil
-    })
+    |> db_pool.on_idle(socket.start_ping(_, db.config.idle_interval))
+    |> db_pool.on_active(socket.stop_ping)
 
   supervisor.new(supervisor.OneForOne)
   |> supervisor.add(type_cache.supervised(db.type_cache))
@@ -422,6 +447,7 @@ pub fn start(db: Db) -> actor.StartResult(Supervisor) {
   |> supervisor.start
 }
 
+/// Returns a child specification for use in an existing supervision tree.
 pub fn supervised(db: Db) -> supervision.ChildSpecification(Supervisor) {
   let pool_supervisor =
     supervision.supervisor(fn() { start(db) })
@@ -434,7 +460,7 @@ pub fn supervised(db: Db) -> supervision.ChildSpecification(Supervisor) {
 
 fn connect(db: Db) -> Result(Socket, PglError) {
   authenticated_connection(db.config, db.sockets)
-  |> result.map_error(fn(_) { ConnectionError("Failed to open connection") })
+  |> result.map_error(from_internal_error)
 }
 
 fn disconnect(sock: Socket) -> Result(Nil, PglError) {
@@ -445,7 +471,13 @@ fn disconnect(sock: Socket) -> Result(Nil, PglError) {
 fn authenticated_connection(
   config: Config,
   sockets: socket.Factory,
-) -> Result(Socket, Nil) {
+) -> Result(Socket, internal.InternalError) {
+  let ssl = case config.ssl {
+    SslDisabled -> internal.SslDisabled
+    SslVerified -> internal.SslVerified
+    SslUnverified -> internal.SslUnverified
+  }
+
   let conf =
     protocol.config
     |> protocol.application(config.application)
@@ -453,14 +485,17 @@ fn authenticated_connection(
     |> protocol.username(config.username)
     |> protocol.password(config.password)
     |> protocol.database(config.database)
+    |> protocol.ssl(ssl)
 
   sockets
   |> socket.connect
-  |> result.map_error(fn(_) { Nil })
-  |> result.try(fn(sock) {
-    protocol.auth(sock, conf)
-    |> result.map_error(fn(_) { Nil })
+  |> result.map_error(fn(_) {
+    internal.SocketError(
+      kind: internal.ConnectError("Failed to start socket connection"),
+      message: "Failed to start socket connection",
+    )
   })
+  |> result.try(fn(sock) { protocol.auth(sock, conf) })
 }
 
 /// Creates a `Connection`.
@@ -472,6 +507,7 @@ fn pool_error_to_pgl_error(err: db_pool.PoolError(PglError)) -> PglError {
   case err {
     db_pool.ConnectionError(err) -> err
     db_pool.ConnectionTimeout -> ConnectionTimeout
+    db_pool.ConnectionUnavailable -> ConnectionUnavailable
   }
 }
 
@@ -483,15 +519,10 @@ pub fn shutdown(db: Db) -> Result(Nil, PglError) {
   |> result.map_error(pool_error_to_pgl_error)
 }
 
-fn ping(sock: Socket) -> Result(Socket, PglError) {
-  protocol.ping(sock)
-  |> result.map_error(from_internal_error)
-}
-
 // ---------- Connection ---------- //
 
-/// A `Connection` that can be reference to the connection pool, or a
-/// single connection.
+/// A `Connection` that can be a reference to the connection pool or a
+/// single checked-out connection
 pub opaque type Connection {
   Pool(db: Db)
   Connection(conn: conn.Conn, db: Db)
@@ -503,15 +534,19 @@ fn with_single_connection(
 ) -> Result(t, PglError) {
   case connection {
     Pool(db:) -> {
-      let self = process.self()
+      let res =
+        db.pool
+        |> process.named_subject
+        |> db_pool.with_connection(db.config.queue_target, 30_000, fn(socket) {
+          conn.new(socket, process.self())
+          |> next(db)
+        })
+        |> result.map_error(pool_error_to_pgl_error)
 
-      use conn <- result.try(checkout(db, self))
-
-      let res = next(conn, db)
-
-      checkin(db, conn.sock, self)
-
-      res
+      case res {
+        Ok(ok) -> ok
+        Error(err) -> Error(err)
+      }
     }
     Connection(conn:, db:) -> next(conn, db)
   }
@@ -520,7 +555,7 @@ fn with_single_connection(
 fn checkout(db: Db, self: process.Pid) -> Result(conn.Conn, PglError) {
   db.pool
   |> process.named_subject
-  |> db_pool.checkout(self, db.config.queue_target)
+  |> db_pool.checkout(self, db.config.queue_target, 30_000)
   |> result.map(conn.new(_, self))
   |> result.map_error(pool_error_to_pgl_error)
 }
@@ -542,24 +577,24 @@ pub type Queried {
 
 /// Holds a SQL string and a list of query parameters.
 pub type Query {
-  Query(sql: String, params: List(pg_value.Value))
+  Query(sql: String, values: List(pg_value.Value))
 }
 
 /// Returns a `Query` with the provided SQL string.
 pub fn sql(sql: String) -> Query {
-  Query(sql:, params: [])
+  Query(sql:, values: [])
 }
 
 /// Sets a list of query parameters for the provided `Query`.
-pub fn params(q: Query, params: List(pg_value.Value)) -> Query {
-  Query(..q, params:)
+pub fn values(q: Query, values: List(pg_value.Value)) -> Query {
+  Query(..q, values:)
 }
 
 /// Perform a query with the given SQL string and list of parameters.
 pub fn query(q: Query, connection: Connection) -> Result(Queried, PglError) {
   use conn, db <- with_single_connection(connection)
 
-  extended_query(q.sql, q.params, conn, db)
+  extended_query(q.sql, q.values, conn, db)
   |> result.map_error(from_internal_error)
   |> result.try(to_queried(_, db.config.rows_as_dict))
 }
@@ -569,7 +604,6 @@ pub fn query(q: Query, connection: Connection) -> Result(Queried, PglError) {
 /// roundtrips needed for multiple queries.
 ///
 /// [1]: https://www.postgresql.org/docs/current/protocol-flow.html#PROTOCOL-FLOW-PIPELINING
-/// 
 pub fn batch(
   queries: List(Query),
   connection: Connection,
@@ -587,7 +621,7 @@ pub fn batch(
       encode.cached(sql, params, info, pg_value.encode)
     })
     |> result.lazy_unwrap(fn() {
-      list.map(queries, fn(q) { encode.uncached(q.sql, q.params) })
+      list.map(queries, fn(q) { encode.uncached(q.sql, q.values) })
     })
 
   let ext = extended(db)
@@ -697,7 +731,7 @@ fn on_param_description(
 }
 
 fn decode_row(
-  values: List(BitArray),
+  values: List(option.Option(BitArray)),
   oids: List(Int),
   db: Db,
 ) -> Result(List(Dynamic), internal.InternalError) {
@@ -712,7 +746,7 @@ fn decode_row(
 }
 
 fn decode_row_values(
-  values: List(BitArray),
+  values: List(option.Option(BitArray)),
   infos: List(TypeInfo),
 ) -> Result(List(Dynamic), internal.InternalError) {
   list.strict_zip(values, infos)
@@ -722,10 +756,12 @@ fn decode_row_values(
   })
   |> result.try(fn(vals_infos) {
     list.try_map(vals_infos, fn(val_info) {
-      let #(val, info) = val_info
-
-      pg_value.decode(val, info)
-      |> result.map_error(internal.ProtocolError(internal.DecodingError, _))
+      case val_info {
+        #(None, _) -> Ok(dynamic.nil())
+        #(Some(val), info) ->
+          pg_value.decode(val, info)
+          |> result.map_error(internal.ProtocolError(internal.DecodingError, _))
+      }
     })
   })
 }
@@ -786,6 +822,7 @@ pub fn begin(
 
 // Checks out a connection but does not check it back in automatically.
 // Must call `commit` or `rollback` to check the connection back in.
+// If `next` returns an error, the connection is checked back in to prevent leaks.
 fn with_transaction(
   connection: Connection,
   next: fn(conn.Conn, Db) -> Result(t, TransactionError(error)),
@@ -800,7 +837,15 @@ fn with_transaction(
         |> error_to_string
         |> TransactionError
       })
-      |> result.try(next(_, db))
+      |> result.try(fn(conn) {
+        case next(conn, db) {
+          Ok(val) -> Ok(val)
+          Error(err) -> {
+            checkin(db, conn.sock, conn.caller)
+            Error(err)
+          }
+        }
+      })
     }
     Connection(conn:, db:) -> next(conn, db)
   }

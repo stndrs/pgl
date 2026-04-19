@@ -1,4 +1,5 @@
 import gleam/bit_array
+import gleam/bool
 import gleam/bytes_tree
 import gleam/crypto
 import gleam/int
@@ -12,79 +13,100 @@ pub type ServerFirst {
   ServerFirst(nonce: BitArray, salt: BitArray, iterations: Int, raw: BitArray)
 }
 
-pub fn client_first(user: BitArray, nonce: BitArray) -> BitArray {
-  <<"n,,n=":utf8, user:bits, ",r=":utf8, nonce:bits>>
+pub fn client_first(
+  user: BitArray,
+  nonce: BitArray,
+) -> Result(BitArray, internal.InternalError) {
+  use escaped <- result.map(escape_username(user))
+
+  <<"n,,n=":utf8, escaped:bits, ",r=":utf8, nonce:bits>>
+}
+
+// https://datatracker.ietf.org/doc/html/rfc5802#section-5.1
+fn escape_username(user: BitArray) -> Result(BitArray, internal.InternalError) {
+  user
+  |> bit_array.to_string
+  |> result.replace_error({
+    internal.SaslClientFirst
+    |> internal.ProtocolError("Invalid username")
+  })
+  |> result.map(fn(user) {
+    user
+    |> string.replace("=", "=3D")
+    |> string.replace(",", "=2C")
+    |> bit_array.from_string
+  })
 }
 
 pub fn get_nonce(num_random_bytes: Int) -> BitArray {
-  let random = crypto.strong_random_bytes(num_random_bytes)
-  let unique = <<unique_int()>>
-  let nonce_bin = <<
-    num_random_bytes,
-    random:bits-size(num_random_bytes),
-    unique:bits,
-  >>
-
-  bit_array.base64_encode(nonce_bin, True)
+  crypto.strong_random_bytes(num_random_bytes)
+  |> bit_array.base64_encode(True)
   |> bit_array.from_string
 }
-
-const sha_256 = crypto.Sha256
 
 pub fn client_final(
   server_first: ServerFirst,
   client_nonce: BitArray,
   username: BitArray,
   password: BitArray,
-) -> #(BitArray, BitArray) {
+) -> Result(#(BitArray, BitArray), internal.InternalError) {
   let channel_binding = <<"c=biws":utf8>>
   let nonce = [<<"r=":utf8>>, server_first.nonce]
 
-  let salted_password =
-    password
-    |> sasl.validate
-    |> result.unwrap(<<>>)
-    |> hi(server_first.salt, server_first.iterations)
+  password
+  |> sasl.validate
+  |> result.replace_error({
+    internal.SaslClientFinal
+    |> internal.ProtocolError("Invalid password")
+  })
+  |> result.try(fn(valid_password) {
+    let salted_password =
+      valid_password
+      |> hi(server_first.salt, server_first.iterations)
 
-  let client_key = crypto.hmac(<<"Client Key":utf8>>, sha_256, salted_password)
+    let client_key =
+      crypto.hmac(<<"Client Key":utf8>>, crypto.Sha256, salted_password)
 
-  let auth_message =
-    <<"n=":utf8, username:bits, ",r=":utf8, client_nonce:bits>>
-    |> bytes_tree.from_bit_array
-    |> bytes_tree.append(<<",":utf8>>)
-    |> bytes_tree.append(server_first.raw)
-    |> bytes_tree.append(<<",":utf8>>)
-    |> bytes_tree.append(channel_binding)
-    |> bytes_tree.append(<<",":utf8>>)
-    |> list.fold(nonce, _, bytes_tree.append)
-    |> bytes_tree.to_bit_array
+    use escaped_username <- result.map(escape_username(username))
 
-  let client_signature =
-    sha_256
-    |> crypto.hash(client_key)
-    |> crypto.hmac(auth_message, sha_256, _)
+    let auth_message =
+      <<"n=":utf8, escaped_username:bits, ",r=":utf8, client_nonce:bits>>
+      |> bytes_tree.from_bit_array
+      |> bytes_tree.append(<<",":utf8>>)
+      |> bytes_tree.append(server_first.raw)
+      |> bytes_tree.append(<<",":utf8>>)
+      |> bytes_tree.append(channel_binding)
+      |> bytes_tree.append(<<",":utf8>>)
+      |> list.fold(nonce, _, bytes_tree.append)
+      |> bytes_tree.to_bit_array
 
-  let encoded_client_proof =
-    client_key
-    |> bin_xor(client_signature)
-    |> bit_array.base64_encode(True)
-    |> bit_array.from_string
+    let client_signature =
+      crypto.Sha256
+      |> crypto.hash(client_key)
+      |> crypto.hmac(auth_message, crypto.Sha256, _)
 
-  let server_signature =
-    salted_password
-    |> crypto.hmac(<<"Server Key":utf8>>, sha_256, _)
-    |> crypto.hmac(auth_message, sha_256, _)
+    let encoded_client_proof =
+      client_key
+      |> bin_xor(client_signature)
+      |> bit_array.base64_encode(True)
+      |> bit_array.from_string
 
-  let encoded_client_final =
-    bytes_tree.new()
-    |> bytes_tree.append(channel_binding)
-    |> bytes_tree.append(<<",":utf8>>)
-    |> list.fold(nonce, _, bytes_tree.append)
-    |> bytes_tree.append(<<",p=":utf8>>)
-    |> bytes_tree.append(encoded_client_proof)
-    |> bytes_tree.to_bit_array
+    let server_signature =
+      salted_password
+      |> crypto.hmac(<<"Server Key":utf8>>, crypto.Sha256, _)
+      |> crypto.hmac(auth_message, crypto.Sha256, _)
 
-  #(encoded_client_final, server_signature)
+    let encoded_client_final =
+      bytes_tree.new()
+      |> bytes_tree.append(channel_binding)
+      |> bytes_tree.append(<<",":utf8>>)
+      |> list.fold(nonce, _, bytes_tree.append)
+      |> bytes_tree.append(<<",p=":utf8>>)
+      |> bytes_tree.append(encoded_client_proof)
+      |> bytes_tree.to_bit_array
+
+    #(encoded_client_final, server_signature)
+  })
 }
 
 pub fn parse_server_first(
@@ -102,11 +124,17 @@ pub fn parse_server_first(
       use salt <- result.try(bit_array.base64_decode(salt))
       use iterations <- result.try(int.parse(iters))
 
-      let size = bit_array.byte_size(client_nonce)
+      use <- bool.guard(iterations < 4096 || iterations > 100_000, Error(Nil))
+
+      let size = bit_array.bit_size(client_nonce)
 
       case nonce {
-        <<_:bits-size(size), _:bits>> -> {
-          Ok(ServerFirst(nonce:, salt:, iterations:, raw: server_first))
+        <<prefix:bits-size(size), _:bits>> -> {
+          case prefix == client_nonce {
+            True ->
+              Ok(ServerFirst(nonce:, salt:, iterations:, raw: server_first))
+            False -> Error(Nil)
+          }
         }
         _ -> Error(Nil)
       }
@@ -150,7 +178,12 @@ pub fn parse_server_final(
       )
       |> Error
     }
-    _bits -> panic as "Unexpected SASL server final payload"
+    _bits ->
+      internal.ProtocolError(
+        kind: internal.SaslServerFinal,
+        message: "Unexpected SASL server final payload",
+      )
+      |> Error
   }
 }
 
@@ -173,6 +206,3 @@ fn do_hi(str: BitArray, u: BitArray, hi: BitArray, i: Int) -> BitArray {
 
 @external(erlang, "crypto", "exor")
 fn bin_xor(b1: BitArray, b2: BitArray) -> BitArray
-
-@external(erlang, "pgl_ffi", "unique_int")
-fn unique_int() -> Int

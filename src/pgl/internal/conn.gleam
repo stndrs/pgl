@@ -26,7 +26,11 @@ pub fn next_savepoint(conn: Conn) -> Conn {
 
 pub fn prev_savepoint(conn: Conn) -> Conn {
   let savepoint = case conn.savepoint {
-    Some(num) -> Some(num - 1)
+    Some(num) ->
+      case num > starting_index {
+        True -> Some(num - 1)
+        False -> None
+      }
     None -> None
   }
 
