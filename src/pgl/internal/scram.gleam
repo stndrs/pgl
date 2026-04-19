@@ -44,8 +44,6 @@ pub fn get_nonce(num_random_bytes: Int) -> BitArray {
   |> bit_array.from_string
 }
 
-const sha_256 = crypto.Sha256
-
 pub fn client_final(
   server_first: ServerFirst,
   client_nonce: BitArray,
@@ -67,7 +65,7 @@ pub fn client_final(
       |> hi(server_first.salt, server_first.iterations)
 
     let client_key =
-      crypto.hmac(<<"Client Key":utf8>>, sha_256, salted_password)
+      crypto.hmac(<<"Client Key":utf8>>, crypto.Sha256, salted_password)
 
     use escaped_username <- result.map(escape_username(username))
 
@@ -83,9 +81,9 @@ pub fn client_final(
       |> bytes_tree.to_bit_array
 
     let client_signature =
-      sha_256
+      crypto.Sha256
       |> crypto.hash(client_key)
-      |> crypto.hmac(auth_message, sha_256, _)
+      |> crypto.hmac(auth_message, crypto.Sha256, _)
 
     let encoded_client_proof =
       client_key
@@ -95,8 +93,8 @@ pub fn client_final(
 
     let server_signature =
       salted_password
-      |> crypto.hmac(<<"Server Key":utf8>>, sha_256, _)
-      |> crypto.hmac(auth_message, sha_256, _)
+      |> crypto.hmac(<<"Server Key":utf8>>, crypto.Sha256, _)
+      |> crypto.hmac(auth_message, crypto.Sha256, _)
 
     let encoded_client_final =
       bytes_tree.new()
