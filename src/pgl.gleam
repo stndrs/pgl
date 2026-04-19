@@ -556,24 +556,24 @@ pub type Queried {
 
 /// Holds a SQL string and a list of query parameters.
 pub type Query {
-  Query(sql: String, params: List(pg_value.Value))
+  Query(sql: String, values: List(pg_value.Value))
 }
 
 /// Returns a `Query` with the provided SQL string.
 pub fn sql(sql: String) -> Query {
-  Query(sql:, params: [])
+  Query(sql:, values: [])
 }
 
 /// Sets a list of query parameters for the provided `Query`.
-pub fn params(q: Query, params: List(pg_value.Value)) -> Query {
-  Query(..q, params:)
+pub fn values(q: Query, values: List(pg_value.Value)) -> Query {
+  Query(..q, values:)
 }
 
 /// Perform a query with the given SQL string and list of parameters.
 pub fn query(q: Query, connection: Connection) -> Result(Queried, PglError) {
   use conn, db <- with_single_connection(connection)
 
-  extended_query(q.sql, q.params, conn, db)
+  extended_query(q.sql, q.values, conn, db)
   |> result.map_error(from_internal_error)
   |> result.try(to_queried(_, db.config.rows_as_dict))
 }
@@ -601,7 +601,7 @@ pub fn batch(
       encode.cached(sql, params, info, pg_value.encode)
     })
     |> result.lazy_unwrap(fn() {
-      list.map(queries, fn(q) { encode.uncached(q.sql, q.params) })
+      list.map(queries, fn(q) { encode.uncached(q.sql, q.values) })
     })
 
   let ext = extended(db)

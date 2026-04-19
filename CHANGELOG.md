@@ -4,6 +4,7 @@
 
 ### Changed
 
+- Renamed `pgl.params` to `pgl.values`
 - `Config` is now opaque
 - Password is now optional
 - Renamed `pgl.default` to `pgl.config`

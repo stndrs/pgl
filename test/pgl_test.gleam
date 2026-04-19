@@ -112,9 +112,9 @@ pub fn parse_url_ssl_mode_verify_test() {
 pub fn query_params_test() {
   let query =
     pgl.sql("SELECT * FROM users WHERE id=$1")
-    |> pgl.params([pg_value.int(10)])
+    |> pgl.values([pg_value.int(10)])
 
-  let assert [pg_value.Int(10)] = query.params
+  let assert [pg_value.Int(10)] = query.values
 }
 
 fn pg_17_pool_rows_as_maps() -> pgl.Db {
@@ -442,9 +442,9 @@ pub fn pipeline_dependent_queries_test() {
 
   let create_user_sql = "INSERT INTO new_users (name) VALUES ($1) RETURNING id"
 
-  let q1 = pgl.Query(create_user_sql, params: [pg_value.text("Jim")])
-  let q2 = pgl.Query(create_user_sql, params: [pg_value.text("Will")])
-  let q3 = pgl.Query(create_user_sql, params: [pg_value.text("Jean-Luc")])
+  let q1 = pgl.Query(create_user_sql, values: [pg_value.text("Jim")])
+  let q2 = pgl.Query(create_user_sql, values: [pg_value.text("Will")])
+  let q3 = pgl.Query(create_user_sql, values: [pg_value.text("Jean-Luc")])
 
   let assert Ok(queried) = pgl.batch([q1, q2, q3], conn)
 
@@ -470,27 +470,27 @@ pub fn pipeline_dependent_queries_test() {
   let post_queries =
     list.flat_map(user_ids, fn(user_id) {
       [
-        pgl.Query(create_post_sql, params: [
+        pgl.Query(create_post_sql, values: [
           pg_value.int(user_id),
           pg_value.text("Unique title 1"),
           pg_value.text("Unique content"),
         ]),
-        pgl.Query(create_post_sql, params: [
+        pgl.Query(create_post_sql, values: [
           pg_value.int(user_id),
           pg_value.text("Unique title 2"),
           pg_value.text("Unique content"),
         ]),
-        pgl.Query(create_post_sql, params: [
+        pgl.Query(create_post_sql, values: [
           pg_value.int(user_id),
           pg_value.text("Unique title 3"),
           pg_value.text("Unique content"),
         ]),
-        pgl.Query(create_post_sql, params: [
+        pgl.Query(create_post_sql, values: [
           pg_value.int(user_id),
           pg_value.text("Unique title 4"),
           pg_value.text("Unique content"),
         ]),
-        pgl.Query(create_post_sql, params: [
+        pgl.Query(create_post_sql, values: [
           pg_value.int(user_id),
           pg_value.text("Unique title 5"),
           pg_value.text("Unique content"),
@@ -524,19 +524,19 @@ pub fn pipeline_dependent_queries_test() {
   let comment_and_tag_queries =
     list.flat_map(post_ids, fn(post_id) {
       [
-        pgl.Query(create_comment_sql, params: [
+        pgl.Query(create_comment_sql, values: [
           pg_value.int(post_id),
           pg_value.text("Unique comment 1"),
         ]),
-        pgl.Query(create_comment_sql, params: [
+        pgl.Query(create_comment_sql, values: [
           pg_value.int(post_id),
           pg_value.text("Unique comment 2"),
         ]),
-        pgl.Query(create_tag_sql, params: [
+        pgl.Query(create_tag_sql, values: [
           pg_value.int(post_id),
           pg_value.text("blog"),
         ]),
-        pgl.Query(create_tag_sql, params: [
+        pgl.Query(create_tag_sql, values: [
           pg_value.int(post_id),
           pg_value.text("mid"),
         ]),
@@ -630,7 +630,7 @@ pub fn selecting_rows_test() {
 
   let assert Ok(returned) =
     pgl.sql("SELECT * FROM users WHERE name = $1")
-    |> pgl.params([pg_value.Text("James")])
+    |> pgl.values([pg_value.Text("James")])
     |> pgl.query(conn)
 
   assert 1 == returned.count
@@ -668,7 +668,7 @@ pub fn varchar_encoding_test() {
 
   let assert Ok(result) =
     pgl.sql(sql)
-    |> pgl.params(params)
+    |> pgl.values(params)
     |> pgl.query(conn)
 
   assert 1 == result.count
@@ -692,7 +692,7 @@ pub fn null_encoding_test() {
 
   let assert Ok(result) =
     pgl.sql(sql)
-    |> pgl.params(params)
+    |> pgl.values(params)
     |> pgl.query(conn)
 
   assert 1 == result.count
@@ -714,7 +714,7 @@ pub fn uuid_v4_encoding_test() {
 
   let assert Ok(result) =
     pgl.sql(sql)
-    |> pgl.params(params)
+    |> pgl.values(params)
     |> pgl.query(conn)
 
   assert 1 == result.count
@@ -784,7 +784,7 @@ pub fn uuid_test() {
   let assert Ok(result) =
     "INSERT INTO uuid_test (identifier) VALUES ($1)"
     |> pgl.sql
-    |> pgl.params([pg_value.uuid(<<v4_uuid:big-int-size(128)>>)])
+    |> pgl.values([pg_value.uuid(<<v4_uuid:big-int-size(128)>>)])
     |> pgl.query(conn)
 
   assert 1 == result.count
@@ -813,7 +813,7 @@ pub fn hstore_test() {
   let assert Ok(queried) =
     "INSERT INTO hstore_test (data) VALUES ($1) RETURNING id"
     |> pgl.sql
-    |> pgl.params([hstore])
+    |> pgl.values([hstore])
     |> pgl.query(conn)
 
   assert 1 == queried.count
@@ -988,7 +988,7 @@ pub fn interval_roundtrip_test() {
 
   let assert Ok(queried) =
     pgl.sql(sql)
-    |> pgl.params([pg_value.interval(interval)])
+    |> pgl.values([pg_value.interval(interval)])
     |> pgl.query(conn)
 
   let decoder = {
@@ -1046,7 +1046,7 @@ pub fn mixed_types_with_encoding_test() {
 
   let assert Ok(result) =
     pgl.sql(sql)
-    |> pgl.params(params)
+    |> pgl.values(params)
     |> pgl.query(conn)
 
   assert 1 == result.count
@@ -1173,7 +1173,7 @@ pub fn insert_with_values_test() {
   let query =
     "INSERT INTO users (name, nicknames, birthday, created_at) VALUES ($1, $2, $3, $4)"
     |> pgl.sql
-    |> pgl.params([
+    |> pgl.values([
       pg_value.text("Richard"),
       pg_value.array(["Dick", "Robin", "Nightwing"], of: pg_value.text),
       pg_value.date(calendar.Date(2011, calendar.March, 20)),
@@ -1313,7 +1313,7 @@ pub fn transaction_error_test() {
 
   let assert Ok(_queried) =
     pgl.sql("INSERT INTO tx_test (id, name) VALUES ($1, $2) RETURNING *")
-    |> pgl.params([pg_value.int(1), pg_value.text("Before")])
+    |> pgl.values([pg_value.int(1), pg_value.text("Before")])
     |> pgl.query(conn)
 
   let assert Ok(queried) =
@@ -1327,11 +1327,11 @@ pub fn transaction_error_test() {
 
     let assert Ok(_queried) =
       pgl.sql("INSERT INTO tx_test (id, name) VALUES ($1, $2) RETURNING *")
-      |> pgl.params([pg_value.int(2), pg_value.text("Transaction")])
+      |> pgl.values([pg_value.int(2), pg_value.text("Transaction")])
       |> pgl.query(tx)
 
     pgl.sql("INSERT INTO tx_test (id, name) VALUES ($1, $2) RETURNING *")
-    |> pgl.params([pg_value.int(1), pg_value.text("Duplicate")])
+    |> pgl.values([pg_value.int(1), pg_value.text("Duplicate")])
     |> pgl.query(tx)
   }
 
@@ -1588,7 +1588,7 @@ pub fn enum_test() {
   let assert Ok(queried) =
     "INSERT INTO enum_test (current_mood) VALUES ($1) RETURNING id"
     |> pgl.sql
-    |> pgl.params([pg_value.enum("happy")])
+    |> pgl.values([pg_value.enum("happy")])
     |> pgl.query(conn)
 
   assert 1 == queried.count
@@ -1674,7 +1674,7 @@ pub fn enum_array_test() {
   let assert Ok(queried) =
     "INSERT INTO enum_array_test (colors) VALUES ($1) RETURNING id"
     |> pgl.sql
-    |> pgl.params([pg_value.array(["red", "blue", "green"], of: pg_value.enum)])
+    |> pgl.values([pg_value.array(["red", "blue", "green"], of: pg_value.enum)])
     |> pgl.query(conn)
 
   assert 1 == queried.count
@@ -1725,7 +1725,7 @@ pub fn json_test() {
   let assert Ok(queried) =
     "INSERT INTO json_test (data) VALUES ($1) RETURNING id"
     |> pgl.sql
-    |> pgl.params([pg_value.json(data)])
+    |> pgl.values([pg_value.json(data)])
     |> pgl.query(conn)
 
   assert 1 == queried.count
@@ -1782,7 +1782,7 @@ pub fn jsonb_test() {
   let assert Ok(queried) =
     "INSERT INTO jsonb_test (data) VALUES ($1) RETURNING id"
     |> pgl.sql
-    |> pgl.params([pg_value.json(data)])
+    |> pgl.values([pg_value.json(data)])
     |> pgl.query(conn)
 
   assert 1 == queried.count
@@ -1837,7 +1837,7 @@ pub fn json_array_test() {
   let assert Ok(queried) =
     "INSERT INTO json_array_test (items) VALUES ($1) RETURNING id"
     |> pgl.sql
-    |> pgl.params([pg_value.array(items, of: pg_value.json)])
+    |> pgl.values([pg_value.array(items, of: pg_value.json)])
     |> pgl.query(conn)
 
   assert 1 == queried.count
@@ -1917,7 +1917,7 @@ pub fn json_nested_test() {
   let assert Ok(queried) =
     "INSERT INTO json_nested_test (data) VALUES ($1) RETURNING id"
     |> pgl.sql
-    |> pgl.params([pg_value.json(data)])
+    |> pgl.values([pg_value.json(data)])
     |> pgl.query(conn)
 
   assert 1 == queried.count
