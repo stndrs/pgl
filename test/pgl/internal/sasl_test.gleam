@@ -51,37 +51,30 @@ pub fn validate_non_ascii_space_no_break_space_test() {
 }
 
 pub fn validate_non_ascii_space_ogham_test() {
-  // U+1680 OGHAM SPACE MARK
   assert Error(Nil) == sasl.validate(codepoint(0x1680))
 }
 
 pub fn validate_non_ascii_space_en_quad_test() {
-  // U+2000 EN QUAD (start of range)
   assert Error(Nil) == sasl.validate(codepoint(0x2000))
 }
 
 pub fn validate_non_ascii_space_hair_space_test() {
-  // U+200A HAIR SPACE (end of dense range)
   assert Error(Nil) == sasl.validate(codepoint(0x200A))
 }
 
 pub fn validate_non_ascii_space_zero_width_space_test() {
-  // U+200B ZERO WIDTH SPACE
   assert Error(Nil) == sasl.validate(codepoint(0x200B))
 }
 
 pub fn validate_non_ascii_space_narrow_no_break_test() {
-  // U+202F NARROW NO-BREAK SPACE
   assert Error(Nil) == sasl.validate(codepoint(0x202F))
 }
 
 pub fn validate_non_ascii_space_medium_mathematical_test() {
-  // U+205F MEDIUM MATHEMATICAL SPACE
   assert Error(Nil) == sasl.validate(codepoint(0x205F))
 }
 
 pub fn validate_non_ascii_space_ideographic_test() {
-  // U+3000 IDEOGRAPHIC SPACE
   assert Error(Nil) == sasl.validate(codepoint(0x3000))
 }
 

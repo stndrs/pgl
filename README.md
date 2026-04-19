@@ -69,24 +69,20 @@ let assert Ok(conf) =
 ```
 
 Supported `sslmode` values: `disable`, `require`, `verify-ca`, `verify-full`.
-When no `sslmode` is specified, SSL is disabled.
 
 ## Rows as Dicts
 
-By default, rows are returned as tuples. To return rows as `Dict` values
-where columns are keyed by name:
+By default, rows are returned as tuples. To return rows as `Dict`s where columns are keyed by name:
 
 ```gleam
 let conf =
   pgl.config
   |> pgl.rows_as_dict(True)
-  // ... other config
 ```
 
 ## Pipelining
 
-Use `pgl.batch` to send multiple queries without waiting for each to
-complete, reducing network round trips:
+Use `pgl.batch` to send multiple queries without waiting for each to complete, reducing network round trips:
 
 ```gleam
 let queries = [
@@ -114,8 +110,7 @@ let assert Ok(result) =
   })
 ```
 
-If the callback returns `Error` or raises an exception, the transaction
-is rolled back. Nested savepoints are also supported:
+If the callback returns `Error` or raises an exception, the transaction is rolled back. Nested savepoints are also supported:
 
 ```gleam
 pgl.transaction(conn, fn(tx) {

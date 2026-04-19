@@ -355,18 +355,18 @@ fn flush(
 }
 
 fn sync(sock: Socket) -> Result(Socket, internal.InternalError) {
-  use sock <- result.try(
-    encode.sync()
-    |> socket.send(sock, _),
-  )
-  use msg <- result.try(receive_message(sock))
-  case msg {
-    internal.ReadyForQuery(_) -> Ok(sock)
-    _ ->
-      internal.MessageError
-      |> internal.ProtocolError(message: "Expected ReadyForQuery after Sync")
-      |> Error
-  }
+  encode.sync()
+  |> socket.send(sock, _)
+  |> result.try(receive_message)
+  |> result.try(fn(msg) {
+    case msg {
+      internal.ReadyForQuery(_) -> Ok(sock)
+      _ ->
+        internal.MessageError
+        |> internal.ProtocolError(message: "Expected ReadyForQuery after Sync")
+        |> Error
+    }
+  })
 }
 
 // ---------- Extended(v) Query ---------- //
