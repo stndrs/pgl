@@ -286,7 +286,7 @@ fn auth_sasl_final(
 ) -> Result(BitArray, internal.InternalError) {
   use srv_final <- result.try(scram.parse_server_final(server_final))
 
-  case srv_final == server_signature {
+  case crypto.secure_compare(srv_final, server_signature) {
     True -> Ok(server_signature)
     False -> {
       internal.AuthenticationError(
