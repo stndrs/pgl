@@ -56,9 +56,26 @@ pub type Config {
   )
 }
 
+pub const config = Config(
+  application: "",
+  host: internal.default_host,
+  port: internal.default_port,
+  username: "",
+  password: "",
+  database: "",
+  connection_parameters: [],
+  ssl: SslVerified,
+  rows_as_dict: False,
+  ip_version: Ipv4,
+  pool_size: 5,
+  idle_interval: 1000,
+  queue_target: 50,
+)
+
 /// A default configuration with a connection pool size of 1.
 /// At minimum you need to set the username, password, and
 /// database values.
+@deprecated("Use config instead")
 pub const default = Config(
   application: "",
   host: internal.default_host,
@@ -178,7 +195,7 @@ fn options_from_uri(uri: Uri) -> Result(Config, Nil) {
   uri.scheme
   |> option.map(fn(scheme) {
     case scheme {
-      "postgres" | "postgresql" -> Ok(default)
+      "postgres" | "postgresql" -> Ok(config)
       _ -> Error(Nil)
     }
   })
@@ -557,6 +574,12 @@ pub fn sql(sql: String) -> Query {
 }
 
 /// Sets a list of query parameters for the provided `Query`.
+pub fn values(q: Query, values: List(pg_value.Value)) -> Query {
+  Query(..q, params: values)
+}
+
+/// Sets a list of query parameters for the provided `Query`.
+@deprecated("use values instead")
 pub fn params(q: Query, params: List(pg_value.Value)) -> Query {
   Query(..q, params:)
 }

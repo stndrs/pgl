@@ -26,7 +26,7 @@ pub fn parse_url_test() {
     |> pgl.from_url
 
   assert pgl.Config(
-      ..pgl.default,
+      ..pgl.config,
       host: "localhost",
       port: 5433,
       database: "gleam_pgl_test",
@@ -43,7 +43,7 @@ pub fn parse_url_alternative_schema_test() {
     |> pgl.from_url
 
   assert pgl.Config(
-      ..pgl.default,
+      ..pgl.config,
       host: "localhost",
       port: 5433,
       database: "gleam_pgl_test",
@@ -69,7 +69,7 @@ pub fn parse_url_ssl_mode_require_test() {
     |> pgl.from_url
 
   assert pgl.Config(
-      ..pgl.default,
+      ..pgl.config,
       host: "localhost",
       port: 5432,
       database: "gleam_pgl_test",
@@ -86,7 +86,7 @@ pub fn parse_url_ssl_mode_verify_test() {
     |> pgl.from_url
 
   assert pgl.Config(
-      ..pgl.default,
+      ..pgl.config,
       host: "localhost",
       port: 5432,
       database: "gleam_pgl_test",
@@ -101,7 +101,7 @@ pub fn parse_url_ssl_mode_verify_test() {
     |> pgl.from_url
 
   assert pgl.Config(
-      ..pgl.default,
+      ..pgl.config,
       host: "localhost",
       port: 5432,
       database: "gleam_pgl_test",
@@ -115,7 +115,7 @@ pub fn parse_url_ssl_mode_verify_test() {
 // Config tests
 
 pub fn database_test() {
-  let conf = pgl.default
+  let conf = pgl.config
   let result = pgl.database(conf, "test_db")
 
   assert "test_db" == result.database
@@ -124,7 +124,7 @@ pub fn database_test() {
 }
 
 pub fn host_test() {
-  let conf = pgl.default
+  let conf = pgl.config
   let result = pgl.host(conf, "192.168.1.1")
 
   assert "192.168.1.1" == result.host
@@ -133,7 +133,7 @@ pub fn host_test() {
 }
 
 pub fn port_test() {
-  let conf = pgl.default
+  let conf = pgl.config
   let result = pgl.port(conf, 3306)
 
   assert 3306 == result.port
@@ -142,7 +142,7 @@ pub fn port_test() {
 }
 
 pub fn username_test() {
-  let conf = pgl.default
+  let conf = pgl.config
   let result = pgl.username(conf, "admin")
 
   assert "admin" == result.username
@@ -151,7 +151,7 @@ pub fn username_test() {
 }
 
 pub fn password_test() {
-  let conf = pgl.default
+  let conf = pgl.config
   let result = pgl.password(conf, "secret123")
 
   assert "secret123" == result.password
@@ -160,7 +160,7 @@ pub fn password_test() {
 }
 
 pub fn ssl_test() {
-  let conf = pgl.default
+  let conf = pgl.config
   let result = pgl.ssl(conf, pgl.SslVerified)
 
   assert pgl.SslVerified == result.ssl
@@ -170,14 +170,14 @@ pub fn ssl_test() {
 
 pub fn ip_version_test() {
   let conf =
-    pgl.default
+    pgl.config
     |> pgl.ip_version(pgl.Ipv6)
 
   assert pgl.Ipv6 == conf.ip_version
 }
 
 pub fn default_values_test() {
-  let conf = pgl.default
+  let conf = pgl.config
 
   assert "127.0.0.1" == conf.host
   assert 5432 == conf.port
@@ -189,7 +189,7 @@ pub fn default_values_test() {
 }
 
 pub fn connection_parameters_test() {
-  let conf = pgl.default
+  let conf = pgl.config
 
   assert conf.connection_parameters == []
 
@@ -203,7 +203,7 @@ pub fn connection_parameters_test() {
 pub fn query_params_test() {
   let query =
     pgl.sql("SELECT * FROM users WHERE id=$1")
-    |> pgl.params([pg_value.int(10)])
+    |> pgl.values([pg_value.int(10)])
 
   let assert [pg_value.Int(10)] = query.params
 }
@@ -223,7 +223,7 @@ fn dbs() -> Dict(PgVersion, pgl.Db) {
   use <- global_value.create_with_unique_name("pgl_pools")
 
   let base_config =
-    pgl.default
+    pgl.config
     |> pgl.username("postgres")
     |> pgl.password("postgres")
     |> pgl.ssl(pgl.SslDisabled)
@@ -421,7 +421,7 @@ pub fn inserting_new_rows_test() {
 
 pub fn ipv6_test() {
   let db =
-    pgl.default
+    pgl.config
     |> pgl.database("gleam_pgl_test")
     |> pgl.username("postgres")
     |> pgl.password("postgres")
@@ -735,7 +735,7 @@ pub fn selecting_rows_test() {
 
   let assert Ok(returned) =
     pgl.sql("SELECT * FROM users WHERE name = $1")
-    |> pgl.params([pg_value.Text("James")])
+    |> pgl.values([pg_value.Text("James")])
     |> pgl.query(conn)
 
   assert 1 == returned.count
@@ -773,7 +773,7 @@ pub fn varchar_encoding_test() {
 
   let assert Ok(result) =
     pgl.sql(sql)
-    |> pgl.params(params)
+    |> pgl.values(params)
     |> pgl.query(conn)
 
   assert 1 == result.count
@@ -797,7 +797,7 @@ pub fn null_encoding_test() {
 
   let assert Ok(result) =
     pgl.sql(sql)
-    |> pgl.params(params)
+    |> pgl.values(params)
     |> pgl.query(conn)
 
   assert 1 == result.count
@@ -819,7 +819,7 @@ pub fn uuid_v4_encoding_test() {
 
   let assert Ok(result) =
     pgl.sql(sql)
-    |> pgl.params(params)
+    |> pgl.values(params)
     |> pgl.query(conn)
 
   assert 1 == result.count
@@ -871,7 +871,7 @@ pub fn uuid_test() {
   let assert Ok(result) =
     "INSERT INTO uuid_test (identifier) VALUES ($1)"
     |> pgl.sql
-    |> pgl.params([pg_value.uuid(<<v4_uuid:big-int-size(128)>>)])
+    |> pgl.values([pg_value.uuid(<<v4_uuid:big-int-size(128)>>)])
     |> pgl.query(conn)
 
   assert 1 == result.count
@@ -900,7 +900,7 @@ pub fn hstore_test() {
   let assert Ok(queried) =
     "INSERT INTO hstore_test (data) VALUES ($1) RETURNING id"
     |> pgl.sql
-    |> pgl.params([hstore])
+    |> pgl.values([hstore])
     |> pgl.query(conn)
 
   assert 1 == queried.count
@@ -1074,7 +1074,7 @@ pub fn interval_roundtrip_test() {
 
   let assert Ok(queried) =
     pgl.sql(sql)
-    |> pgl.params([pg_value.interval(interval)])
+    |> pgl.values([pg_value.interval(interval)])
     |> pgl.query(conn)
 
   let decoder = {
@@ -1132,7 +1132,7 @@ pub fn mixed_types_with_encoding_test() {
 
   let assert Ok(result) =
     pgl.sql(sql)
-    |> pgl.params(params)
+    |> pgl.values(params)
     |> pgl.query(conn)
 
   assert 1 == result.count
@@ -1259,7 +1259,7 @@ pub fn insert_with_values_test() {
   let query =
     "INSERT INTO users (name, nicknames, birthday, created_at) VALUES ($1, $2, $3, $4)"
     |> pgl.sql
-    |> pgl.params([
+    |> pgl.values([
       pg_value.text("Richard"),
       pg_value.array(["Dick", "Robin", "Nightwing"], of: pg_value.text),
       pg_value.date(calendar.Date(2011, calendar.March, 20)),
@@ -1399,7 +1399,7 @@ pub fn transaction_error_test() {
 
   let assert Ok(_queried) =
     pgl.sql("INSERT INTO tx_test (id, name) VALUES ($1, $2) RETURNING *")
-    |> pgl.params([pg_value.int(1), pg_value.text("Before")])
+    |> pgl.values([pg_value.int(1), pg_value.text("Before")])
     |> pgl.query(conn)
 
   let assert Ok(queried) =
@@ -1413,11 +1413,11 @@ pub fn transaction_error_test() {
 
     let assert Ok(_queried) =
       pgl.sql("INSERT INTO tx_test (id, name) VALUES ($1, $2) RETURNING *")
-      |> pgl.params([pg_value.int(2), pg_value.text("Transaction")])
+      |> pgl.values([pg_value.int(2), pg_value.text("Transaction")])
       |> pgl.query(tx)
 
     pgl.sql("INSERT INTO tx_test (id, name) VALUES ($1, $2) RETURNING *")
-    |> pgl.params([pg_value.int(1), pg_value.text("Duplicate")])
+    |> pgl.values([pg_value.int(1), pg_value.text("Duplicate")])
     |> pgl.query(tx)
   }
 
