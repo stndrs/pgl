@@ -35,13 +35,10 @@ pub fn main() {
   let conn = pgl.connection(db)
 
   let assert Ok(queried) =
-    {
-
-      "SELECT * FROM users WHERE id=$1"
-      |> pgl.sql
-      |> pgl.params([value.int(1000)])
-      |> pgl.query(conn)
-    }
+    "SELECT * FROM users WHERE id=$1"
+    |> pgl.sql
+    |> pgl.params([value.int(1000)])
+    |> pgl.query(conn)
 
   pgl.shutdown(db)
 }
