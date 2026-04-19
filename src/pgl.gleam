@@ -225,7 +225,7 @@ fn apply_database(conf: Config, uri: Uri) -> Result(Config, Nil) {
 
 fn apply_ssl_mode(conf: Config, uri: Uri) -> Result(Config, Nil) {
   let ssl_mode = case uri.query {
-    None -> Ok(SslDisabled)
+    None -> Ok(SslVerified)
     Some(query) -> {
       case uri.parse_query(query) {
         Ok(params) ->

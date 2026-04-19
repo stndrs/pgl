@@ -37,7 +37,7 @@ pub fn parse_url_test() {
     |> pgl.database("gleam_pgl_test")
     |> pgl.username("postgres")
     |> pgl.password("supersecretpassword")
-    |> pgl.ssl(pgl.SslDisabled)
+    |> pgl.ssl(pgl.SslVerified)
 
   assert expected == conf
 }
@@ -54,7 +54,7 @@ pub fn parse_url_alternative_schema_test() {
     |> pgl.database("gleam_pgl_test")
     |> pgl.username("postgres")
     |> pgl.password("supersecretpassword")
-    |> pgl.ssl(pgl.SslDisabled)
+    |> pgl.ssl(pgl.SslVerified)
 
   assert expected == conf
 }
