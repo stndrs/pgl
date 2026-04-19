@@ -109,10 +109,6 @@ pub fn client_final(
 
     #(encoded_client_final, server_signature)
   })
-  |> result.map_error(fn(_) {
-    internal.SaslClientFinal
-    |> internal.ProtocolError("password contains invalid characters")
-  })
 }
 
 pub fn parse_server_first(
