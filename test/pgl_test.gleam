@@ -394,6 +394,44 @@ pub fn pipeline_multiple_different_queries_test() {
     |> pgl.batch(conn)
 }
 
+pub fn pipeline_batch_partial_failure_test() {
+  use db <- with_db()
+  use conn <- with_conn(db)
+  use conn <- with_users_table(conn)
+
+  let insert1 =
+    insert_into_users([
+      "900, 'William', false, ARRAY['Will'], '1990-02-09', now()",
+    ])
+
+  let insert2 =
+    insert_into_users([
+      "901, 'William', false, ARRAY['Will'], '1990-02-09', now()",
+    ])
+
+  let insert3 =
+    insert_into_users([
+      "902, 'William', false, ARRAY['Will'], '1990-02-09', now()",
+    ])
+
+  let assert Error(pgl.PostgresError(code:, name:, message:, fields:)) =
+    [
+      pgl.Query(insert1, []),
+      pgl.Query(insert2, []),
+      pgl.Query(insert3, []),
+      pgl.Query(insert1, []),
+    ]
+    |> pgl.batch(conn)
+
+  let assert "23505" = code
+  let assert "unique_violation" = name
+  let assert "duplicate key value violates unique constraint \"users_pkey\"" =
+    message
+
+  let assert Ok("users_pkey") = dict.get(fields, pgl.Constraint)
+  let assert Ok("Key (id)=(900) already exists.") = dict.get(fields, pgl.Detail)
+}
+
 pub fn pipeline_dependent_queries_test() {
   let drop1 = "DROP TABLE IF EXISTS new_users;"
   let drop2 = "DROP TABLE IF EXISTS posts;"
