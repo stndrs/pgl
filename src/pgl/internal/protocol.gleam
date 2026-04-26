@@ -614,16 +614,23 @@ fn error_response_cleanup(
   ready: Int,
   sock: Socket,
 ) -> Result(a, internal.InternalError) {
-  let err = case needs_sync {
-    False -> flush(err, sock)
-    True ->
-      encode.sync()
-      |> socket.send(sock, _)
-      |> result.try(fn(_) { flush(err, sock) })
+  let #(err, syncs) = case needs_sync {
+    False -> #(flush(err, sock), syncs)
+    True -> {
+      let err =
+        encode.sync()
+        |> socket.send(sock, _)
+        |> result.try(fn(_) { flush(err, sock) })
+      #(err, syncs + 1)
+    }
   }
 
+  // Each flush consumes one ReadyForQuery, so increment ready
+  // before comparing to avoid an extra flush that would block forever.
+  let ready = ready + 1
+
   case syncs > ready {
-    True -> error_response_cleanup(err, False, syncs, ready + 1, sock)
+    True -> error_response_cleanup(err, False, syncs, ready, sock)
     False -> err
   }
 }
