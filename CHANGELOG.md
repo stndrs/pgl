@@ -1,5 +1,9 @@
 # Changelog
 
+## v3.0.1
+
+- Fixed calls to `pgl.batch` timing out when one of the queries causes the server to issue an `ErrorResponse`.
+
 ## v3.0.0
 
 ### Changed

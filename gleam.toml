@@ -1,5 +1,5 @@
 name = "pgl"
-version = "3.0.0"
+version = "3.0.1"
 
 description = "A Postgres driver written in Gleam"
 licences = ["MIT"]
