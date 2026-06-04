@@ -2,7 +2,7 @@
 
 ## v3.0.2
 
-- Updated `rasa`, `neon`, `db_pool`, and `gleam_stdlib`
+- Updated `rasa`, `neon`, `db_pool`, `pg_value`, and `gleam_stdlib`
 
 ## v3.0.1
 

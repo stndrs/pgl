@@ -12,7 +12,7 @@ packages = [
   { name = "gleeunit", version = "1.10.0", build_tools = ["gleam"], requirements = ["gleam_stdlib"], otp_app = "gleeunit", source = "hex", outer_checksum = "254B697FE72EEAD7BF82E941723918E421317813AC49923EE76A18C788C61E72" },
   { name = "global_value", version = "1.0.0", build_tools = ["gleam"], requirements = ["gleam_stdlib"], otp_app = "global_value", source = "hex", outer_checksum = "23F74C91A7B819C43ABCCBF49DAD5BB8799D81F2A3736BA9A534BD47F309FF4F" },
   { name = "neon", version = "2.0.0", build_tools = ["gleam"], requirements = ["gleam_erlang", "gleam_stdlib"], otp_app = "neon", source = "hex", outer_checksum = "8378718F72E052319EAA21C33D05D4CE8166D4C8AA3AA074166AF2B6366C3D03" },
-  { name = "pg_value", version = "3.0.0", build_tools = ["gleam"], requirements = ["gleam_json", "gleam_stdlib", "gleam_time"], otp_app = "pg_value", source = "hex", outer_checksum = "0E72E884A2F6856BB959D16662E48F1332E6D1AB1CE880794E7E9D103F379263" },
+  { name = "pg_value", version = "3.0.1", build_tools = ["gleam"], requirements = ["gleam_json", "gleam_stdlib", "gleam_time"], otp_app = "pg_value", source = "hex", outer_checksum = "5B51CD168F90F01261C6520F7EE1DD8F4DF16F47133DFB712F2ECDC76402C949" },
   { name = "rasa", version = "2.0.1", build_tools = ["gleam"], requirements = ["gleam_erlang", "gleam_stdlib"], otp_app = "rasa", source = "hex", outer_checksum = "20ED3CC4A22ED36C26069E0EAD2AFCD41E6357BEAE4BC36DB97A32B7EDC7C0EA" },
 ]
 
