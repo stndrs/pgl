@@ -1,5 +1,5 @@
 name = "pgl"
-version = "3.0.1"
+version = "3.0.2"
 
 description = "A Postgres driver written in Gleam"
 licences = ["MIT"]
@@ -20,7 +20,7 @@ gleam_time = ">= 1.2.0 and < 2.0.0"
 pg_value = ">= 3.0.0 and < 4.0.0"
 db_pool = ">= 2.0.0 and < 3.0.0"
 rasa = ">= 2.0.0 and < 3.0.0"
-neon = ">= 1.0.0 and < 2.0.0"
+neon = ">= 2.0.0 and < 3.0.0"
 
 [dev-dependencies]
 gleeunit = "~> 1.0"

@@ -322,6 +322,8 @@ fn tcp_to_ssl(
         False -> ssl.verify_none
       }
 
+      let host = net.hostname(host)
+
       ssl.from_tcp(sock, host)
       |> verifier
       |> ssl.connect
@@ -363,6 +365,8 @@ fn tcp_error_to_socket_error(error: tcp.TcpError) -> internal.SocketError {
     tcp.SystemLimit -> internal.SystemLimit
     tcp.Posix(code) -> internal.Posix(code)
     tcp.TcpError(message) -> internal.TcpError(message)
+    tcp.NotOwner -> internal.TcpError("Not Owner")
+    tcp.InvalidPid -> internal.TcpError("Invalid Pid")
   }
 }
 
@@ -375,6 +379,7 @@ fn ssl_error_to_socket_error(error: ssl.SslError) -> internal.SocketError {
       internal.TlsAlert(tls_alert_to_string(alert) <> " | " <> message)
     ssl.SslError(message) -> internal.SslSockError(message)
     ssl.SslNotStarted -> internal.SslSockError("SSL Not Started")
+    ssl.InvalidPid -> internal.SslSockError("Invalid Pid")
   }
 }
 
