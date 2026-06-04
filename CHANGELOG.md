@@ -1,5 +1,9 @@
 # Changelog
 
+## v3.0.2
+
+- Updated `rasa`, `neon`, `db_pool`, `pg_value`, and `gleam_stdlib`
+
 ## v3.0.1
 
 - Fixed calls to `pgl.batch` timing out when one of the queries causes the server to issue an `ErrorResponse`.
