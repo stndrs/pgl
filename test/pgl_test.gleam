@@ -1,23 +1,24 @@
 import gleam/bool
 import gleam/dict
 import gleam/dynamic
-import gleam/dynamic/decode.{type Decoder}
+import gleam/dynamic/decode
 import gleam/int
 import gleam/json
 import gleam/list
 import gleam/option.{None, Some}
 import gleam/order
 import gleam/result
-import gleam/string
 import gleam/time/calendar
 import gleam/time/timestamp
 import gleeunit
-import global_value
 import neon/ssl
 import pg_value
 import pg_value/interval
 import pgl
 import pgl/internal
+import pgl/support/db
+import pgl/support/sql
+import pgl/support/user
 
 pub fn main() {
   let assert Ok(_) = ssl.start()
@@ -117,165 +118,15 @@ pub fn query_params_test() {
   let assert [pg_value.Int(10)] = query.values
 }
 
-fn pg_17_pool_rows_as_maps() -> pgl.Db {
-  use <- global_value.create_with_unique_name("pgl_pool_rows_as_maps_test")
-
-  let assert Ok(conf) =
-    "postgres://postgres:postgres@127.0.0.1/postgres"
-    |> pgl.from_url
-
-  let conf =
-    conf
-    |> pgl.ssl(pgl.SslUnverified)
-    |> pgl.rows_as_dict(True)
-
-  let db = pgl.new(conf)
-
-  let assert Ok(_) = pgl.start(db)
-
-  db
-}
-
-fn with_extension(
-  name: String,
-  conn: pgl.Connection,
-  next: fn(pgl.Connection) -> t,
-) -> t {
-  let create_sql = "CREATE EXTENSION IF NOT EXISTS " <> name <> ";"
-
-  let assert Ok(_) = pgl.execute(create_sql, conn)
-
-  let res = next(conn)
-
-  let drop_sql = "DROP EXTENSION IF EXISTS " <> name <> ";"
-  let assert Ok(_) = pgl.execute(drop_sql, conn)
-
-  res
-}
-
-fn with_table(
-  name: String,
-  definition: String,
-  conn: pgl.Connection,
-  next: fn(pgl.Connection) -> t,
-) -> t {
-  let create_sql = "CREATE TABLE IF NOT EXISTS " <> name <> definition <> ";"
-
-  let assert Ok(_) = pgl.execute(create_sql, conn)
-
-  let res = next(conn)
-
-  let drop_sql = "DROP TABLE IF EXISTS " <> name <> ";"
-  let assert Ok(_) = pgl.execute(drop_sql, conn)
-
-  res
-}
-
-fn with_users_table(conn: pgl.Connection, next: fn(pgl.Connection) -> t) -> t {
-  let users_table_def =
-    "
-   (
-     id SERIAL PRIMARY KEY,
-     name VARCHAR(50) NOT NULL,
-     active boolean NOT NULL DEFAULT true,
-     nicknames VARCHAR(50)[] NOT NULL,
-     birthday DATE NOT NULL,
-     created_at TIMESTAMP NOT NULL
-   )"
-
-  with_table("users", users_table_def, conn, next)
-}
-
-fn with_hstore(conn: pgl.Connection, next: fn(pgl.Connection) -> t) -> t {
-  use conn <- with_extension("hstore", conn)
-  with_table("hstore_test", "(id SERIAL PRIMARY KEY, data hstore)", conn, next)
-}
-
-fn with_enum_type(
-  name: String,
-  definition: String,
-  conn: pgl.Connection,
-  next: fn(pgl.Connection) -> t,
-) -> t {
-  let _ = pgl.execute("DROP TYPE IF EXISTS " <> name <> " CASCADE;", conn)
-  let assert Ok(_) =
-    pgl.execute(
-      "CREATE TYPE " <> name <> " AS ENUM " <> definition <> ";",
-      conn,
-    )
-
-  let res = next(conn)
-
-  let _ = pgl.execute("DROP TYPE IF EXISTS " <> name <> " CASCADE;", conn)
-
-  res
-}
-
-fn with_enum(conn: pgl.Connection, next: fn(pgl.Connection) -> t) -> t {
-  use conn <- with_enum_type("mood", "('happy', 'sad', 'neutral')", conn)
-  with_table(
-    "enum_test",
-    "(id SERIAL PRIMARY KEY, current_mood mood)",
-    conn,
-    next,
-  )
-}
-
-fn with_db(next: fn(pgl.Db) -> t) {
-  let db = {
-    use <- global_value.create_with_unique_name("pgl_pools")
-
-    let db =
-      pgl.config
-      |> pgl.username("postgres")
-      |> pgl.password("postgres")
-      |> pgl.ssl(pgl.SslUnverified)
-      |> pgl.new
-
-    let assert Ok(_) = pgl.start(db)
-
-    db
-  }
-
-  next(db)
-}
-
-fn with_conn(db: pgl.Db, next: fn(pgl.Connection) -> t) {
-  db
-  |> pgl.connection
-  |> next
-}
-
-pub type User {
-  User(
-    id: Int,
-    name: String,
-    active: Bool,
-    nicknames: List(String),
-    birthday: calendar.Date,
-    created_at: timestamp.Timestamp,
-  )
-}
-
-fn user_decoder() -> Decoder(User) {
-  use id <- decode.field(0, decode.int)
-  use name <- decode.field(1, decode.string)
-  use active <- decode.field(2, decode.bool)
-  use nicknames <- decode.field(3, decode.list(of: decode.string))
-  use birthday <- decode.field(4, pg_value.date_decoder())
-  use created_at <- decode.field(5, pg_value.timestamp_decoder())
-
-  User(id:, name:, active:, nicknames:, created_at:, birthday:)
-  |> decode.success
-}
+// ---------- Query Tests ---------- //
 
 fn inserting_new_rows(conn: pgl.Connection) {
   let assert Ok(returned) =
-    insert_into_users([
+    sql.insert_into_users([
       "DEFAULT, 'William', false, ARRAY['William', 'Will'], '1990-02-09', '2025-09-30 09:17:30.100'",
       "DEFAULT, 'Stephen', true, ARRAY['Steve'], '1993-01-01', '2025-01-06 20:01:06.000'",
     ])
-    |> returning(["*"])
+    |> sql.returning(["*"])
     |> pgl.sql
     |> pgl.query(conn)
 
@@ -283,7 +134,7 @@ fn inserting_new_rows(conn: pgl.Connection) {
 
   let assert Ok([william, stephen]) =
     returned.rows
-    |> list.try_map(fn(row) { decode.run(row, user_decoder()) })
+    |> list.try_map(fn(row) { decode.run(row, user.decoder()) })
 
   let assert Ok(william_created_at) =
     timestamp.parse_rfc3339("2025-09-30T09:17:30.100Z")
@@ -307,9 +158,8 @@ fn inserting_new_rows(conn: pgl.Connection) {
 }
 
 pub fn inserting_new_rows_test() {
-  use db <- with_db()
-  use conn <- with_conn(db)
-  use conn <- with_users_table(conn)
+  use db <- db.with_db()
+  use conn <- db.with_conn(db)
 
   inserting_new_rows(conn)
 }
@@ -329,16 +179,15 @@ pub fn ipv6_test() {
 }
 
 pub fn inserting_new_rows_and_returning_test() {
-  use db <- with_db()
-  use conn <- with_conn(db)
-  use conn <- with_users_table(conn)
+  use db <- db.with_db()
+  use conn <- db.with_conn(db)
 
   let assert Ok(returned) =
-    insert_into_users([
+    sql.insert_into_users([
       "DEFAULT, 'William', false, ARRAY['William', 'Will'], '1990-02-09', '2025-09-30 09:17:30.100'",
       "DEFAULT, 'Stephen', true, ARRAY['Steve'], '1993-01-01', '2025-01-06 20:01:06.000'",
     ])
-    |> returning(["name"])
+    |> sql.returning(["name"])
     |> pgl.sql
     |> pgl.query(conn)
 
@@ -351,21 +200,20 @@ pub fn inserting_new_rows_and_returning_test() {
 }
 
 pub fn pipeline_multiple_query_test() {
-  use db <- with_db()
-  use conn <- with_conn(db)
-  use conn <- with_users_table(conn)
+  use db <- db.with_db()
+  use conn <- db.with_conn(db)
 
   let insert1 =
-    insert_into_users([
+    sql.insert_into_users([
       "DEFAULT, $1, $2, ARRAY['Peggy'], '1993-08-27', '2025-06-16 00:00:00.100'",
     ])
-    |> returning(["name", "active", "nicknames"])
+    |> sql.returning(["name", "active", "nicknames"])
 
   let insert2 =
-    insert_into_users([
+    sql.insert_into_users([
       "DEFAULT, $1, $2, ARRAY['Dick', 'Robin', 'Nightwing'], '1993-08-27', '2025-06-16 00:00:00.100'",
     ])
-    |> returning(["name", "active", "nicknames"])
+    |> sql.returning(["name", "active", "nicknames"])
 
   let params1 = [pg_value.Text("Margaret"), pg_value.Bool(True)]
 
@@ -377,15 +225,14 @@ pub fn pipeline_multiple_query_test() {
 }
 
 pub fn pipeline_multiple_different_queries_test() {
-  use db <- with_db()
-  use conn <- with_conn(db)
-  use conn <- with_users_table(conn)
+  use db <- db.with_db()
+  use conn <- db.with_conn(db)
 
   let insert1 =
-    insert_into_users([
+    sql.insert_into_users([
       "DEFAULT, $1, $2, ARRAY['Peggy'], '1993-08-27', '2025-06-16 00:00:00.100'",
     ])
-    |> returning(["name", "active", "nicknames"])
+    |> sql.returning(["name", "active", "nicknames"])
 
   let params1 = [pg_value.Text("Margaret"), pg_value.Bool(True)]
 
@@ -395,22 +242,21 @@ pub fn pipeline_multiple_different_queries_test() {
 }
 
 pub fn pipeline_batch_partial_failure_test() {
-  use db <- with_db()
-  use conn <- with_conn(db)
-  use conn <- with_users_table(conn)
+  use db <- db.with_db()
+  use conn <- db.with_conn(db)
 
   let insert1 =
-    insert_into_users([
+    sql.insert_into_users([
       "900, 'William', false, ARRAY['Will'], '1990-02-09', now()",
     ])
 
   let insert2 =
-    insert_into_users([
+    sql.insert_into_users([
       "901, 'William', false, ARRAY['Will'], '1990-02-09', now()",
     ])
 
   let insert3 =
-    insert_into_users([
+    sql.insert_into_users([
       "902, 'William', false, ARRAY['Will'], '1990-02-09', now()",
     ])
 
@@ -433,51 +279,12 @@ pub fn pipeline_batch_partial_failure_test() {
 }
 
 pub fn pipeline_dependent_queries_test() {
-  let drop1 = "DROP TABLE IF EXISTS new_users;"
-  let drop2 = "DROP TABLE IF EXISTS posts;"
-  let drop3 = "DROP TABLE IF EXISTS comments;"
-  let drop4 = "DROP TABLE IF EXISTS tags;"
+  use db <- db.with_db()
+  use conn <- db.with_conn(db)
 
-  let create1 =
-    "CREATE TABLE IF NOT EXISTS new_users (
-     id SERIAL PRIMARY KEY,
-     name VARCHAR(50) NOT NULL
-   );"
-  let create2 =
-    "CREATE TABLE IF NOT EXISTS posts (
-     id SERIAL PRIMARY KEY,
-     user_id INTEGER NOT NULL,
-     title TEXT NOT NULL,
-     content TEXT NOT NULL
-   );"
-  let create3 =
-    "CREATE TABLE IF NOT EXISTS comments (
-     id SERIAL PRIMARY KEY,
-     post_id INTEGER NOT NULL,
-     content TEXT NOT NULL
-   );"
-  let create4 =
-    "CREATE TABLE IF NOT EXISTS tags (
-     id SERIAL PRIMARY KEY,
-     post_id INTEGER NOT NULL,
-     name VARCHAR(20) NOT NULL
-   );"
-
-  use db <- with_db()
-  use conn <- with_conn(db)
-
-  let assert Ok(_) = pgl.execute(drop1, conn)
-  let assert Ok(_) = pgl.execute(drop2, conn)
-  let assert Ok(_) = pgl.execute(drop3, conn)
-  let assert Ok(_) = pgl.execute(drop4, conn)
-
-  let assert Ok(_) = pgl.execute(create1, conn)
-  let assert Ok(_) = pgl.execute(create2, conn)
-  let assert Ok(_) = pgl.execute(create3, conn)
-  let assert Ok(_) = pgl.execute(create4, conn)
+  // Tables already exist (created by schema.setup_all), truncated by with_conn
 
   // create users
-
   let create_user_sql = "INSERT INTO new_users (name) VALUES ($1) RETURNING id"
 
   let q1 = pgl.Query(create_user_sql, values: [pg_value.text("Jim")])
@@ -490,18 +297,12 @@ pub fn pipeline_dependent_queries_test() {
     queried
     |> list.try_map(fn(queried) {
       queried.rows
-      |> list.try_map(fn(row) {
-        decode.run(row, {
-          use id <- decode.field(0, decode.int)
-          decode.success(id)
-        })
-      })
+      |> list.try_map(decode.run(_, db.id_decoder()))
     })
 
   let user_ids = list.flatten(user_ids)
 
   // create posts
-
   let create_post_sql =
     "INSERT INTO posts (user_id, title, content) VALUES ($1, $2, $3) RETURNING id"
 
@@ -542,18 +343,12 @@ pub fn pipeline_dependent_queries_test() {
     queried
     |> list.try_map(fn(queried) {
       queried.rows
-      |> list.try_map(fn(row) {
-        decode.run(row, {
-          use id <- decode.field(0, decode.int)
-          decode.success(id)
-        })
-      })
+      |> list.try_map(decode.run(_, db.id_decoder()))
     })
 
   let post_ids = list.flatten(post_ids)
 
   // create comments and tags
-
   let create_comment_sql =
     "INSERT INTO comments (post_id, content) VALUES ($1, $2) RETURNING *"
   let create_tag_sql =
@@ -599,24 +394,12 @@ pub fn pipeline_dependent_queries_test() {
     })
 }
 
-fn insert_into_users(values: List(String)) -> String {
-  let values_str = string.join(values, "), (")
-
-  "INSERT INTO users VALUES (" <> values_str <> ")"
-}
-
-fn returning(sql: String, columns: List(String)) -> String {
-  sql <> " RETURNING " <> string.join(columns, ", ")
-}
-
 pub fn rows_as_maps_test() {
-  let db = pg_17_pool_rows_as_maps()
-
-  use conn <- with_conn(db)
-  use conn <- with_users_table(conn)
+  use db <- db.with_db_rows_as_maps()
+  use conn <- db.with_conn(db)
 
   let sql =
-    insert_into_users([
+    sql.insert_into_users([
       "DEFAULT, 'James', true, ARRAY['Jim'], '2233-04-22', '2263-01-09 11:30:22'",
       "DEFAULT, 'William', false, ARRAY['William', 'Will'], '1990-02-09', '2025-09-30 09:17:30.100'",
       "DEFAULT, 'Stephen', true, ARRAY['Steve'], '1993-01-01', '2025-01-06 20:01:06.000'",
@@ -633,32 +416,19 @@ pub fn rows_as_maps_test() {
 
   let assert Ok([james, william, steve]) =
     queried.rows
-    |> list.try_map(decode.run(_, user_with_fields_decoder()))
+    |> list.try_map(decode.run(_, user.fields_decoder()))
 
   assert 1 == james.id
   assert 2 == william.id
   assert 3 == steve.id
 }
 
-fn user_with_fields_decoder() -> Decoder(User) {
-  use id <- decode.field("id", decode.int)
-  use name <- decode.field("name", decode.string)
-  use active <- decode.field("active", decode.bool)
-  use nicknames <- decode.field("nicknames", decode.list(of: decode.string))
-  use birthday <- decode.field("birthday", pg_value.date_decoder())
-  use created_at <- decode.field("created_at", pg_value.timestamp_decoder())
-
-  User(id:, name:, active:, nicknames:, created_at:, birthday:)
-  |> decode.success
-}
-
 pub fn selecting_rows_test() {
-  use db <- with_db()
-  use conn <- with_conn(db)
-  use conn <- with_users_table(conn)
+  use db <- db.with_db()
+  use conn <- db.with_conn(db)
 
   let sql =
-    insert_into_users([
+    sql.insert_into_users([
       "DEFAULT, 'James', true, ARRAY['Jim'], '2233-04-22', '2263-01-09 11:30:22'",
     ])
 
@@ -694,8 +464,8 @@ pub fn selecting_rows_test() {
 }
 
 pub fn varchar_encoding_test() {
-  use db <- with_db()
-  use conn <- with_conn(db)
+  use db <- db.with_db()
+  use conn <- db.with_conn(db)
 
   let sql = "SELECT $1::VARCHAR, $2::VARCHAR, $3::VARCHAR"
   let params = [
@@ -722,8 +492,8 @@ pub fn varchar_encoding_test() {
 }
 
 pub fn null_encoding_test() {
-  use db <- with_db()
-  use conn <- with_conn(db)
+  use db <- db.with_db()
+  use conn <- db.with_conn(db)
 
   let sql = "SELECT $1::TEXT, $1 IS NULL, $2::INT"
   let params = [pg_value.null, pg_value.int(42)]
@@ -742,8 +512,8 @@ pub fn null_encoding_test() {
 }
 
 pub fn uuid_v4_encoding_test() {
-  use db <- with_db()
-  use conn <- with_conn(db)
+  use db <- db.with_db()
+  use conn <- db.with_conn(db)
 
   let v4_uuid = 0x85eab1c37acc4d8288e45fc1a9daa9d8
 
@@ -759,8 +529,8 @@ pub fn uuid_v4_encoding_test() {
 }
 
 pub fn uuid_v4_decoding_test() {
-  use db <- with_db()
-  use conn <- with_conn(db)
+  use db <- db.with_db()
+  use conn <- db.with_conn(db)
 
   let sql = "SELECT gen_random_uuid()"
 
@@ -773,8 +543,8 @@ pub fn uuid_v4_decoding_test() {
 
 // Postgres 18 provides native uuid v7 support
 pub fn uuid_v7_decoding_test() {
-  use db <- with_db()
-  use conn <- with_conn(db)
+  use db <- db.with_db()
+  use conn <- db.with_conn(db)
 
   let pg_version = server_version(conn)
 
@@ -809,13 +579,8 @@ fn server_version(conn: pgl.Connection) -> Int {
 }
 
 pub fn uuid_test() {
-  use db <- with_db()
-  use conn <- with_conn(db)
-  use conn <- with_table(
-    "uuid_test",
-    "(id SERIAL PRIMARY KEY, identifier UUID)",
-    conn,
-  )
+  use db <- db.with_db()
+  use conn <- db.with_conn(db)
 
   let v4_uuid = 0x85eab1c37acc4d8288e45fc1a9daa9d8
 
@@ -836,9 +601,8 @@ pub fn uuid_test() {
 }
 
 pub fn hstore_test() {
-  use db <- with_db()
-  use conn <- with_conn(db)
-  use conn <- with_hstore(conn)
+  use db <- db.with_db()
+  use conn <- db.with_conn(db)
 
   let data =
     dict.new()
@@ -858,12 +622,7 @@ pub fn hstore_test() {
 
   let assert Ok(row) = list.first(queried.rows)
 
-  let assert Ok(id) =
-    decode.run(row, {
-      use id <- decode.field(0, decode.int)
-
-      decode.success(id)
-    })
+  let assert Ok(id) = decode.run(row, db.id_decoder())
 
   let assert Ok(queried) =
     { "SELECT * FROM hstore_test WHERE id=" <> int.to_string(id) }
@@ -886,9 +645,8 @@ pub fn hstore_test() {
 }
 
 pub fn hstore_string_constant_test() {
-  use db <- with_db()
-  use conn <- with_conn(db)
-  use conn <- with_hstore(conn)
+  use db <- db.with_db()
+  use conn <- db.with_conn(db)
 
   let data =
     dict.new()
@@ -911,12 +669,7 @@ pub fn hstore_string_constant_test() {
 
   let assert Ok(row) = list.first(queried.rows)
 
-  let assert Ok(id) =
-    decode.run(row, {
-      use id <- decode.field(0, decode.int)
-
-      decode.success(id)
-    })
+  let assert Ok(id) = decode.run(row, db.id_decoder())
 
   let assert Ok(queried) =
     { "SELECT * FROM hstore_test WHERE id=" <> int.to_string(id) }
@@ -939,9 +692,8 @@ pub fn hstore_string_constant_test() {
 }
 
 pub fn hstore_string_constant_escape_test() {
-  use db <- with_db()
-  use conn <- with_conn(db)
-  use conn <- with_hstore(conn)
+  use db <- db.with_db()
+  use conn <- db.with_conn(db)
 
   let data =
     dict.new()
@@ -965,12 +717,7 @@ pub fn hstore_string_constant_escape_test() {
 
   let assert Ok(row) = list.first(queried.rows)
 
-  let assert Ok(id) =
-    decode.run(row, {
-      use id <- decode.field(0, decode.int)
-
-      decode.success(id)
-    })
+  let assert Ok(id) = decode.run(row, db.id_decoder())
 
   let assert Ok(queried) =
     { "SELECT * FROM hstore_test WHERE id =" <> int.to_string(id) }
@@ -993,8 +740,8 @@ pub fn hstore_string_constant_escape_test() {
 }
 
 pub fn interval_encoding_test() {
-  use db <- with_db()
-  use conn <- with_conn(db)
+  use db <- db.with_db()
+  use conn <- db.with_conn(db)
 
   let sql = "SELECT 'P14MT86430S'::INTERVAL"
 
@@ -1013,8 +760,8 @@ pub fn interval_encoding_test() {
 }
 
 pub fn interval_roundtrip_test() {
-  use db <- with_db()
-  use conn <- with_conn(db)
+  use db <- db.with_db()
+  use conn <- db.with_conn(db)
 
   let sql = "SELECT $1::INTERVAL"
 
@@ -1042,8 +789,8 @@ pub fn interval_roundtrip_test() {
 }
 
 pub fn array_encoding_test() {
-  use db <- with_db()
-  use conn <- with_conn(db)
+  use db <- db.with_db()
+  use conn <- db.with_conn(db)
 
   let sql =
     "SELECT ARRAY['howdy', 'postgres']::TEXT[], ARRAY[1, 2, 3]::INT[], ARRAY[]::TEXT[]"
@@ -1070,15 +817,14 @@ pub fn array_encoding_test() {
 }
 
 pub fn mixed_types_with_encoding_test() {
-  use db <- with_db()
-  use conn <- with_conn(db)
-  use conn <- with_users_table(conn)
+  use db <- db.with_db()
+  use conn <- db.with_conn(db)
 
   let sql =
-    insert_into_users([
+    sql.insert_into_users([
       "DEFAULT, $1, $2, ARRAY['Peggy'], '1993-08-27', '2025-06-16 00:00:00.100'",
     ])
-    |> returning(["name", "active", "nicknames"])
+    |> sql.returning(["name", "active", "nicknames"])
 
   let params = [pg_value.Text("Margaret"), pg_value.Bool(True)]
 
@@ -1107,8 +853,8 @@ pub fn mixed_types_with_encoding_test() {
 }
 
 pub fn error_handling_test() {
-  use db <- with_db()
-  use conn <- with_conn(db)
+  use db <- db.with_db()
+  use conn <- db.with_conn(db)
 
   let sql = "SELECT * FROM non_existent_table"
 
@@ -1121,8 +867,8 @@ pub fn error_handling_test() {
 }
 
 pub fn invalid_sql_test() {
-  use db <- with_db()
-  use conn <- with_conn(db)
+  use db <- db.with_db()
+  use conn <- db.with_conn(db)
   let sql = "select       select"
 
   let assert Error(pgl.PostgresError(code:, name:, message:, fields: _)) =
@@ -1134,12 +880,11 @@ pub fn invalid_sql_test() {
 }
 
 pub fn insert_constraint_error_test() {
-  use db <- with_db()
-  use conn <- with_conn(db)
-  use conn <- with_users_table(conn)
+  use db <- db.with_db()
+  use conn <- db.with_conn(db)
 
   let assert Error(pgl.PostgresError(code:, name:, message:, fields:)) =
-    insert_into_users([
+    sql.insert_into_users([
       "900, 'William', false, ARRAY['William', 'Will'], '1990-02-09', now()",
       "900, 'Stephen', true, ARRAY['Steve'], '1993-01-01', now()",
     ])
@@ -1164,8 +909,8 @@ pub fn insert_constraint_error_test() {
 }
 
 pub fn select_from_unknown_table_test() {
-  use db <- with_db()
-  use conn <- with_conn(db)
+  use db <- db.with_db()
+  use conn <- db.with_conn(db)
   let sql = "SELECT * FROM unknown"
 
   let assert Error(pgl.PostgresError(code:, name:, message:, fields: _)) =
@@ -1177,12 +922,11 @@ pub fn select_from_unknown_table_test() {
 }
 
 pub fn insert_with_incorrect_type_test() {
-  use db <- with_db()
-  use conn <- with_conn(db)
-  use conn <- with_users_table(conn)
+  use db <- db.with_db()
+  use conn <- db.with_conn(db)
 
   let assert Error(pgl.PostgresError(code:, name:, message:, fields: _)) =
-    insert_into_users(["true, true, true, true"])
+    sql.insert_into_users(["true, true, true, true"])
     |> pgl.execute(conn)
 
   assert "42804" == code
@@ -1192,9 +936,8 @@ pub fn insert_with_incorrect_type_test() {
 }
 
 pub fn execute_with_wrong_number_of_arguments_test() {
-  use db <- with_db()
-  use conn <- with_conn(db)
-  use conn <- with_users_table(conn)
+  use db <- db.with_db()
+  use conn <- db.with_conn(db)
 
   let sql = "SELECT * FROM users WHERE id = $1"
 
@@ -1204,9 +947,8 @@ pub fn execute_with_wrong_number_of_arguments_test() {
 }
 
 pub fn insert_with_values_test() {
-  use db <- with_db()
-  use conn <- with_conn(db)
-  use conn <- with_users_table(conn)
+  use db <- db.with_db()
+  use conn <- db.with_conn(db)
 
   let query =
     "INSERT INTO users (name, nicknames, birthday, created_at) VALUES ($1, $2, $3, $4)"
@@ -1221,10 +963,11 @@ pub fn insert_with_values_test() {
   let assert Ok(_) = pgl.query(query, conn)
 }
 
+// ---------- Transaction Tests ---------- //
+
 pub fn begin_commit_test() {
-  use db <- with_db()
-  use conn <- with_conn(db)
-  use conn <- with_users_table(conn)
+  use db <- db.with_db()
+  use conn <- db.with_conn(db)
 
   let assert Ok(conn) = pgl.begin(conn)
 
@@ -1232,9 +975,8 @@ pub fn begin_commit_test() {
 }
 
 pub fn begin_rollback_test() {
-  use db <- with_db()
-  use conn <- with_conn(db)
-  use conn <- with_users_table(conn)
+  use db <- db.with_db()
+  use conn <- db.with_conn(db)
 
   let assert Ok(conn) = pgl.begin(conn)
 
@@ -1242,27 +984,22 @@ pub fn begin_rollback_test() {
 }
 
 pub fn commit_error_test() {
-  use db <- with_db()
-  use conn <- with_conn(db)
-  use conn <- with_users_table(conn)
+  use db <- db.with_db()
+  use conn <- db.with_conn(db)
 
   let assert Error(pgl.NotInTransaction) = pgl.commit(conn)
 }
 
 pub fn rollback_error_test() {
-  use db <- with_db()
-  use conn <- with_conn(db)
-  use conn <- with_users_table(conn)
+  use db <- db.with_db()
+  use conn <- db.with_conn(db)
 
   let assert Error(pgl.NotInTransaction) = pgl.rollback(conn)
 }
 
 pub fn transaction_commit_test() {
-  use db <- with_db()
-  use conn <- with_conn(db)
-  use conn <- with_users_table(conn)
-
-  setup_users_table(conn)
+  use db <- db.with_db()
+  use conn <- db.with_conn(db)
 
   let assert Ok(#(id1, id2)) = {
     use tx <- result.map(pgl.begin(conn))
@@ -1280,23 +1017,15 @@ pub fn transaction_commit_test() {
 
   let assert Ok([got1, got2]) =
     queried.rows
-    |> list.try_map(fn(row) {
-      decode.run(row, {
-        use id <- decode.field(0, decode.int)
-        decode.success(id)
-      })
-    })
+    |> list.try_map(decode.run(_, db.id_decoder()))
 
   assert id1 == got1
   assert id2 == got2
 }
 
 pub fn transaction_rollback_test() {
-  use db <- with_db()
-  use conn <- with_conn(db)
-  use conn <- with_users_table(conn)
-
-  setup_users_table(conn)
+  use db <- db.with_db()
+  use conn <- db.with_conn(db)
 
   let assert Ok(tx) = pgl.begin(conn)
 
@@ -1313,11 +1042,8 @@ pub fn transaction_rollback_test() {
 }
 
 pub fn transaction_exception_test() {
-  use db <- with_db()
-  use conn <- with_conn(db)
-  use conn <- with_users_table(conn)
-
-  setup_users_table(conn)
+  use db <- db.with_db()
+  use conn <- db.with_conn(db)
 
   let assert Error(_) = {
     use <- internal.with_rescue()
@@ -1337,17 +1063,8 @@ pub fn transaction_exception_test() {
 }
 
 pub fn transaction_error_test() {
-  use db <- with_db()
-  use conn <- with_conn(db)
-  use conn <- with_users_table(conn)
-
-  let assert Ok(_) =
-    "DROP TABLE IF EXISTS tx_test"
-    |> pgl.execute(conn)
-
-  let assert Ok(_) =
-    "CREATE TABLE tx_test (id INTEGER PRIMARY KEY, name TEXT)"
-    |> pgl.execute(conn)
+  use db <- db.with_db()
+  use conn <- db.with_conn(db)
 
   let assert Ok(_queried) =
     pgl.sql("INSERT INTO tx_test (id, name) VALUES ($1, $2) RETURNING *")
@@ -1384,11 +1101,8 @@ pub fn transaction_error_test() {
 }
 
 pub fn savepoint_test() {
-  use db <- with_db()
-  use conn <- with_conn(db)
-  use conn <- with_users_table(conn)
-
-  setup_users_table(conn)
+  use db <- db.with_db()
+  use conn <- db.with_conn(db)
 
   let assert Ok(_) =
     pgl.transaction(conn, fn(tx) {
@@ -1408,11 +1122,8 @@ pub fn savepoint_test() {
 }
 
 pub fn savepoint_release_test() {
-  use db <- with_db()
-  use conn <- with_conn(db)
-  use conn <- with_users_table(conn)
-
-  setup_users_table(conn)
+  use db <- db.with_db()
+  use conn <- db.with_conn(db)
 
   let assert Ok(_) =
     pgl.transaction(conn, fn(tx) {
@@ -1447,11 +1158,8 @@ pub fn savepoint_release_test() {
 }
 
 pub fn rollback_savepoint_test() {
-  use db <- with_db()
-  use conn <- with_conn(db)
-  use conn <- with_users_table(conn)
-
-  setup_users_table(conn)
+  use db <- db.with_db()
+  use conn <- db.with_conn(db)
 
   let assert Ok(_) =
     pgl.transaction(conn, fn(tx) {
@@ -1486,11 +1194,8 @@ pub fn rollback_savepoint_test() {
 }
 
 pub fn savepoint_exception_test() {
-  use db <- with_db()
-  use conn <- with_conn(db)
-  use conn <- with_users_table(conn)
-
-  setup_users_table(conn)
+  use db <- db.with_db()
+  use conn <- db.with_conn(db)
 
   let assert Ok(_) =
     pgl.transaction(conn, fn(tx) {
@@ -1527,20 +1232,13 @@ pub fn savepoint_exception_test() {
   assert 2 == queried.count
 }
 
-// Transaction helper functions
-
-fn setup_users_table(conn: pgl.Connection) {
-  let assert Ok(_) = pgl.execute("truncate table users", conn)
-
-  Nil
-}
-
+// Transaction helper
 fn insert_into_users_table(conn: pgl.Connection, name: String) {
   let assert Ok(returned) =
-    insert_into_users([
+    sql.insert_into_users([
       "DEFAULT, '" <> name <> "', true, ARRAY[''], '2025-03-04', now()",
     ])
-    |> returning(["id"])
+    |> sql.returning(["id"])
     |> pgl.sql
     |> pgl.query(conn)
 
@@ -1552,6 +1250,8 @@ fn insert_into_users_table(conn: pgl.Connection, name: String) {
   let assert Ok(id) = list.first(ids)
   id
 }
+
+// ---------- Error String Tests ---------- //
 
 pub fn error_to_string_query_error_test() {
   let err = pgl.QueryError("Failed to process queried rows")
@@ -1619,9 +1319,8 @@ pub fn error_to_string_empty_message_test() {
 // ---------- Enum Tests ---------- //
 
 pub fn enum_test() {
-  use db <- with_db()
-  use conn <- with_conn(db)
-  use conn <- with_enum(conn)
+  use db <- db.with_db()
+  use conn <- db.with_conn(db)
 
   let assert Ok(queried) =
     "INSERT INTO enum_test (current_mood) VALUES ($1) RETURNING id"
@@ -1633,11 +1332,7 @@ pub fn enum_test() {
 
   let assert Ok(row) = list.first(queried.rows)
 
-  let assert Ok(id) =
-    decode.run(row, {
-      use id <- decode.field(0, decode.int)
-      decode.success(id)
-    })
+  let assert Ok(id) = decode.run(row, db.id_decoder())
 
   let assert Ok(queried) =
     { "SELECT * FROM enum_test WHERE id=" <> int.to_string(id) }
@@ -1657,9 +1352,8 @@ pub fn enum_test() {
 }
 
 pub fn enum_string_constant_test() {
-  use db <- with_db()
-  use conn <- with_conn(db)
-  use conn <- with_enum(conn)
+  use db <- db.with_db()
+  use conn <- db.with_conn(db)
 
   let val = pg_value.to_string(pg_value.enum("sad"))
 
@@ -1676,11 +1370,7 @@ pub fn enum_string_constant_test() {
 
   let assert Ok(row) = list.first(queried.rows)
 
-  let assert Ok(id) =
-    decode.run(row, {
-      use id <- decode.field(0, decode.int)
-      decode.success(id)
-    })
+  let assert Ok(id) = decode.run(row, db.id_decoder())
 
   let assert Ok(queried) =
     { "SELECT * FROM enum_test WHERE id=" <> int.to_string(id) }
@@ -1700,14 +1390,8 @@ pub fn enum_string_constant_test() {
 }
 
 pub fn enum_array_test() {
-  use db <- with_db()
-  use conn <- with_conn(db)
-  use conn <- with_enum_type("color", "('red', 'green', 'blue')", conn)
-  use conn <- with_table(
-    "enum_array_test",
-    "(id SERIAL PRIMARY KEY, colors color[])",
-    conn,
-  )
+  use db <- db.with_db()
+  use conn <- db.with_conn(db)
 
   let assert Ok(queried) =
     "INSERT INTO enum_array_test (colors) VALUES ($1) RETURNING id"
@@ -1719,11 +1403,7 @@ pub fn enum_array_test() {
 
   let assert Ok(row) = list.first(queried.rows)
 
-  let assert Ok(id) =
-    decode.run(row, {
-      use id <- decode.field(0, decode.int)
-      decode.success(id)
-    })
+  let assert Ok(id) = decode.run(row, db.id_decoder())
 
   let assert Ok(queried) =
     { "SELECT * FROM enum_array_test WHERE id=" <> int.to_string(id) }
@@ -1745,13 +1425,8 @@ pub fn enum_array_test() {
 // ---------- Json Tests ---------- //
 
 pub fn json_test() {
-  use db <- with_db()
-  use conn <- with_conn(db)
-  use conn <- with_table(
-    "json_test",
-    "(id SERIAL PRIMARY KEY, data json)",
-    conn,
-  )
+  use db <- db.with_db()
+  use conn <- db.with_conn(db)
 
   let data =
     json.object([
@@ -1770,11 +1445,7 @@ pub fn json_test() {
 
   let assert Ok(row) = list.first(queried.rows)
 
-  let assert Ok(id) =
-    decode.run(row, {
-      use id <- decode.field(0, decode.int)
-      decode.success(id)
-    })
+  let assert Ok(id) = decode.run(row, db.id_decoder())
 
   let assert Ok(queried) =
     { "SELECT * FROM json_test WHERE id=" <> int.to_string(id) }
@@ -1802,13 +1473,8 @@ pub fn json_test() {
 }
 
 pub fn jsonb_test() {
-  use db <- with_db()
-  use conn <- with_conn(db)
-  use conn <- with_table(
-    "jsonb_test",
-    "(id SERIAL PRIMARY KEY, data jsonb)",
-    conn,
-  )
+  use db <- db.with_db()
+  use conn <- db.with_conn(db)
 
   let data =
     json.object([
@@ -1827,11 +1493,7 @@ pub fn jsonb_test() {
 
   let assert Ok(row) = list.first(queried.rows)
 
-  let assert Ok(id) =
-    decode.run(row, {
-      use id <- decode.field(0, decode.int)
-      decode.success(id)
-    })
+  let assert Ok(id) = decode.run(row, db.id_decoder())
 
   let assert Ok(queried) =
     { "SELECT * FROM jsonb_test WHERE id=" <> int.to_string(id) }
@@ -1859,13 +1521,8 @@ pub fn jsonb_test() {
 }
 
 pub fn json_array_test() {
-  use db <- with_db()
-  use conn <- with_conn(db)
-  use conn <- with_table(
-    "json_array_test",
-    "(id SERIAL PRIMARY KEY, items jsonb[])",
-    conn,
-  )
+  use db <- db.with_db()
+  use conn <- db.with_conn(db)
 
   let items = [
     json.object([#("id", json.int(1)), #("name", json.string("first"))]),
@@ -1882,11 +1539,7 @@ pub fn json_array_test() {
 
   let assert Ok(row) = list.first(queried.rows)
 
-  let assert Ok(id) =
-    decode.run(row, {
-      use id <- decode.field(0, decode.int)
-      decode.success(id)
-    })
+  let assert Ok(id) = decode.run(row, db.id_decoder())
 
   let assert Ok(queried) =
     { "SELECT * FROM json_array_test WHERE id=" <> int.to_string(id) }
@@ -1914,13 +1567,8 @@ pub fn json_array_test() {
 }
 
 pub fn json_nested_test() {
-  use db <- with_db()
-  use conn <- with_conn(db)
-  use conn <- with_table(
-    "json_nested_test",
-    "(id SERIAL PRIMARY KEY, data jsonb)",
-    conn,
-  )
+  use db <- db.with_db()
+  use conn <- db.with_conn(db)
 
   let data =
     json.object([
@@ -1962,11 +1610,7 @@ pub fn json_nested_test() {
 
   let assert Ok(row) = list.first(queried.rows)
 
-  let assert Ok(id) =
-    decode.run(row, {
-      use id <- decode.field(0, decode.int)
-      decode.success(id)
-    })
+  let assert Ok(id) = decode.run(row, db.id_decoder())
 
   let assert Ok(queried) =
     { "SELECT * FROM json_nested_test WHERE id=" <> int.to_string(id) }
@@ -2020,13 +1664,8 @@ pub fn json_nested_test() {
 }
 
 pub fn json_string_constant_test() {
-  use db <- with_db()
-  use conn <- with_conn(db)
-  use conn <- with_table(
-    "json_const_test",
-    "(id SERIAL PRIMARY KEY, data jsonb)",
-    conn,
-  )
+  use db <- db.with_db()
+  use conn <- db.with_conn(db)
 
   let data =
     json.object([
@@ -2047,11 +1686,7 @@ pub fn json_string_constant_test() {
 
   let assert Ok(row) = list.first(queried.rows)
 
-  let assert Ok(id) =
-    decode.run(row, {
-      use id <- decode.field(0, decode.int)
-      decode.success(id)
-    })
+  let assert Ok(id) = decode.run(row, db.id_decoder())
 
   let assert Ok(queried) =
     { "SELECT * FROM json_const_test WHERE id=" <> int.to_string(id) }
@@ -2077,6 +1712,8 @@ pub fn json_string_constant_test() {
   assert #("value", 42) == parsed
 }
 
+// ---------- Auth Tests ---------- //
+
 pub fn md5_auth_query_test() {
   let db =
     pgl.config
@@ -2090,7 +1727,7 @@ pub fn md5_auth_query_test() {
 
   let assert Ok(_) = pgl.start(db)
 
-  use conn <- with_conn(db)
+  use conn <- db.with_conn_raw(db)
 
   let assert Ok(result) =
     pgl.sql("SELECT 1 AS val, 'md5_auth' AS auth_type")
@@ -2122,7 +1759,7 @@ pub fn cleartext_auth_query_test() {
 
   let assert Ok(_) = pgl.start(db)
 
-  use conn <- with_conn(db)
+  use conn <- db.with_conn_raw(db)
 
   let assert Ok(result) =
     pgl.sql("SELECT 1 AS val, 'cleartext_auth' AS auth_type")
