@@ -16,13 +16,13 @@ chmod 644 /var/lib/postgresql/server.crt
 mkdir -p /docker-entrypoint-initdb.d
 cat > /docker-entrypoint-initdb.d/01-test-users.sql <<'SQL'
 CREATE USER cleartext_user WITH PASSWORD 'cleartext_pass';
-GRANT ALL PRIVILEGES ON DATABASE gleam_pgl_test TO cleartext_user;
+GRANT ALL PRIVILEGES ON DATABASE pgl_test TO cleartext_user;
 CREATE USER trust_user;
-GRANT ALL PRIVILEGES ON DATABASE gleam_pgl_test TO trust_user;
+GRANT ALL PRIVILEGES ON DATABASE pgl_test TO trust_user;
 SET password_encryption = 'md5';
 CREATE USER md5_user WITH PASSWORD 'md5_pass';
 SET password_encryption = 'scram-sha-256';
-GRANT ALL PRIVILEGES ON DATABASE gleam_pgl_test TO md5_user;
+GRANT ALL PRIVILEGES ON DATABASE pgl_test TO md5_user;
 SQL
 
 # Add pg_hba entry for cleartext user (will be appended after default entries)

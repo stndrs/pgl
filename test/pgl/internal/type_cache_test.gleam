@@ -8,7 +8,7 @@ import pgl/internal/type_cache.{type TypeCache}
 
 fn conf() {
   protocol.config
-  |> protocol.database("gleam_pgl_test")
+  |> protocol.database("pgl_test")
   |> protocol.username("postgres")
   |> protocol.password("postgres")
   |> protocol.ssl(internal.SslUnverified)
