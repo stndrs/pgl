@@ -153,7 +153,7 @@ gleam test             # Run the tests (in another terminal)
 
 The first time you run `devenv up`, it will:
 - Generate self-signed SSL certificates
-- Initialize the database (`gleam_pgl_test`)
+- Initialize the database (`pgl_test`)
 - Create test users (`cleartext_user`, `trust_user`, `md5_user`)
 
 PostgreSQL will be available at `127.0.0.1:5432`.

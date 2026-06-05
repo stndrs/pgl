@@ -27,14 +27,14 @@ pub fn main() {
 
 pub fn parse_url_test() {
   let assert Ok(conf) =
-    "postgres://postgres:supersecretpassword@localhost:5433/gleam_pgl_test"
+    "postgres://postgres:supersecretpassword@localhost:5433/pgl_test"
     |> pgl.from_url
 
   let expected =
     pgl.config
     |> pgl.host("localhost")
     |> pgl.port(5433)
-    |> pgl.database("gleam_pgl_test")
+    |> pgl.database("pgl_test")
     |> pgl.username("postgres")
     |> pgl.password("supersecretpassword")
     |> pgl.ssl(pgl.SslVerified)
@@ -44,14 +44,14 @@ pub fn parse_url_test() {
 
 pub fn parse_url_alternative_schema_test() {
   let assert Ok(conf) =
-    "postgresql://postgres:supersecretpassword@localhost:5433/gleam_pgl_test"
+    "postgresql://postgres:supersecretpassword@localhost:5433/pgl_test"
     |> pgl.from_url
 
   let expected =
     pgl.config
     |> pgl.host("localhost")
     |> pgl.port(5433)
-    |> pgl.database("gleam_pgl_test")
+    |> pgl.database("pgl_test")
     |> pgl.username("postgres")
     |> pgl.password("supersecretpassword")
     |> pgl.ssl(pgl.SslVerified)
@@ -61,7 +61,7 @@ pub fn parse_url_alternative_schema_test() {
 
 pub fn parse_url_invalid_protocol_test() {
   let assert Error(Nil) =
-    pgl.from_url("mysql://u:supersecretpassword@localhost:5432/gleam_pgl_test")
+    pgl.from_url("mysql://u:supersecretpassword@localhost:5432/pgl_test")
 }
 
 pub fn parse_url_invalid_path_test() {
@@ -71,14 +71,14 @@ pub fn parse_url_invalid_path_test() {
 
 pub fn parse_url_ssl_mode_require_test() {
   let assert Ok(conf) =
-    "postgres://username:pass@localhost:5432/gleam_pgl_test?sslmode=require"
+    "postgres://username:pass@localhost:5432/pgl_test?sslmode=require"
     |> pgl.from_url
 
   let expected =
     pgl.config
     |> pgl.host("localhost")
     |> pgl.port(5432)
-    |> pgl.database("gleam_pgl_test")
+    |> pgl.database("pgl_test")
     |> pgl.username("username")
     |> pgl.password("pass")
     |> pgl.ssl(pgl.SslUnverified)
@@ -88,14 +88,14 @@ pub fn parse_url_ssl_mode_require_test() {
 
 pub fn parse_url_ssl_mode_verify_test() {
   let assert Ok(conf) =
-    "postgres://username:pass@localhost:5432/gleam_pgl_test?sslmode=verify-ca"
+    "postgres://username:pass@localhost:5432/pgl_test?sslmode=verify-ca"
     |> pgl.from_url
 
   let expected =
     pgl.config
     |> pgl.host("localhost")
     |> pgl.port(5432)
-    |> pgl.database("gleam_pgl_test")
+    |> pgl.database("pgl_test")
     |> pgl.username("username")
     |> pgl.password("pass")
     |> pgl.ssl(pgl.SslVerified)
@@ -103,7 +103,7 @@ pub fn parse_url_ssl_mode_verify_test() {
   assert expected == conf
 
   let assert Ok(conf) =
-    "postgres://username:pass@localhost:5432/gleam_pgl_test?sslmode=verify-full"
+    "postgres://username:pass@localhost:5432/pgl_test?sslmode=verify-full"
     |> pgl.from_url
 
   assert expected == conf
@@ -317,7 +317,7 @@ pub fn inserting_new_rows_test() {
 pub fn ipv6_test() {
   let db =
     pgl.config
-    |> pgl.database("gleam_pgl_test")
+    |> pgl.database("pgl_test")
     |> pgl.username("postgres")
     |> pgl.password("postgres")
     |> pgl.host("::1")
@@ -2082,7 +2082,7 @@ pub fn md5_auth_query_test() {
     pgl.config
     |> pgl.host("127.0.0.1")
     |> pgl.port(5432)
-    |> pgl.database("gleam_pgl_test")
+    |> pgl.database("pgl_test")
     |> pgl.username("md5_user")
     |> pgl.password("md5_pass")
     |> pgl.ssl(pgl.SslUnverified)
@@ -2114,7 +2114,7 @@ pub fn cleartext_auth_query_test() {
     pgl.config
     |> pgl.host("127.0.0.1")
     |> pgl.port(5432)
-    |> pgl.database("gleam_pgl_test")
+    |> pgl.database("pgl_test")
     |> pgl.username("cleartext_user")
     |> pgl.password("cleartext_pass")
     |> pgl.ssl(pgl.SslUnverified)

@@ -22,11 +22,11 @@ docker exec "$CONTAINER" psql -U postgres -c "SELECT pg_reload_conf();"
 
 # Create test users
 docker exec "$CONTAINER" psql -U postgres -c "CREATE USER cleartext_user WITH PASSWORD 'cleartext_pass';"
-docker exec "$CONTAINER" psql -U postgres -c "GRANT ALL PRIVILEGES ON DATABASE gleam_pgl_test TO cleartext_user;"
+docker exec "$CONTAINER" psql -U postgres -c "GRANT ALL PRIVILEGES ON DATABASE pgl_test TO cleartext_user;"
 docker exec "$CONTAINER" psql -U postgres -c "CREATE USER trust_user;"
-docker exec "$CONTAINER" psql -U postgres -c "GRANT ALL PRIVILEGES ON DATABASE gleam_pgl_test TO trust_user;"
+docker exec "$CONTAINER" psql -U postgres -c "GRANT ALL PRIVILEGES ON DATABASE pgl_test TO trust_user;"
 docker exec "$CONTAINER" psql -U postgres -c "SET password_encryption = 'md5'; CREATE USER md5_user WITH PASSWORD 'md5_pass';"
-docker exec "$CONTAINER" psql -U postgres -c "GRANT ALL PRIVILEGES ON DATABASE gleam_pgl_test TO md5_user;"
+docker exec "$CONTAINER" psql -U postgres -c "GRANT ALL PRIVILEGES ON DATABASE pgl_test TO md5_user;"
 
 # Configure pg_hba.conf for auth methods
 HBA_FILE=$(docker exec "$CONTAINER" psql -U postgres -tAc "SHOW hba_file;")

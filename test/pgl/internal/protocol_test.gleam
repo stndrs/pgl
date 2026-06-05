@@ -10,7 +10,7 @@ import pgl/internal/type_cache
 pub fn protocol_test() {
   let conf =
     protocol.config
-    |> protocol.database("gleam_pgl_test")
+    |> protocol.database("pgl_test")
     |> protocol.username("postgres")
     |> protocol.password("postgres")
     |> protocol.ssl(internal.SslUnverified)
@@ -41,7 +41,7 @@ pub fn auth_failure_test() {
 pub fn protocol_bootstrap_test() {
   let conf =
     protocol.config
-    |> protocol.database("gleam_pgl_test")
+    |> protocol.database("pgl_test")
     |> protocol.username("postgres")
     |> protocol.password("postgres")
     |> protocol.ssl(internal.SslUnverified)
@@ -57,7 +57,7 @@ pub fn protocol_bootstrap_test() {
 pub fn auth_cleartext_password_test() {
   let conf =
     protocol.config
-    |> protocol.database("gleam_pgl_test")
+    |> protocol.database("pgl_test")
     |> protocol.username("cleartext_user")
     |> protocol.password("cleartext_pass")
     |> protocol.ssl(internal.SslUnverified)
@@ -73,7 +73,7 @@ pub fn auth_cleartext_password_test() {
 pub fn auth_md5_password_test() {
   let conf =
     protocol.config
-    |> protocol.database("gleam_pgl_test")
+    |> protocol.database("pgl_test")
     |> protocol.username("md5_user")
     |> protocol.password("md5_pass")
     |> protocol.ssl(internal.SslUnverified)
@@ -89,7 +89,7 @@ pub fn auth_md5_password_test() {
 pub fn auth_trust_test() {
   let conf =
     protocol.config
-    |> protocol.database("gleam_pgl_test")
+    |> protocol.database("pgl_test")
     |> protocol.username("trust_user")
     |> protocol.ssl(internal.SslUnverified)
 
@@ -104,7 +104,7 @@ pub fn auth_trust_test() {
 pub fn ssl_verified_rejects_self_signed_test() {
   let conf =
     protocol.config
-    |> protocol.database("gleam_pgl_test")
+    |> protocol.database("pgl_test")
     |> protocol.username("postgres")
     |> protocol.password("postgres")
     |> protocol.ssl(internal.SslVerified)
@@ -121,7 +121,7 @@ pub fn ssl_verified_rejects_self_signed_test() {
 pub fn auth_scram_wrong_password_test() {
   let conf =
     protocol.config
-    |> protocol.database("gleam_pgl_test")
+    |> protocol.database("pgl_test")
     |> protocol.username("postgres")
     |> protocol.password("wrong_password")
     |> protocol.ssl(internal.SslUnverified)
@@ -138,7 +138,7 @@ pub fn auth_scram_wrong_password_test() {
 pub fn auth_md5_wrong_password_test() {
   let conf =
     protocol.config
-    |> protocol.database("gleam_pgl_test")
+    |> protocol.database("pgl_test")
     |> protocol.username("md5_user")
     |> protocol.password("wrong_password")
     |> protocol.ssl(internal.SslUnverified)
@@ -155,7 +155,7 @@ pub fn auth_md5_wrong_password_test() {
 pub fn auth_cleartext_wrong_password_test() {
   let conf =
     protocol.config
-    |> protocol.database("gleam_pgl_test")
+    |> protocol.database("pgl_test")
     |> protocol.username("cleartext_user")
     |> protocol.password("wrong_password")
     |> protocol.ssl(internal.SslUnverified)
