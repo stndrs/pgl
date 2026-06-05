@@ -136,12 +136,50 @@ Further documentation can be found at <https://hexdocs.pm/pgl>.
 
 ## Development
 
-Tests require a running PostgreSQL instance:
+This project uses [devenv](https://devenv.sh) to manage the development environment,
+including PostgreSQL with SSL and multiple auth methods for testing.
+
+### Prerequisites
+
+- [Nix](https://nixos.org/download/) (with flakes enabled)
+- [devenv](https://devenv.sh/getting-started/)
+
+### Getting Started
 
 ```sh
-docker compose up      # Start PostgreSQL
-gleam test             # Run the tests
+devenv up              # Start PostgreSQL (with SSL, test users, etc.)
+gleam test             # Run the tests (in another terminal)
 ```
+
+The first time you run `devenv up`, it will:
+- Generate self-signed SSL certificates
+- Initialize the database (`gleam_pgl_test`)
+- Create test users (`cleartext_user`, `trust_user`, `md5_user`)
+
+PostgreSQL will be available at `127.0.0.1:5432`.
+
+To enter a shell with all dev tools available:
+
+```sh
+devenv shell
+```
+
+To reset the database (e.g. after config changes):
+
+```sh
+rm -rf .devenv/state/postgres
+devenv up
+```
+
+### Optional: direnv integration
+
+If you use [direnv](https://direnv.net/), you can have the dev environment activate automatically when you enter the project directory:
+
+```sh
+direnv allow
+```
+
+This will automatically set environment variables (`PGHOST`, `PGPORT`, etc.) and make dev tools available without manually running `devenv shell`.
 
 ### Acknowledgements
 
