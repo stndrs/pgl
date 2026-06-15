@@ -203,7 +203,7 @@ fn do_password_auth(
       |> internal.AuthenticationError(
         "Server requested "
         <> kind
-        <> "authentication but no password was provided",
+        <> " authentication but no password was provided",
       )
       |> Error
   }

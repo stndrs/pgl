@@ -314,7 +314,7 @@ fn handle_message(state: State, msg: Msg) -> actor.Next(State, Msg) {
     }
     Receive(client:, length:, timeout:) -> {
       net.timeout(timeout)
-      |> result.map_error(fn(_) { internal.ConnectError("Invalid Port") })
+      |> result.map_error(fn(_) { internal.ConnectError("Invalid timeout") })
       |> result.try(fn(timeout) {
         socket_receive(state.socket, length, timeout)
       })
