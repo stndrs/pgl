@@ -124,7 +124,7 @@ pub fn parse_server_first(
       use salt <- result.try(bit_array.base64_decode(salt))
       use iterations <- result.try(int.parse(iters))
 
-      use <- bool.guard(iterations < 4096 || iterations > 100_000, Error(Nil))
+      use <- bool.guard(iterations < 4096, Error(Nil))
 
       let size = bit_array.bit_size(client_nonce)
 
