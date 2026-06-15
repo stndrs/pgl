@@ -508,10 +508,16 @@ fn authenticated_connection(
 
   sockets
   |> socket.connect
-  |> result.map_error(fn(_) {
+  |> result.map_error(fn(err) {
+    let message = case err {
+      actor.InitFailed(reason) -> reason
+      actor.InitTimeout -> "Timed out starting socket connection"
+      actor.InitExited(_) -> "Socket connection process exited during start"
+    }
+
     internal.SocketError(
-      kind: internal.ConnectError("Failed to start socket connection"),
-      message: "Failed to start socket connection",
+      kind: internal.ConnectError(message),
+      message:,
     )
   })
   |> result.try(fn(sock) { protocol.auth(sock, conf) })
