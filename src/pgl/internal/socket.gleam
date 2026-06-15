@@ -266,13 +266,22 @@ fn handle_message(state: State, msg: Msg) -> actor.Next(State, Msg) {
     }
 
     Ping(interval:) -> {
-      let _ = ping(state.socket, state.timeout)
+      case ping(state.socket, state.timeout) {
+        Ok(_) -> {
+          let ping_timer =
+            process.send_after(state.subject, interval, Ping(interval:))
 
-      let ping_timer =
-        process.send_after(state.subject, interval, Ping(interval:))
-
-      State(..state, ping_timer: Some(ping_timer))
-      |> actor.continue
+          State(..state, ping_timer: Some(ping_timer))
+          |> actor.continue
+        }
+        // A failing keepalive means the idle connection is dead. Stop the
+        // actor (closing the socket) instead of re-arming the timer and
+        // pinging a dead connection forever.
+        Error(_) -> {
+          let _ = socket_shutdown(state.socket)
+          actor.stop()
+        }
+      }
     }
     SslUpgrade(client:, host:, verified:) -> {
       case tcp_to_ssl(state.socket, host, verified) {
