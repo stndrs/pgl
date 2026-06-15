@@ -475,6 +475,11 @@ fn receive_message(
   case data {
     <<code:bits-size(8), size:int-size(32)>> -> {
       case size - 4 {
+        len if len < 0 -> {
+          internal.DecodingError
+          |> internal.ProtocolError(message: "Invalid message length")
+          |> Error
+        }
         0 -> decode.message(code, <<>>)
         size1 -> {
           use payload <- result.try(socket.receive(sock, size1))
