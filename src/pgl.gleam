@@ -794,7 +794,11 @@ pub fn transaction(
 ) -> Result(t, TransactionError(error)) {
   use conn, db <- with_transaction(connection)
 
-  let res = do_transaction(conn, fn(conn) { next(Connection(conn:, db:)) })
+  // `with_transaction` checks the connection back in on the error path,
+  // so only check in here on success to avoid a redundant checkin.
+  use res <- result.map(do_transaction(conn, fn(conn) {
+    next(Connection(conn:, db:))
+  }))
 
   checkin(db, conn.sock, conn.caller)
 
