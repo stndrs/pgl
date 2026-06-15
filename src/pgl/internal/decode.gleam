@@ -15,6 +15,7 @@ pub fn message(
     <<"1":utf8>> -> parse_complete(payload)
     <<"2":utf8>> -> bind_complete(payload)
     <<"3":utf8>> -> close_complete(payload)
+    <<"A":utf8>> -> notification_response(payload)
     <<"C":utf8>> -> command_complete(payload)
     <<"D":utf8>> -> data_row(payload)
     <<"E":utf8>> -> error_response(payload)
@@ -259,6 +260,31 @@ fn notice_response(
 ) -> Result(internal.Message, internal.InternalError) {
   error_and_notice_message_fields(payload, dict.new())
   |> result.map(internal.NoticeResponse)
+}
+
+// https://www.postgresql.org/docs/current/protocol-message-formats.html#PROTOCOL-MESSAGE-FORMATS-NOTIFICATIONRESPONSE
+fn notification_response(
+  payload: BitArray,
+) -> Result(internal.Message, internal.InternalError) {
+  case payload {
+    <<proc_id:int-size(32), rest:bits>> -> {
+      use #(channel, rest1) <- result.try(decode_string(rest))
+      use #(notify_payload, _rest) <- result.try(decode_string(rest1))
+
+      Ok(internal.NotificationResponse(
+        proc_id:,
+        channel: bit_array.from_string(channel),
+        payload: bit_array.from_string(notify_payload),
+      ))
+    }
+    _bits -> {
+      internal.DecodingError
+      |> internal.ProtocolError(
+        message: "Unexpected payload for NotificationResponse",
+      )
+      |> Error
+    }
+  }
 }
 
 fn command_complete(
