@@ -883,12 +883,16 @@ pub fn commit(
   case connection {
     Pool(..) -> Error(NotInTransaction)
     Connection(conn:, db:) -> {
-      transaction_query("COMMIT", conn)
-      |> result.map(fn(_) {
-        checkin(db, conn.sock, conn.caller)
-
-        Pool(db:)
-      })
+      case transaction_query("COMMIT", conn) {
+        Ok(_) -> {
+          checkin(db, conn.sock, conn.caller)
+          Ok(Pool(db:))
+        }
+        Error(err) -> {
+          checkin(db, conn.sock, conn.caller)
+          Error(err)
+        }
+      }
     }
   }
 }
@@ -932,12 +936,16 @@ fn do_rollback(
       |> result.replace(conn)
     }
     _ -> {
-      transaction_query("ROLLBACK", conn)
-      |> result.map(fn(_) {
-        checkin(db, conn.sock, conn.caller)
-
-        conn
-      })
+      case transaction_query("ROLLBACK", conn) {
+        Ok(_) -> {
+          checkin(db, conn.sock, conn.caller)
+          Ok(conn)
+        }
+        Error(err) -> {
+          checkin(db, conn.sock, conn.caller)
+          Error(err)
+        }
+      }
     }
   }
 }
