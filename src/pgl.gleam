@@ -528,6 +528,19 @@ pub fn connection(db: Db) -> Connection {
   Pool(db:)
 }
 
+/// Removes the cached prepared-statement plan for the given SQL string.
+///
+/// Useful after schema changes (e.g. `ALTER TYPE`/`DROP TYPE`) that can
+/// invalidate a previously cached plan.
+pub fn invalidate_query_cache(db: Db, sql: String) -> Nil {
+  query_cache.delete(db.query_cache, sql)
+}
+
+/// Clears the entire prepared-statement plan cache.
+pub fn clear_query_cache(db: Db) -> Nil {
+  query_cache.reset(db.query_cache)
+}
+
 fn pool_error_to_pgl_error(err: db_pool.PoolError(PglError)) -> PglError {
   case err {
     db_pool.ConnectionError(err) -> err
@@ -712,6 +725,12 @@ fn extended_query(
 
   extended(db)
   |> protocol.process(message, conn.sock)
+  |> result.map_error(fn(err) {
+    // A cached query plan can go stale (e.g. after ALTER TYPE / DROP TYPE).
+    // Invalidate the entry on error so the next call re-describes it.
+    query_cache.delete(db.query_cache, sql)
+    err
+  })
 }
 
 fn extended(db: Db) -> protocol.Extended(pg_value.Value) {
