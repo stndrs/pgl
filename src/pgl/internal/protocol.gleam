@@ -326,7 +326,8 @@ fn simple_flow(
   case msg {
     internal.CommandComplete(_, _) -> simple_flow(sock, acc)
     internal.DataRow(values:) -> simple_flow(sock, [values, ..acc])
-    internal.ErrorResponse(fields:) -> handle_error_response(fields)
+    internal.ErrorResponse(fields:) ->
+      handle_error_response(fields) |> flush(sock)
     internal.NoticeResponse(_) -> simple_flow(sock, acc)
     internal.NotificationResponse(_, _, _) -> simple_flow(sock, acc)
     internal.ReadyForQuery(status: _) -> Ok(acc)

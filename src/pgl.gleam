@@ -811,8 +811,13 @@ fn do_transaction(
     }
   })
   |> result.try(fn(res) {
-    transaction_query("COMMIT", conn)
-    |> result.replace(res)
+    case transaction_query("COMMIT", conn) {
+      Ok(_) -> Ok(res)
+      Error(err) -> {
+        let _ = transaction_query("ROLLBACK", conn)
+        Error(err)
+      }
+    }
   })
 }
 
