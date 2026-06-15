@@ -515,10 +515,7 @@ fn authenticated_connection(
       actor.InitExited(_) -> "Socket connection process exited during start"
     }
 
-    internal.SocketError(
-      kind: internal.ConnectError(message),
-      message:,
-    )
+    internal.SocketError(kind: internal.ConnectError(message), message:)
   })
   |> result.try(fn(sock) { protocol.auth(sock, conf) })
 }
@@ -705,7 +702,10 @@ fn rows_to_dicts(
 
 /// Perform a query with the given SQL string. This function will send the
 /// SQL string as is to the postgres database server.
-pub fn execute(sql: String, on connection: Connection) -> Result(Int, PglError) {
+pub fn execute(
+  sql: String,
+  on connection: Connection,
+) -> Result(Int, PglError) {
   use conn, db <- with_single_connection(connection)
 
   extended_query(sql, [], conn, db)
@@ -823,9 +823,9 @@ pub fn transaction(
 
   // `with_transaction` checks the connection back in on the error path,
   // so only check in here on success to avoid a redundant checkin.
-  use res <- result.map(do_transaction(conn, fn(conn) {
-    next(Connection(conn:, db:))
-  }))
+  use res <- result.map(
+    do_transaction(conn, fn(conn) { next(Connection(conn:, db:)) }),
+  )
 
   checkin(db, conn.sock, conn.caller)
 

@@ -173,11 +173,11 @@ pub fn receive(
   conn: Socket,
   length: Int,
 ) -> Result(BitArray, internal.InternalError) {
-  actor.call(
-    conn.subject,
-    conn.timeout + call_timeout_buffer,
-    Receive(_, length, conn.timeout),
-  )
+  actor.call(conn.subject, conn.timeout + call_timeout_buffer, Receive(
+    _,
+    length,
+    conn.timeout,
+  ))
   |> result.map_error(fn(kind) {
     internal.SocketError(kind:, message: "Failed to receive")
   })
@@ -467,7 +467,9 @@ fn socket_receive(
   }
 }
 
-fn socket_shutdown(socket: InternalSocket) -> Result(Nil, internal.SocketError) {
+fn socket_shutdown(
+  socket: InternalSocket,
+) -> Result(Nil, internal.SocketError) {
   case socket {
     Tcp(sock) ->
       tcp.shutdown(sock) |> result.map_error(tcp_error_to_socket_error)

@@ -98,7 +98,9 @@ fn portal_suspended(
   }
 }
 
-fn copy_data(data: BitArray) -> Result(internal.Message, internal.InternalError) {
+fn copy_data(
+  data: BitArray,
+) -> Result(internal.Message, internal.InternalError) {
   Ok(internal.CopyData(data:))
 }
 
