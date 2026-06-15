@@ -247,7 +247,7 @@ fn apply_ssl_mode(conf: Config, uri: Uri) -> Result(Config, Nil) {
             Ok("verify-ca") | Ok("verify-full") -> Ok(SslVerified)
             Ok("disable") -> Ok(SslDisabled)
             Ok(_) -> Error(Nil)
-            Error(_) -> Ok(SslDisabled)
+            Error(_) -> Ok(SslVerified)
           }
         Error(_) -> Error(Nil)
       }
