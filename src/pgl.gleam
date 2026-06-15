@@ -318,6 +318,7 @@ pub fn error_to_string(err: PglError) -> String {
 /// Error and notice message fields
 pub type Field {
   Severity
+  SeverityNonLocalized
   Code
   Message
   Detail
@@ -374,6 +375,7 @@ fn from_internal_error(err: internal.InternalError) -> PglError {
 fn field_from_bit_array(field_type: BitArray) -> Field {
   case field_type {
     <<"S":utf8>> -> Severity
+    <<"V":utf8>> -> SeverityNonLocalized
     <<"C":utf8>> -> Code
     <<"M":utf8>> -> Message
     <<"D":utf8>> -> Detail
