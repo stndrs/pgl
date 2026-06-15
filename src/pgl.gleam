@@ -903,8 +903,21 @@ pub fn rollback(
   case connection {
     Pool(..) -> Error(NotInTransaction)
     Connection(conn:, db:) -> {
+      // A savepoint rollback keeps the transaction (and the checked-out
+      // connection) open, so the caller must retain its `Connection`
+      // handle. A full rollback checks the connection back in.
+      let has_savepoint = case conn.rollback_savepoint_statement(conn) {
+        Ok(_) -> True
+        Error(_) -> False
+      }
+
       do_rollback(conn, db)
-      |> result.map(fn(_) { Pool(db:) })
+      |> result.map(fn(conn) {
+        case has_savepoint {
+          True -> Connection(conn:, db:)
+          False -> Pool(db:)
+        }
+      })
     }
   }
 }
