@@ -199,20 +199,25 @@ fn options_from_uri(uri: Uri) -> Result(Config, Nil) {
 }
 
 fn apply_user_info(conf: Config, uri: Uri) -> Result(Config, Nil) {
-  uri.userinfo
-  |> option.map(fn(user_info) {
-    case string.split(user_info, ":") {
-      [user] -> Ok(username(conf, user))
-      [user, pass] -> {
-        conf
-        |> username(user)
-        |> password(pass)
-        |> Ok
+  case uri.userinfo {
+    None -> Ok(conf)
+    Some(user_info) -> {
+      case string.split_once(user_info, ":") {
+        Ok(#(user, pass)) -> {
+          use user <- result.try(uri.percent_decode(user))
+          use pass <- result.map(uri.percent_decode(pass))
+
+          conf
+          |> username(user)
+          |> password(pass)
+        }
+        Error(_) -> {
+          use user <- result.map(uri.percent_decode(user_info))
+          username(conf, user)
+        }
       }
-      _ -> Error(Nil)
     }
-  })
-  |> option.unwrap(Error(Nil))
+  }
 }
 
 fn apply_host(conf: Config, uri: Uri) -> Result(Config, Nil) {
@@ -231,7 +236,10 @@ fn apply_port(conf: Config, uri: Uri) -> Result(Config, Nil) {
 
 fn apply_database(conf: Config, uri: Uri) -> Result(Config, Nil) {
   case string.split(uri.path, "/") {
-    ["", db] -> Ok(database(conf, db))
+    ["", db] -> {
+      use db <- result.map(uri.percent_decode(db))
+      database(conf, db)
+    }
     _ -> Error(Nil)
   }
 }
