@@ -33,6 +33,9 @@ pub fn main() {
     |> pgl.database("my_db")
     |> pgl.username("postgres")
     |> pgl.password("postgres")
+    // The default SSL mode is `SslVerified`. A typical local Postgres has
+    // SSL disabled, so disable it here (use a verified mode in production).
+    |> pgl.ssl(pgl.SslDisabled)
 
   let db = pgl.new(conf)
 
