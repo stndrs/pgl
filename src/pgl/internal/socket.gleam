@@ -84,6 +84,11 @@ pub fn ipv6(builder: Builder, ipv6: Bool) -> Builder {
 
 const socket_factory_name = "pgl_sockets"
 
+// The outer `actor.call` deadline must be strictly larger than the inner
+// TCP receive timeout so the actor can reply with a `Timeout` error rather
+// than the caller's `process.call` panicking on its own deadline.
+const call_timeout_buffer = 1000
+
 pub opaque type Factory {
   Factory(
     name: process.Name(factory.Message(Builder, Socket)),
@@ -168,7 +173,11 @@ pub fn receive(
   conn: Socket,
   length: Int,
 ) -> Result(BitArray, internal.InternalError) {
-  actor.call(conn.subject, conn.timeout, Receive(_, length, conn.timeout))
+  actor.call(
+    conn.subject,
+    conn.timeout + call_timeout_buffer,
+    Receive(_, length, conn.timeout),
+  )
   |> result.map_error(fn(kind) {
     internal.SocketError(kind:, message: "Failed to receive")
   })

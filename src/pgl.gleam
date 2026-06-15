@@ -53,6 +53,8 @@ pub opaque type Config {
     idle_interval: Int,
     /// (default: 50) How long checking out a connection should take.
     queue_target: Int,
+    /// (default: 5000) How long a query may take before timing out, in milliseconds.
+    query_timeout: Int,
   )
 }
 
@@ -76,6 +78,7 @@ pub const config = Config(
   pool_size: 5,
   idle_interval: 1000,
   queue_target: 50,
+  query_timeout: 5000,
 )
 
 /// The IP version to use
@@ -165,6 +168,11 @@ pub fn idle_interval(conf: Config, idle_interval: Int) -> Config {
 /// How long it should take to check out a connection from the connection pool.
 pub fn queue_target(conf: Config, queue_target: Int) -> Config {
   Config(..conf, queue_target:)
+}
+
+/// How long a query may take before timing out, in milliseconds.
+pub fn query_timeout(conf: Config, query_timeout: Int) -> Config {
+  Config(..conf, query_timeout:)
 }
 
 /// Build a `Config` from a connection url
@@ -413,6 +421,7 @@ pub fn new(config: Config) -> Db {
         Ipv6 -> True
       }
     })
+    |> socket.timeout(config.query_timeout)
     |> socket.factory
 
   let pool = process.new_name("pgl_pool")
