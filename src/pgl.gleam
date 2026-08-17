@@ -457,6 +457,7 @@ pub fn start(db: Db) -> actor.StartResult(Supervisor) {
     |> db_pool.on_close(disconnect)
     |> db_pool.on_idle(socket.start_ping(_, db.config.idle_interval))
     |> db_pool.on_active(socket.stop_ping)
+    |> db_pool.error_to_string(error_to_string)
 
   supervisor.new(supervisor.OneForOne)
   |> supervisor.add(type_cache.supervised(db.type_cache))
@@ -590,15 +591,15 @@ fn with_single_connection(
 fn checkout(db: Db, self: process.Pid) -> Result(conn.Conn, PglError) {
   db.pool
   |> process.named_subject
-  |> db_pool.checkout(self, db.config.queue_target, 30_000)
+  |> db_pool.checkout(db.config.queue_target, 30_000)
   |> result.map(conn.new(_, self))
   |> result.map_error(pool_error_to_pgl_error)
 }
 
-fn checkin(db: Db, sock: Socket, self: process.Pid) -> Nil {
+fn checkin(db: Db, sock: Socket, _self: process.Pid) -> Nil {
   db.pool
   |> process.named_subject
-  |> db_pool.checkin(sock, self)
+  |> db_pool.checkin(sock)
 }
 
 // ---------- Query ---------- //

@@ -403,6 +403,7 @@ fn ssl_error_to_socket_error(error: ssl.SslError) -> internal.SocketError {
     ssl.SslError(message) -> internal.SslSockError(message)
     ssl.SslNotStarted -> internal.SslSockError("SSL Not Started")
     ssl.InvalidPid -> internal.SslSockError("Invalid Pid")
+    ssl.NotOwner -> internal.SslSockError("Not Owner")
   }
 }
 
@@ -437,6 +438,7 @@ fn tls_alert_to_string(alert: ssl.TlsAlert) -> String {
     ssl.BadCertificateHashValue -> "bad_certificate_hash_value"
     ssl.UnknownPskIdentity -> "unknown_psk_identity"
     ssl.NoApplicationProtocol -> "no_application_protocol"
+    ssl.CertificateRequired -> "certificate_required"
   }
 }
 
@@ -467,9 +469,7 @@ fn socket_receive(
   }
 }
 
-fn socket_shutdown(
-  socket: InternalSocket,
-) -> Result(Nil, internal.SocketError) {
+fn socket_shutdown(socket: InternalSocket) -> Result(Nil, internal.SocketError) {
   case socket {
     Tcp(sock) ->
       tcp.shutdown(sock) |> result.map_error(tcp_error_to_socket_error)
