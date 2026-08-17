@@ -630,7 +630,7 @@ fn with_single_connection(
         db.pool
         |> process.named_subject
         |> db_pool.with_connection(db.config.queue_target, 30_000, fn(socket) {
-          conn.new(socket, process.self())
+          conn.new(socket)
           |> next(db)
         })
         |> result.map_error(pool_error_to_pgl_error)
@@ -644,15 +644,15 @@ fn with_single_connection(
   }
 }
 
-fn checkout(db: Db, self: process.Pid) -> Result(conn.Conn, PglError) {
+fn checkout(db: Db) -> Result(conn.Conn, PglError) {
   db.pool
   |> process.named_subject
   |> db_pool.checkout(db.config.queue_target, 30_000)
-  |> result.map(conn.new(_, self))
+  |> result.map(conn.new)
   |> result.map_error(pool_error_to_pgl_error)
 }
 
-fn checkin(db: Db, sock: Socket, _self: process.Pid) -> Nil {
+fn checkin(db: Db, sock: Socket) -> Nil {
   db.pool
   |> process.named_subject
   |> db_pool.checkin(sock)
@@ -884,7 +884,7 @@ pub fn transaction(
     do_transaction(conn, fn(conn) { next(Connection(conn:, db:)) }),
   )
 
-  checkin(db, conn.sock, conn.caller)
+  checkin(db, conn.sock)
 
   res
 }
@@ -939,9 +939,7 @@ fn with_transaction(
 ) -> Result(t, TransactionError(error)) {
   case connection {
     Pool(db:) -> {
-      let self = process.self()
-
-      checkout(db, self)
+      checkout(db)
       |> result.map_error(fn(pgl_error) {
         pgl_error
         |> error_to_string
@@ -951,7 +949,7 @@ fn with_transaction(
         case next(conn, db) {
           Ok(val) -> Ok(val)
           Error(err) -> {
-            checkin(db, conn.sock, conn.caller)
+            checkin(db, conn.sock)
             Error(err)
           }
         }
@@ -973,11 +971,11 @@ pub fn commit(
     Connection(conn:, db:) -> {
       case transaction_query("COMMIT", conn) {
         Ok(_) -> {
-          checkin(db, conn.sock, conn.caller)
+          checkin(db, conn.sock)
           Ok(Pool(db:))
         }
         Error(err) -> {
-          checkin(db, conn.sock, conn.caller)
+          checkin(db, conn.sock)
           Error(err)
         }
       }
@@ -1026,11 +1024,11 @@ fn do_rollback(
     _ -> {
       case transaction_query("ROLLBACK", conn) {
         Ok(_) -> {
-          checkin(db, conn.sock, conn.caller)
+          checkin(db, conn.sock)
           Ok(conn)
         }
         Error(err) -> {
-          checkin(db, conn.sock, conn.caller)
+          checkin(db, conn.sock)
           Error(err)
         }
       }

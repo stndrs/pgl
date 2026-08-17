@@ -1,4 +1,3 @@
-import gleam/erlang/process
 import pgl/internal/conn
 import pgl/internal/socket_test
 
@@ -41,5 +40,5 @@ pub fn rollback_savepoint_statement_error_test() {
 fn connection() {
   let sock = socket_test.connect()
 
-  conn.new(sock, process.self())
+  conn.new(sock)
 }
