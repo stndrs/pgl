@@ -5,8 +5,9 @@ import gleam/dict.{type Dict}
 import gleam/dynamic.{type Dynamic}
 import gleam/erlang/process
 import gleam/function
+import gleam/int
 import gleam/list
-import gleam/option.{None, Some}
+import gleam/option.{type Option, None, Some}
 import gleam/otp/actor
 import gleam/otp/static_supervisor.{type Supervisor} as supervisor
 import gleam/otp/supervision
@@ -53,8 +54,15 @@ pub opaque type Config {
     idle_interval: Int,
     /// (default: 50) How long checking out a connection should take.
     queue_target: Int,
+    /// (default: 1000) The CoDel queue interval. Queue health evaluated at each
+    /// interval boundary.
+    queue_interval: Int,
     /// (default: 5000) How long a query may take before timing out, in milliseconds.
     query_timeout: Int,
+    /// The number of connection the pool can keep idle.
+    max_idle_connections: Option(Int),
+    /// The maximum time a connection can sit idle before the pool closes it.
+    max_idle_time: Option(Int),
   )
 }
 
@@ -78,7 +86,10 @@ pub const config = Config(
   pool_size: 5,
   idle_interval: 1000,
   queue_target: 50,
+  queue_interval: 1000,
   query_timeout: 5000,
+  max_idle_connections: None,
+  max_idle_time: None,
 )
 
 /// The IP version to use
@@ -170,9 +181,42 @@ pub fn queue_target(conf: Config, queue_target: Int) -> Config {
   Config(..conf, queue_target:)
 }
 
+/// Sets the CoDel queue interval in milliseconds. This is the length
+/// of each CoDel measurement interval. The pool evaluates queue health
+/// at each interval boundary. Defaults to 1000ms.
+pub fn queue_interval(conf: Config, interval: Int) -> Config {
+  // Clamp to a 1ms floor: a 0ms interval would busy-spin the poll loop and a
+  // negative interval would crash `send_after` during initialisation.
+  Config(..conf, queue_interval: int.max(interval, 1))
+}
+
 /// How long a query may take before timing out, in milliseconds.
 pub fn query_timeout(conf: Config, query_timeout: Int) -> Config {
   Config(..conf, query_timeout:)
+}
+
+/// Sets the maximum number of idle connections the pool holds. When set,
+/// the pool becomes elastic. The pool's `size` becomes the ceiling for
+/// the number of open connections. At pool startup, `max_idle_connections`
+/// connections are eagerly opened.
+///
+/// If more connections than `max_idle_connections` are needed, extra
+/// connections are opened, limited by `size`. Any idle connections beyond
+/// `max_idle_connections` are closed after sitting idle for `max_idle_time`.
+///
+/// If this value is not set, the pool keeps `size` connections open.
+pub fn max_idle_connections(conf: Config, num: Int) -> Config {
+  Config(..conf, max_idle_connections: Some(int.max(num, 0)))
+}
+
+/// Sets the maximum time in milliseconds a connection may sit idle before
+/// the pool closes it. Closed connections are not replaced unless pool demand
+/// requires more to be opened.
+///
+/// Defaults to disabled, and has a lower limit of 1 millisecond. If passed
+/// 0 or negative, a value of 1 millisecond will be used.
+pub fn max_idle_time(conf: Config, ms: Int) -> Config {
+  Config(..conf, max_idle_time: Some(int.max(ms, 1)))
 }
 
 /// Build a `Config` from a connection url
@@ -458,6 +502,18 @@ pub fn start(db: Db) -> actor.StartResult(Supervisor) {
     |> db_pool.on_idle(socket.start_ping(_, db.config.idle_interval))
     |> db_pool.on_active(socket.stop_ping)
     |> db_pool.error_to_string(error_to_string)
+    |> db_pool.queue_target(db.config.queue_target)
+    |> db_pool.queue_interval(db.config.idle_interval)
+
+  let pool =
+    db.config.max_idle_connections
+    |> option.map(db_pool.max_idle_connections(pool, _))
+    |> option.unwrap(pool)
+
+  let pool =
+    db.config.max_idle_time
+    |> option.map(db_pool.max_idle_time(pool, _))
+    |> option.unwrap(pool)
 
   supervisor.new(supervisor.OneForOne)
   |> supervisor.add(type_cache.supervised(db.type_cache))
