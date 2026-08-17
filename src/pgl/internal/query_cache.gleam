@@ -53,7 +53,10 @@ pub fn start(
   |> actor.start
 }
 
-pub fn lookup(query_cache: QueryCache, query: String) -> Result(List(Int), Nil) {
+pub fn lookup(
+  query_cache: QueryCache,
+  query: String,
+) -> Result(List(Int), Nil) {
   process.named_subject(query_cache.name)
   |> actor.call(1000, Lookup(_, query))
 }

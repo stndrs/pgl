@@ -469,7 +469,9 @@ fn socket_receive(
   }
 }
 
-fn socket_shutdown(socket: InternalSocket) -> Result(Nil, internal.SocketError) {
+fn socket_shutdown(
+  socket: InternalSocket,
+) -> Result(Nil, internal.SocketError) {
   case socket {
     Tcp(sock) ->
       tcp.shutdown(sock) |> result.map_error(tcp_error_to_socket_error)
