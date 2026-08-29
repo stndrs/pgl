@@ -271,13 +271,13 @@ fn notification_response(
   case payload {
     <<proc_id:int-size(32), rest:bits>> -> {
       use #(channel, rest1) <- result.try(decode_string(rest))
-      use #(notify_payload, _rest) <- result.try(decode_string(rest1))
+      use #(notify_payload, _rest) <- result.map(decode_string(rest1))
 
-      Ok(internal.NotificationResponse(
+      internal.NotificationResponse(
         proc_id:,
         channel: bit_array.from_string(channel),
         payload: bit_array.from_string(notify_payload),
-      ))
+      )
     }
     _bits -> {
       internal.DecodingError
