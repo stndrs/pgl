@@ -14,6 +14,13 @@ pub fn new(sock: Socket) -> Conn {
   Conn(sock:, savepoint: None)
 }
 
+pub fn has_savepoint(conn: Conn) -> Bool {
+  case conn.savepoint {
+    Some(_) -> True
+    None -> False
+  }
+}
+
 pub fn next_savepoint(conn: Conn) -> Conn {
   let savepoint = case conn.savepoint {
     Some(num) -> Some(num + 1)

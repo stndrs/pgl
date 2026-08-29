@@ -185,8 +185,6 @@ pub fn queue_target(conf: Config, queue_target: Int) -> Config {
 /// of each CoDel measurement interval. The pool evaluates queue health
 /// at each interval boundary. Defaults to 1000ms.
 pub fn queue_interval(conf: Config, interval: Int) -> Config {
-  // Clamp to a 1ms floor: a 0ms interval would busy-spin the poll loop and a
-  // negative interval would crash `send_after` during initialisation.
   Config(..conf, queue_interval: int.max(interval, 1))
 }
 
@@ -255,10 +253,7 @@ fn apply_user_info(conf: Config, uri: Uri) -> Result(Config, Nil) {
           |> username(user)
           |> password(pass)
         }
-        Error(_) -> {
-          use user <- result.map(uri.percent_decode(user_info))
-          username(conf, user)
-        }
+        Error(_) -> result.map(uri.percent_decode(user_info), username(conf, _))
       }
     }
   }
@@ -280,33 +275,29 @@ fn apply_port(conf: Config, uri: Uri) -> Result(Config, Nil) {
 
 fn apply_database(conf: Config, uri: Uri) -> Result(Config, Nil) {
   case string.split(uri.path, "/") {
-    ["", db] -> {
-      use db <- result.map(uri.percent_decode(db))
-      database(conf, db)
-    }
+    ["", db] -> result.map(uri.percent_decode(db), database(conf, _))
     _ -> Error(Nil)
   }
 }
 
 fn apply_ssl_mode(conf: Config, uri: Uri) -> Result(Config, Nil) {
-  let ssl_mode = case uri.query {
-    None -> Ok(SslVerified)
-    Some(query) -> {
-      case uri.parse_query(query) {
-        Ok(params) ->
-          case list.key_find(params, "sslmode") {
-            Ok("require") -> Ok(SslUnverified)
-            Ok("verify-ca") | Ok("verify-full") -> Ok(SslVerified)
-            Ok("disable") -> Ok(SslDisabled)
-            Ok(_) -> Error(Nil)
-            Error(_) -> Ok(SslVerified)
-          }
-        Error(_) -> Error(Nil)
-      }
-    }
-  }
-
-  ssl_mode
+  option.map(uri.query, fn(query) {
+    uri.parse_query(query)
+    |> result.map(fn(params) {
+      list.key_find(params, "sslmode")
+      |> result.try(fn(mode) {
+        case mode {
+          "require" -> Ok(SslUnverified)
+          "verify-ca" | "verify-full" -> Ok(SslVerified)
+          "disable" -> Ok(SslDisabled)
+          _ -> Error(Nil)
+        }
+      })
+      |> result.lazy_unwrap(fn() { SslVerified })
+    })
+    |> result.lazy_or(fn() { Error(Nil) })
+  })
+  |> option.unwrap(Ok(SslVerified))
   |> result.map(ssl(conf, _))
 }
 
@@ -580,19 +571,6 @@ fn authenticated_connection(
 /// Creates a `Connection`.
 pub fn connection(db: Db) -> Connection {
   Pool(db:)
-}
-
-/// Removes the cached prepared-statement plan for the given SQL string.
-///
-/// Useful after schema changes (e.g. `ALTER TYPE`/`DROP TYPE`) that can
-/// invalidate a previously cached plan.
-pub fn invalidate_query_cache(db: Db, sql: String) -> Nil {
-  query_cache.delete(db.query_cache, sql)
-}
-
-/// Clears the entire prepared-statement plan cache.
-pub fn clear_query_cache(db: Db) -> Nil {
-  query_cache.reset(db.query_cache)
 }
 
 fn pool_error_to_pgl_error(err: db_pool.PoolError(PglError)) -> PglError {
@@ -880,40 +858,44 @@ pub fn transaction(
 
   // `with_transaction` checks the connection back in on the error path,
   // so only check in here on success to avoid a redundant checkin.
-  use res <- result.map(
-    do_transaction(conn, fn(conn) { next(Connection(conn:, db:)) }),
-  )
+  do_transaction(conn, fn(conn) { next(Connection(conn:, db:)) })
+  |> result.map(fn(res) {
+    checkin(db, conn.sock)
 
-  checkin(db, conn.sock)
-
-  res
+    res
+  })
 }
+
+const begin_sql = "BEGIN"
+
+const commit_sql = "COMMIT"
+
+const rollback_sql = "ROLLBACK"
 
 fn do_transaction(
   conn: conn.Conn,
   next: fn(conn.Conn) -> Result(t, error),
 ) -> Result(t, TransactionError(error)) {
-  use conn <- result.try(transaction_query("BEGIN", conn))
+  use conn <- result.try(transaction_query(begin_sql, conn))
 
   internal.assert_on_crash(
-    fn() { transaction_query("ROLLBACK", conn) },
-    "ROLLBACK",
+    fn() { transaction_query(rollback_sql, conn) },
+    rollback_sql,
     fn() { next(conn) },
   )
   |> result.map_error(fn(err) {
-    case transaction_query("ROLLBACK", conn) {
+    case transaction_query(rollback_sql, conn) {
       Ok(_) -> RollbackError(err)
       Error(err) -> err
     }
   })
   |> result.try(fn(res) {
-    case transaction_query("COMMIT", conn) {
-      Ok(_) -> Ok(res)
-      Error(err) -> {
-        let _ = transaction_query("ROLLBACK", conn)
-        Error(err)
-      }
-    }
+    transaction_query(commit_sql, conn)
+    |> result.map(fn(_) { res })
+    |> result.try_recover(fn(err) {
+      let _ = transaction_query(rollback_sql, conn)
+      Error(err)
+    })
   })
 }
 
@@ -926,7 +908,7 @@ pub fn begin(
 ) -> Result(Connection, TransactionError(error)) {
   use conn, db <- with_transaction(connection)
 
-  transaction_query("BEGIN", conn)
+  transaction_query(begin_sql, conn)
   |> result.map(Connection(_, db:))
 }
 
@@ -969,16 +951,15 @@ pub fn commit(
   case connection {
     Pool(..) -> Error(NotInTransaction)
     Connection(conn:, db:) -> {
-      case transaction_query("COMMIT", conn) {
-        Ok(_) -> {
-          checkin(db, conn.sock)
-          Ok(Pool(db:))
-        }
-        Error(err) -> {
-          checkin(db, conn.sock)
-          Error(err)
-        }
-      }
+      transaction_query(commit_sql, conn)
+      |> result.map(fn(_) {
+        checkin(db, conn.sock)
+        Pool(db:)
+      })
+      |> result.map_error(fn(err) {
+        checkin(db, conn.sock)
+        err
+      })
     }
   }
 }
@@ -996,10 +977,7 @@ pub fn rollback(
       // A savepoint rollback keeps the transaction (and the checked-out
       // connection) open, so the caller must retain its `Connection`
       // handle. A full rollback checks the connection back in.
-      let has_savepoint = case conn.rollback_savepoint_statement(conn) {
-        Ok(_) -> True
-        Error(_) -> False
-      }
+      let has_savepoint = conn.has_savepoint(conn)
 
       do_rollback(conn, db)
       |> result.map(fn(conn) {
@@ -1017,22 +995,19 @@ fn do_rollback(
   db: Db,
 ) -> Result(conn.Conn, TransactionError(error)) {
   case conn.rollback_savepoint_statement(conn) {
-    Ok(stmt) -> {
+    Ok(stmt) ->
       transaction_query(stmt, conn)
       |> result.replace(conn)
-    }
-    _ -> {
-      case transaction_query("ROLLBACK", conn) {
-        Ok(_) -> {
-          checkin(db, conn.sock)
-          Ok(conn)
-        }
-        Error(err) -> {
-          checkin(db, conn.sock)
-          Error(err)
-        }
-      }
-    }
+    _ ->
+      transaction_query(rollback_sql, conn)
+      |> result.map(fn(_) {
+        checkin(db, conn.sock)
+        conn
+      })
+      |> result.map_error(fn(err) {
+        checkin(db, conn.sock)
+        err
+      })
   }
 }
 

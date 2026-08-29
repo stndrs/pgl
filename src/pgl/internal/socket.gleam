@@ -173,7 +173,8 @@ pub fn receive(
   conn: Socket,
   length: Int,
 ) -> Result(BitArray, internal.InternalError) {
-  actor.call(conn.subject, conn.timeout + call_timeout_buffer, Receive(
+  conn.subject
+  |> actor.call(conn.timeout + call_timeout_buffer, Receive(
     _,
     length,
     conn.timeout,

@@ -106,7 +106,6 @@ pub fn parse_server_first_iterations_high_test() {
   let client_nonce = <<"abc":utf8>>
   let server_first = <<"r=abcdef,s=c2FsdA==,i=200000":utf8>>
 
-  // There is no upper bound on the iteration count (libpq imposes none).
   let assert Ok(sf) = scram.parse_server_first(server_first, client_nonce)
   assert sf.iterations == 200_000
 }
@@ -135,7 +134,7 @@ pub fn parse_server_first_iterations_at_boundary_reject_test() {
       <<"r=abcdef,s=c2FsdA==,i=4095":utf8>>,
       client_nonce,
     )
-  // Above the old 100_000 cap is now accepted (no upper bound).
+
   let assert Ok(_) =
     scram.parse_server_first(
       <<"r=abcdef,s=c2FsdA==,i=100001":utf8>>,
