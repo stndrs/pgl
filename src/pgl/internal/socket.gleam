@@ -84,6 +84,11 @@ pub fn ipv6(builder: Builder, ipv6: Bool) -> Builder {
 
 const socket_factory_name = "pgl_sockets"
 
+// The outer `actor.call` deadline must be strictly larger than the inner
+// TCP receive timeout so the actor can reply with a `Timeout` error rather
+// than the caller's `process.call` panicking on its own deadline.
+const call_timeout_buffer = 1000
+
 pub opaque type Factory {
   Factory(
     name: process.Name(factory.Message(Builder, Socket)),
@@ -168,7 +173,12 @@ pub fn receive(
   conn: Socket,
   length: Int,
 ) -> Result(BitArray, internal.InternalError) {
-  actor.call(conn.subject, conn.timeout, Receive(_, length, conn.timeout))
+  conn.subject
+  |> actor.call(conn.timeout + call_timeout_buffer, Receive(
+    _,
+    length,
+    conn.timeout,
+  ))
   |> result.map_error(fn(kind) {
     internal.SocketError(kind:, message: "Failed to receive")
   })
@@ -219,6 +229,11 @@ fn receive_message(
       case data {
         <<code:bits-size(8), size:int-size(32)>> -> {
           case size - 4 {
+            len if len < 0 -> {
+              internal.DecodingError
+              |> internal.ProtocolError(message: "Invalid message length")
+              |> Error
+            }
             0 -> decode.message(code, <<>>)
             size1 -> {
               socket_receive(sock, size1, timeout)
@@ -257,13 +272,22 @@ fn handle_message(state: State, msg: Msg) -> actor.Next(State, Msg) {
     }
 
     Ping(interval:) -> {
-      let _ = ping(state.socket, state.timeout)
+      case ping(state.socket, state.timeout) {
+        Ok(_) -> {
+          let ping_timer =
+            process.send_after(state.subject, interval, Ping(interval:))
 
-      let ping_timer =
-        process.send_after(state.subject, interval, Ping(interval:))
-
-      State(..state, ping_timer: Some(ping_timer))
-      |> actor.continue
+          State(..state, ping_timer: Some(ping_timer))
+          |> actor.continue
+        }
+        // A failing keepalive means the idle connection is dead. Stop the
+        // actor (closing the socket) instead of re-arming the timer and
+        // pinging a dead connection forever.
+        Error(_) -> {
+          let _ = socket_shutdown(state.socket)
+          actor.stop()
+        }
+      }
     }
     SslUpgrade(client:, host:, verified:) -> {
       case tcp_to_ssl(state.socket, host, verified) {
@@ -291,7 +315,7 @@ fn handle_message(state: State, msg: Msg) -> actor.Next(State, Msg) {
     }
     Receive(client:, length:, timeout:) -> {
       net.timeout(timeout)
-      |> result.map_error(fn(_) { internal.ConnectError("Invalid Port") })
+      |> result.map_error(fn(_) { internal.ConnectError("Invalid timeout") })
       |> result.try(fn(timeout) {
         socket_receive(state.socket, length, timeout)
       })
@@ -380,6 +404,7 @@ fn ssl_error_to_socket_error(error: ssl.SslError) -> internal.SocketError {
     ssl.SslError(message) -> internal.SslSockError(message)
     ssl.SslNotStarted -> internal.SslSockError("SSL Not Started")
     ssl.InvalidPid -> internal.SslSockError("Invalid Pid")
+    ssl.NotOwner -> internal.SslSockError("Not Owner")
   }
 }
 
@@ -414,6 +439,7 @@ fn tls_alert_to_string(alert: ssl.TlsAlert) -> String {
     ssl.BadCertificateHashValue -> "bad_certificate_hash_value"
     ssl.UnknownPskIdentity -> "unknown_psk_identity"
     ssl.NoApplicationProtocol -> "no_application_protocol"
+    ssl.CertificateRequired -> "certificate_required"
   }
 }
 
@@ -444,7 +470,9 @@ fn socket_receive(
   }
 }
 
-fn socket_shutdown(socket: InternalSocket) -> Result(Nil, internal.SocketError) {
+fn socket_shutdown(
+  socket: InternalSocket,
+) -> Result(Nil, internal.SocketError) {
   case socket {
     Tcp(sock) ->
       tcp.shutdown(sock) |> result.map_error(tcp_error_to_socket_error)

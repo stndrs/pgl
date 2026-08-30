@@ -203,7 +203,7 @@ fn do_password_auth(
       |> internal.AuthenticationError(
         "Server requested "
         <> kind
-        <> "authentication but no password was provided",
+        <> " authentication but no password was provided",
       )
       |> Error
   }
@@ -326,7 +326,8 @@ fn simple_flow(
   case msg {
     internal.CommandComplete(_, _) -> simple_flow(sock, acc)
     internal.DataRow(values:) -> simple_flow(sock, [values, ..acc])
-    internal.ErrorResponse(fields:) -> handle_error_response(fields)
+    internal.ErrorResponse(fields:) ->
+      handle_error_response(fields) |> flush(sock)
     internal.NoticeResponse(_) -> simple_flow(sock, acc)
     internal.NotificationResponse(_, _, _) -> simple_flow(sock, acc)
     internal.ReadyForQuery(status: _) -> Ok(acc)
@@ -474,6 +475,11 @@ fn receive_message(
   case data {
     <<code:bits-size(8), size:int-size(32)>> -> {
       case size - 4 {
+        len if len < 0 -> {
+          internal.DecodingError
+          |> internal.ProtocolError(message: "Invalid message length")
+          |> Error
+        }
         0 -> decode.message(code, <<>>)
         size1 -> {
           use payload <- result.try(socket.receive(sock, size1))

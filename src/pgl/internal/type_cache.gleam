@@ -58,7 +58,9 @@ pub fn start(type_cache: TypeCache) -> actor.StartResult(Nil) {
   |> actor.start
 }
 
-pub fn supervised(type_cache: TypeCache) -> supervision.ChildSpecification(Nil) {
+pub fn supervised(
+  type_cache: TypeCache,
+) -> supervision.ChildSpecification(Nil) {
   supervision.worker(fn() { start(type_cache) })
   |> supervision.timeout(1000)
   |> supervision.restart(supervision.Transient)
@@ -180,7 +182,9 @@ fn parse_type_infos(
   })
 }
 
-fn parse_type_info(row: List(option.Option(BitArray))) -> Result(TypeInfo, Nil) {
+fn parse_type_info(
+  row: List(option.Option(BitArray)),
+) -> Result(TypeInfo, Nil) {
   case row {
     [
       Some(<<oid:bits>>),

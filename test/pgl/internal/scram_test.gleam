@@ -102,14 +102,12 @@ pub fn parse_server_first_iterations_too_low_test() {
   )) = scram.parse_server_first(server_first, client_nonce)
 }
 
-pub fn parse_server_first_iterations_too_high_test() {
+pub fn parse_server_first_iterations_high_test() {
   let client_nonce = <<"abc":utf8>>
   let server_first = <<"r=abcdef,s=c2FsdA==,i=200000":utf8>>
 
-  let assert Error(internal.ProtocolError(
-    kind: internal.SaslServerFirst,
-    message: "Failed to parse server_first",
-  )) = scram.parse_server_first(server_first, client_nonce)
+  let assert Ok(sf) = scram.parse_server_first(server_first, client_nonce)
+  assert sf.iterations == 200_000
 }
 
 pub fn parse_server_first_iterations_boundary_low_test() {
@@ -130,12 +128,14 @@ pub fn parse_server_first_iterations_boundary_high_test() {
 
 pub fn parse_server_first_iterations_at_boundary_reject_test() {
   let client_nonce = <<"abc":utf8>>
+  // Below the RFC 5802 minimum of 4096 is rejected.
   let assert Error(_) =
     scram.parse_server_first(
       <<"r=abcdef,s=c2FsdA==,i=4095":utf8>>,
       client_nonce,
     )
-  let assert Error(_) =
+
+  let assert Ok(_) =
     scram.parse_server_first(
       <<"r=abcdef,s=c2FsdA==,i=100001":utf8>>,
       client_nonce,

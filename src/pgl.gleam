@@ -5,8 +5,9 @@ import gleam/dict.{type Dict}
 import gleam/dynamic.{type Dynamic}
 import gleam/erlang/process
 import gleam/function
+import gleam/int
 import gleam/list
-import gleam/option.{None, Some}
+import gleam/option.{type Option, None, Some}
 import gleam/otp/actor
 import gleam/otp/static_supervisor.{type Supervisor} as supervisor
 import gleam/otp/supervision
@@ -53,6 +54,15 @@ pub opaque type Config {
     idle_interval: Int,
     /// (default: 50) How long checking out a connection should take.
     queue_target: Int,
+    /// (default: 1000) The CoDel queue interval. Queue health evaluated at each
+    /// interval boundary.
+    queue_interval: Int,
+    /// (default: 5000) How long a query may take before timing out, in milliseconds.
+    query_timeout: Int,
+    /// The number of connection the pool can keep idle.
+    max_idle_connections: Option(Int),
+    /// The maximum time a connection can sit idle before the pool closes it.
+    max_idle_time: Option(Int),
   )
 }
 
@@ -76,6 +86,10 @@ pub const config = Config(
   pool_size: 5,
   idle_interval: 1000,
   queue_target: 50,
+  queue_interval: 1000,
+  query_timeout: 5000,
+  max_idle_connections: None,
+  max_idle_time: None,
 )
 
 /// The IP version to use
@@ -167,6 +181,42 @@ pub fn queue_target(conf: Config, queue_target: Int) -> Config {
   Config(..conf, queue_target:)
 }
 
+/// Sets the CoDel queue interval in milliseconds. This is the length
+/// of each CoDel measurement interval. The pool evaluates queue health
+/// at each interval boundary. Defaults to 1000ms.
+pub fn queue_interval(conf: Config, interval: Int) -> Config {
+  Config(..conf, queue_interval: int.max(interval, 1))
+}
+
+/// How long a query may take before timing out, in milliseconds.
+pub fn query_timeout(conf: Config, query_timeout: Int) -> Config {
+  Config(..conf, query_timeout:)
+}
+
+/// Sets the maximum number of idle connections the pool holds. When set,
+/// the pool becomes elastic. The pool's `size` becomes the ceiling for
+/// the number of open connections. At pool startup, `max_idle_connections`
+/// connections are eagerly opened.
+///
+/// If more connections than `max_idle_connections` are needed, extra
+/// connections are opened, limited by `size`. Any idle connections beyond
+/// `max_idle_connections` are closed after sitting idle for `max_idle_time`.
+///
+/// If this value is not set, the pool keeps `size` connections open.
+pub fn max_idle_connections(conf: Config, num: Int) -> Config {
+  Config(..conf, max_idle_connections: Some(int.max(num, 0)))
+}
+
+/// Sets the maximum time in milliseconds a connection may sit idle before
+/// the pool closes it. Closed connections are not replaced unless pool demand
+/// requires more to be opened.
+///
+/// Defaults to disabled, and has a lower limit of 1 millisecond. If passed
+/// 0 or negative, a value of 1 millisecond will be used.
+pub fn max_idle_time(conf: Config, ms: Int) -> Config {
+  Config(..conf, max_idle_time: Some(int.max(ms, 1)))
+}
+
 /// Build a `Config` from a connection url
 pub fn from_url(url: String) -> Result(Config, Nil) {
   use uri <- result.try(uri.parse(url))
@@ -191,20 +241,22 @@ fn options_from_uri(uri: Uri) -> Result(Config, Nil) {
 }
 
 fn apply_user_info(conf: Config, uri: Uri) -> Result(Config, Nil) {
-  uri.userinfo
-  |> option.map(fn(user_info) {
-    case string.split(user_info, ":") {
-      [user] -> Ok(username(conf, user))
-      [user, pass] -> {
-        conf
-        |> username(user)
-        |> password(pass)
-        |> Ok
+  case uri.userinfo {
+    None -> Ok(conf)
+    Some(user_info) -> {
+      case string.split_once(user_info, ":") {
+        Ok(#(user, pass)) -> {
+          use user <- result.try(uri.percent_decode(user))
+          use pass <- result.map(uri.percent_decode(pass))
+
+          conf
+          |> username(user)
+          |> password(pass)
+        }
+        Error(_) -> result.map(uri.percent_decode(user_info), username(conf, _))
       }
-      _ -> Error(Nil)
     }
-  })
-  |> option.unwrap(Error(Nil))
+  }
 }
 
 fn apply_host(conf: Config, uri: Uri) -> Result(Config, Nil) {
@@ -223,30 +275,29 @@ fn apply_port(conf: Config, uri: Uri) -> Result(Config, Nil) {
 
 fn apply_database(conf: Config, uri: Uri) -> Result(Config, Nil) {
   case string.split(uri.path, "/") {
-    ["", db] -> Ok(database(conf, db))
+    ["", db] -> result.map(uri.percent_decode(db), database(conf, _))
     _ -> Error(Nil)
   }
 }
 
 fn apply_ssl_mode(conf: Config, uri: Uri) -> Result(Config, Nil) {
-  let ssl_mode = case uri.query {
-    None -> Ok(SslVerified)
-    Some(query) -> {
-      case uri.parse_query(query) {
-        Ok(params) ->
-          case list.key_find(params, "sslmode") {
-            Ok("require") -> Ok(SslUnverified)
-            Ok("verify-ca") | Ok("verify-full") -> Ok(SslVerified)
-            Ok("disable") -> Ok(SslDisabled)
-            Ok(_) -> Error(Nil)
-            Error(_) -> Ok(SslDisabled)
-          }
-        Error(_) -> Error(Nil)
-      }
-    }
-  }
-
-  ssl_mode
+  option.map(uri.query, fn(query) {
+    uri.parse_query(query)
+    |> result.map(fn(params) {
+      list.key_find(params, "sslmode")
+      |> result.try(fn(mode) {
+        case mode {
+          "require" -> Ok(SslUnverified)
+          "verify-ca" | "verify-full" -> Ok(SslVerified)
+          "disable" -> Ok(SslDisabled)
+          _ -> Error(Nil)
+        }
+      })
+      |> result.lazy_unwrap(fn() { SslVerified })
+    })
+    |> result.lazy_or(fn() { Error(Nil) })
+  })
+  |> option.unwrap(Ok(SslVerified))
   |> result.map(ssl(conf, _))
 }
 
@@ -358,6 +409,7 @@ fn from_internal_error(err: internal.InternalError) -> PglError {
 fn field_from_bit_array(field_type: BitArray) -> Field {
   case field_type {
     <<"S":utf8>> -> Severity
+    <<"V":utf8>> -> Severity
     <<"C":utf8>> -> Code
     <<"M":utf8>> -> Message
     <<"D":utf8>> -> Detail
@@ -413,6 +465,7 @@ pub fn new(config: Config) -> Db {
         Ipv6 -> True
       }
     })
+    |> socket.timeout(config.query_timeout)
     |> socket.factory
 
   let pool = process.new_name("pgl_pool")
@@ -438,6 +491,19 @@ pub fn start(db: Db) -> actor.StartResult(Supervisor) {
     |> db_pool.on_close(disconnect)
     |> db_pool.on_idle(socket.start_ping(_, db.config.idle_interval))
     |> db_pool.on_active(socket.stop_ping)
+    |> db_pool.error_to_string(error_to_string)
+    |> db_pool.queue_target(db.config.queue_target)
+    |> db_pool.queue_interval(db.config.idle_interval)
+
+  let pool =
+    db.config.max_idle_connections
+    |> option.map(db_pool.max_idle_connections(pool, _))
+    |> option.unwrap(pool)
+
+  let pool =
+    db.config.max_idle_time
+    |> option.map(db_pool.max_idle_time(pool, _))
+    |> option.unwrap(pool)
 
   supervisor.new(supervisor.OneForOne)
   |> supervisor.add(type_cache.supervised(db.type_cache))
@@ -489,11 +555,14 @@ fn authenticated_connection(
 
   sockets
   |> socket.connect
-  |> result.map_error(fn(_) {
-    internal.SocketError(
-      kind: internal.ConnectError("Failed to start socket connection"),
-      message: "Failed to start socket connection",
-    )
+  |> result.map_error(fn(err) {
+    let message = case err {
+      actor.InitFailed(reason) -> reason
+      actor.InitTimeout -> "Timed out starting socket connection"
+      actor.InitExited(_) -> "Socket connection process exited during start"
+    }
+
+    internal.SocketError(kind: internal.ConnectError(message), message:)
   })
   |> result.try(fn(sock) { protocol.auth(sock, conf) })
 }
@@ -538,7 +607,7 @@ fn with_single_connection(
         db.pool
         |> process.named_subject
         |> db_pool.with_connection(db.config.queue_target, 30_000, fn(socket) {
-          conn.new(socket, process.self())
+          conn.new(socket)
           |> next(db)
         })
         |> result.map_error(pool_error_to_pgl_error)
@@ -552,18 +621,18 @@ fn with_single_connection(
   }
 }
 
-fn checkout(db: Db, self: process.Pid) -> Result(conn.Conn, PglError) {
+fn checkout(db: Db) -> Result(conn.Conn, PglError) {
   db.pool
   |> process.named_subject
-  |> db_pool.checkout(self, db.config.queue_target, 30_000)
-  |> result.map(conn.new(_, self))
+  |> db_pool.checkout(db.config.queue_target, 30_000)
+  |> result.map(conn.new)
   |> result.map_error(pool_error_to_pgl_error)
 }
 
-fn checkin(db: Db, sock: Socket, self: process.Pid) -> Nil {
+fn checkin(db: Db, sock: Socket) -> Nil {
   db.pool
   |> process.named_subject
-  |> db_pool.checkin(sock, self)
+  |> db_pool.checkin(sock)
 }
 
 // ---------- Query ---------- //
@@ -667,7 +736,10 @@ fn rows_to_dicts(
 
 /// Perform a query with the given SQL string. This function will send the
 /// SQL string as is to the postgres database server.
-pub fn execute(sql: String, on connection: Connection) -> Result(Int, PglError) {
+pub fn execute(
+  sql: String,
+  on connection: Connection,
+) -> Result(Int, PglError) {
   use conn, db <- with_single_connection(connection)
 
   extended_query(sql, [], conn, db)
@@ -687,6 +759,12 @@ fn extended_query(
 
   extended(db)
   |> protocol.process(message, conn.sock)
+  |> result.map_error(fn(err) {
+    // A cached query plan can go stale (e.g. after ALTER TYPE / DROP TYPE).
+    // Invalidate the entry on error so the next call re-describes it.
+    query_cache.delete(db.query_cache, sql)
+    err
+  })
 }
 
 fn extended(db: Db) -> protocol.Extended(pg_value.Value) {
@@ -777,33 +855,46 @@ pub fn transaction(
 ) -> Result(t, TransactionError(error)) {
   use conn, db <- with_transaction(connection)
 
-  let res = do_transaction(conn, fn(conn) { next(Connection(conn:, db:)) })
+  // `with_transaction` checks the connection back in on the error path,
+  // so only check in here on success to avoid a redundant checkin.
+  do_transaction(conn, fn(conn) { next(Connection(conn:, db:)) })
+  |> result.map(fn(res) {
+    checkin(db, conn.sock)
 
-  checkin(db, conn.sock, conn.caller)
-
-  res
+    res
+  })
 }
+
+const begin_sql = "BEGIN"
+
+const commit_sql = "COMMIT"
+
+const rollback_sql = "ROLLBACK"
 
 fn do_transaction(
   conn: conn.Conn,
   next: fn(conn.Conn) -> Result(t, error),
 ) -> Result(t, TransactionError(error)) {
-  use conn <- result.try(transaction_query("BEGIN", conn))
+  use conn <- result.try(transaction_query(begin_sql, conn))
 
   internal.assert_on_crash(
-    fn() { transaction_query("ROLLBACK", conn) },
-    "ROLLBACK",
+    fn() { transaction_query(rollback_sql, conn) },
+    rollback_sql,
     fn() { next(conn) },
   )
   |> result.map_error(fn(err) {
-    case transaction_query("ROLLBACK", conn) {
+    case transaction_query(rollback_sql, conn) {
       Ok(_) -> RollbackError(err)
       Error(err) -> err
     }
   })
   |> result.try(fn(res) {
-    transaction_query("COMMIT", conn)
-    |> result.replace(res)
+    transaction_query(commit_sql, conn)
+    |> result.map(fn(_) { res })
+    |> result.try_recover(fn(err) {
+      let _ = transaction_query(rollback_sql, conn)
+      Error(err)
+    })
   })
 }
 
@@ -816,7 +907,7 @@ pub fn begin(
 ) -> Result(Connection, TransactionError(error)) {
   use conn, db <- with_transaction(connection)
 
-  transaction_query("BEGIN", conn)
+  transaction_query(begin_sql, conn)
   |> result.map(Connection(_, db:))
 }
 
@@ -829,9 +920,7 @@ fn with_transaction(
 ) -> Result(t, TransactionError(error)) {
   case connection {
     Pool(db:) -> {
-      let self = process.self()
-
-      checkout(db, self)
+      checkout(db)
       |> result.map_error(fn(pgl_error) {
         pgl_error
         |> error_to_string
@@ -841,7 +930,7 @@ fn with_transaction(
         case next(conn, db) {
           Ok(val) -> Ok(val)
           Error(err) -> {
-            checkin(db, conn.sock, conn.caller)
+            checkin(db, conn.sock)
             Error(err)
           }
         }
@@ -861,11 +950,14 @@ pub fn commit(
   case connection {
     Pool(..) -> Error(NotInTransaction)
     Connection(conn:, db:) -> {
-      transaction_query("COMMIT", conn)
+      transaction_query(commit_sql, conn)
       |> result.map(fn(_) {
-        checkin(db, conn.sock, conn.caller)
-
+        checkin(db, conn.sock)
         Pool(db:)
+      })
+      |> result.map_error(fn(err) {
+        checkin(db, conn.sock)
+        err
       })
     }
   }
@@ -881,8 +973,18 @@ pub fn rollback(
   case connection {
     Pool(..) -> Error(NotInTransaction)
     Connection(conn:, db:) -> {
+      // A savepoint rollback keeps the transaction (and the checked-out
+      // connection) open, so the caller must retain its `Connection`
+      // handle. A full rollback checks the connection back in.
+      let has_savepoint = conn.has_savepoint(conn)
+
       do_rollback(conn, db)
-      |> result.map(fn(_) { Pool(db:) })
+      |> result.map(fn(conn) {
+        case has_savepoint {
+          True -> Connection(conn:, db:)
+          False -> Pool(db:)
+        }
+      })
     }
   }
 }
@@ -892,18 +994,19 @@ fn do_rollback(
   db: Db,
 ) -> Result(conn.Conn, TransactionError(error)) {
   case conn.rollback_savepoint_statement(conn) {
-    Ok(stmt) -> {
+    Ok(stmt) ->
       transaction_query(stmt, conn)
       |> result.replace(conn)
-    }
-    _ -> {
-      transaction_query("ROLLBACK", conn)
+    _ ->
+      transaction_query(rollback_sql, conn)
       |> result.map(fn(_) {
-        checkin(db, conn.sock, conn.caller)
-
+        checkin(db, conn.sock)
         conn
       })
-    }
+      |> result.map_error(fn(err) {
+        checkin(db, conn.sock)
+        err
+      })
   }
 }
 

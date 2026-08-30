@@ -1,4 +1,3 @@
-import gleam/erlang/process
 import gleam/int
 import gleam/option.{type Option, None, Some}
 import pgl/internal/socket.{type Socket}
@@ -8,11 +7,18 @@ const starting_index = 1
 const savepoint_name = "pgl_savepoint"
 
 pub type Conn {
-  Conn(sock: Socket, savepoint: Option(Int), caller: process.Pid)
+  Conn(sock: Socket, savepoint: Option(Int))
 }
 
-pub fn new(sock: Socket, caller: process.Pid) -> Conn {
-  Conn(sock:, savepoint: None, caller:)
+pub fn new(sock: Socket) -> Conn {
+  Conn(sock:, savepoint: None)
+}
+
+pub fn has_savepoint(conn: Conn) -> Bool {
+  case conn.savepoint {
+    Some(_) -> True
+    None -> False
+  }
 }
 
 pub fn next_savepoint(conn: Conn) -> Conn {
